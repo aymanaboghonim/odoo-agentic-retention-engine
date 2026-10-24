@@ -39,12 +39,10 @@ Revisit at the POC exit review (Phase 3).
 
 ### How the no-push-to-main rule is enforced
 
-Native branch protection may not be available on a private repo with a free plan (F-016). So the rule is enforced in layers:
-
-1. `AGENTS.md` states the rule explicitly for agents.
-2. A local git `pre-push` hook (installed by `make setup`) blocks pushes to `main`. It can be bypassed on purpose, so it is a guard, not security.
-3. A CI check on pushes to `main` fails if a commit on `main` did not come from a merged PR. This is detective, not preventive.
-4. When the plan allows, turn on GitHub branch protection or rulesets (require PR, require `make ci`, squash only, block force push) and make layers 2 and 3 a backup.
+- The active `protect-main` GitHub ruleset on `main` is the authoritative control. It requires a pull request and the `Local-parity checks` status, requires linear history, blocks force pushes and deletion, allows squash as the only PR merge method, and has an empty bypass list (F-016).
+- Repository settings also allow squash only and automatically delete merged branches (F-016).
+- `AGENTS.md` tells humans and agents never to push directly to `main`; the ruleset enforces this on GitHub.
+- Do not add custom local wrappers or CI API checks that duplicate the ruleset. If the ruleset is later disabled, reopen issue #9 before claiming direct pushes are prevented.
 
 ## Traceability (code to commit to issue to PR to release)
 
