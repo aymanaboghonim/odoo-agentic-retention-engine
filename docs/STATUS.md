@@ -7,8 +7,10 @@ Next action: merge PR #15 (`6-agents-and-skills`), then start issue #7. Do not s
 ## Session handoff
 
 - [ ] After PR #15 is merged, continue issue #7 (issue and PR templates, labels).
-- [ ] Resume review of `github/awesome-copilot` for this repo's use case. Initial fetch confirmed it contains separate agents, skills, instructions, hooks and workflows, and its repository LICENSE is MIT. Still inspect its README/contribution guidance and selected relevant examples; then recommend adopt, adapt or defer. Do not copy files before reviewing content, permissions/scripts and license compatibility.
-- [ ] If we adopt any upstream customization, record source URL and pinned commit SHA, adapt it to our rules, and include the review in the issue/PR.
+- [x] Review `github/awesome-copilot` for this repo's use case. It is a broad, community-created collection of agents, instructions, skills, hooks, workflows and plugins. Its README says to inspect third-party customizations before installing. Root LICENSE is MIT; still check each item's license and bundled assets before copying.
+- [x] Compare likely overlaps. Upstream `create-architectural-decision-record` and `create-specification` use different naming/templates than this repo's ADR and spec rules. `repo-standardizer` may be consulted as a checklist for issues #7-#10, but do not install/run it wholesale: it can change repository settings and files, and its sample branch rules can conflict with our no-push-to-main rule. `eval-driven-dev` is a possible reference when the Python LLM app exists, but its required real-LLM evaluation stack does not fit hermetic CI as-is.
+- [x] Local extension-skill name check (2026-10-24): only `create-pull-request` matched the searched names. It is a general PR creation helper; our `pr-workflow` remains because it encodes repo-specific traceability and merge rules. Extension skills may vary across developer environments.
+- [ ] Adopt no upstream customization now. Revisit only for a concrete issue; inspect its content, scripts, tool permissions, per-item license and pin the upstream commit SHA before adapting it to our rules.
 
 ## Phases
 
@@ -90,4 +92,4 @@ Next action: merge PR #15 (`6-agents-and-skills`), then start issue #7. Do not s
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done |
-| Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Resume upstream review; choose only for a concrete need, or defer |
+| Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Resolved 2026-10-24: no bulk adoption. Consult relevant items for a concrete issue, inspect and adapt individually; see Session handoff. | Done |
