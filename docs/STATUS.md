@@ -85,3 +85,4 @@ Next action: after PR #16 merges, start issue #8 (CI and GitHub Actions with loc
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done |
 | Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Resolved 2026-10-24: no bulk adoption. Consider an individual item only for a concrete need, after reviewing content, scripts, permissions and license. | Done |
+| Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Proposed: milestone per phase; use a parent issue only for an outcome split across several issues; keep existing spec, spike, bug and task issue types; user-story format only for user-facing behavior. Decide before POC-1 breakdown. | Open |
