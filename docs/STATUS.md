@@ -39,7 +39,12 @@ Next action: review and merge the Phase 0a PR (issue #1), then start Phase 0b.
 `blueprint-draft.md` must not be deleted until every box is ticked. Section numbers refer to the draft.
 
 - [x] 1 Problem and goals: [00-vision.md](00-vision.md) (SLOs marked "target, untested")
-- [ ] 1.2 Safety gate rules (discount cap: auto up to 10%, human approval above 10%, hard reject above 15%; values to confirm) to `docs/specs/`
+- [ ] 1.2 Safety gate rules to `docs/specs/`. Tiers accepted by owner (2026-10-24):
+  - Auto: discount up to 10% and final price above the product category minimum margin.
+  - Human approval: above 10% up to 15%, or any bulk campaign.
+  - Hard reject in code: above 15%. A CI test must prove it.
+  - Extra caps: one coupon per customer per cart per day, and a daily total discount budget.
+  - Minimum margin per category and the daily budget are config values. Starting numbers (10%, 15%) are defaults, to be checked in S1 and on the golden set.
 - [x] 2 Headless engine pattern: ADR-0002
 - [ ] 2 and 4.1 Context and container diagrams (C1, C2, C3 for engine) to `docs/architecture/`
 - [x] 3 PoC vs MVP split: [00-vision.md](00-vision.md) and phases above
@@ -82,4 +87,4 @@ Next action: review and merge the Phase 0a PR (issue #1), then start Phase 0b.
 | Q5 | C4 tooling: Mermaid or Structurizr | ADR in Phase 0b |
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
-| Q8 | Discount thresholds (10% HITL, 15% hard cap) | Spec in Phase 0c, confirm with owner |
+| Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done |
