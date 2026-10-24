@@ -19,7 +19,7 @@ Next action: review and merge the Phase 0a PR (issue #1), then start Phase 0b.
   - [ ] Apache-2.0 LICENSE, new README
   - [ ] `AGENTS.md` and skills in `.github/skills/` (custom agents deferred to Phase 3, see process.md)
   - [ ] Issue and PR templates, labels
-  - [ ] GitHub Project v2 board and milestones POC-0 to POC-3
+  - [ ] GitHub Project v2 board (Status: Todo, In progress, Done; built-in workflows only) and milestones POC-0 to POC-3. Verify F-015 first.
   - [ ] `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
 - [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)

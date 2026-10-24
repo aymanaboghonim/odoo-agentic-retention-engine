@@ -20,3 +20,4 @@ Status: `unverified`, `verified`, `stale` (older than 90 days).
 | F-012 | Hetzner plan price for 4 vCPU / 8 GB | about 8-12 USD per month (draft) | to find | - | unverified |
 | F-013 | Cloudflare Pages and R2 free-tier limits | unknown | to find | - | unverified |
 | F-014 | Odoo and Odoo-with-demo-data RAM use | unknown | measure in S1 | - | unverified |
+| F-015 | GitHub Projects built-in workflows: which exist (auto-add, item closed, item reopened, PR merged, PR opened to In progress), and plan limits on auto-add | my belief: all but 'PR opened' exist | to find | - | unverified |
