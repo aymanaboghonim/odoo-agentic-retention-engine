@@ -23,7 +23,9 @@ Project: an agentic AI layer on top of Odoo (abandoned carts, retention). Read [
 
 ## Commands
 
-- `make ci`: runs all checks, same as GitHub Actions. Not available yet (issue #8).
+- `make setup`: syncs locked development tools and installs the pre-commit hook.
+- `make ci`: runs all checks, same as GitHub Actions.
+- Python toolchain: 3.14 only (`>=3.14,<3.15`); dev dependencies are in `pyproject.toml` and `uv.lock`.
 
 ## Skills
 

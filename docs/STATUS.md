@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: after PR #16 merges, start issue #8 (CI and GitHub Actions with local parity). One issue, one branch, one PR.
+Next action: after the issue #8 PR merges, start issue #9 (no-push-to-main enforcement and repo merge settings). One issue, one branch, one PR.
 
 ## Phases
 
@@ -13,7 +13,7 @@ Next action: after PR #16 merges, start issue #8 (CI and GitHub Actions with loc
   - [x] #5 Restructure folders to the target tree, remove old stub READMEs
   - [x] #6 `AGENTS.md` and skills in `.github/skills/` (pr-workflow, adr, spec-writing, verify-facts; odoo-adapter, rag-eval, infra-deploy, release are added when first needed; custom agents deferred to Phase 3)
   - [x] #7 Issue and PR templates, labels
-  - [ ] #8 `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
+  - [x] #8 `make ci` and GitHub Actions with the same checks, Python 3.14 only, locked dev tools and no app runtime dependencies yet (PR pending)
   - [ ] #9 No-push-to-main layers (see process.md) and repo merge settings. Resolve F-016 (the API probe was inconclusive: 403 came from token scope, so check Settings in the GitHub UI).
   - [ ] #10 GitHub Project v2 board (Status: Todo, In progress, Done; built-in workflows only) and milestones POC-1 to POC-3. Verify F-015 first.
   - [ ] #11 Rename repo to `odoo-agentic-retention-engine` (last)
@@ -74,7 +74,7 @@ Next action: after PR #16 merges, start issue #8 (CI and GitHub Actions with loc
 
 ## Open questions
 
-| # | Question | Resolved by |
+| # | Question | Resolution / status |
 | :-- | :-- | :-- |
 | Q1 | Owner weekly hours | Owner, to size milestones |
 | Q2 | Final LLM model | S2, then update ADR-0003 |
@@ -83,6 +83,6 @@ Next action: after PR #16 merges, start issue #8 (CI and GitHub Actions with loc
 | Q5 | C4 tooling: Mermaid or Structurizr | ADR in Phase 0b |
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
-| Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done |
-| Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Resolved 2026-10-24: no bulk adoption. Consider an individual item only for a concrete need, after reviewing content, scripts, permissions and license. | Done |
-| Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Proposed: milestone per phase; use a parent issue only for an outcome split across several issues; keep existing spec, spike, bug and task issue types; user-story format only for user-facing behavior. Decide before POC-1 breakdown. | Open |
+| Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done; validate defaults in S1 |
+| Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Done. Resolved 2026-10-24: no bulk adoption. Consider individual items only for a concrete need, after reviewing content, scripts, permissions and license. |
+| Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Open. Proposed: milestone per phase; use a parent issue only for an outcome split across several issues; keep existing spec, spike, bug and task issue types; user-story format only for user-facing behavior. Decide before POC-1 breakdown. |
