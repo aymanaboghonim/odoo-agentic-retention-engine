@@ -2,26 +2,21 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: review and merge the Phase 0a PR (issue #1), then start Phase 0b.
+Next action: work Phase 0b issues in order (#3 first). One issue, one branch, one PR.
 
 ## Phases
 
-- [ ] **Phase 0a: Capture** (issue #1)
-  - [x] Vision: [00-vision.md](00-vision.md)
-  - [x] Process rules: [process.md](process.md)
-  - [x] Facts register: [facts-register.md](facts-register.md)
-  - [x] ADR-0001 to ADR-0008 in [adr/](adr/)
-  - [x] ACKNOWLEDGEMENTS.md
-  - [x] This status file with open questions and extraction checklist
-  - [ ] Owner reviews and merges the PR
-- [ ] **Phase 0b: Automation** (issues to be created after 0a)
-  - [ ] Rename repo to `odoo-agentic-retention-engine`, restructure folders (target tree below), remove old stub READMEs
-  - [ ] Apache-2.0 LICENSE, new README
-  - [ ] `AGENTS.md` and skills in `.github/skills/` (custom agents deferred to Phase 3, see process.md)
-  - [ ] Issue and PR templates, labels
-  - [ ] GitHub Project v2 board (Status: Todo, In progress, Done; built-in workflows only) and milestones POC-0 to POC-3. Verify F-015 first.
-  - [ ] `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
-  - [ ] No-push-to-main layers (see process.md): rule in `AGENTS.md`, local `pre-push` hook via `make setup`, CI check that `main` commits come from merged PRs, repo setting squash merge only plus delete branch on merge, native protection if F-016 allows
+- [x] **Phase 0a: Capture** (issue #1, PR #2, merged)
+- [ ] **Phase 0b: Automation** (milestone POC-0)
+  - [ ] #3 `.gitignore` and `.env.example` (first, before any code)
+  - [ ] #4 Apache-2.0 LICENSE, new README
+  - [ ] #5 Restructure folders to the target tree, remove old stub READMEs
+  - [ ] #6 `AGENTS.md` and skills in `.github/skills/` (custom agents deferred to Phase 3, see process.md)
+  - [ ] #7 Issue and PR templates, labels
+  - [ ] #8 `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
+  - [ ] #9 No-push-to-main layers (see process.md) and repo merge settings. Resolve F-016 (the API probe was inconclusive: 403 came from token scope, so check Settings in the GitHub UI).
+  - [ ] #10 GitHub Project v2 board (Status: Todo, In progress, Done; built-in workflows only) and milestones POC-1 to POC-3. Verify F-015 first.
+  - [ ] #11 Rename repo to `odoo-agentic-retention-engine` (last)
 - [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [ ] S1 Odoo: version, demo data content, RAM, seed need
