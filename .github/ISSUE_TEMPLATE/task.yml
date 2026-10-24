@@ -1,7 +1,6 @@
 name: Task
 description: Track a bounded repo, documentation or implementation task.
 title: "task: "
-labels: [docs]
 body:
   - type: textarea
     id: work

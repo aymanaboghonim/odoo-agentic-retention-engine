@@ -1,0 +1,16 @@
+labels:
+  - name: spec
+    color: "1D76DB"
+    description: Feature or behavior specification
+  - name: spike
+    color: "FB8C00"
+    description: Time-boxed research to resolve a decision
+  - name: risk
+    color: "D73A4A"
+    description: Security, privacy, financial or reliability risk
+  - name: adr
+    color: "7057FF"
+    description: Architecture decision record
+  - name: docs
+    color: "0E8A16"
+    description: Documentation and repository workflow
