@@ -28,6 +28,24 @@ Not needed now. Add one only when it needs different tool permissions or a diffe
 
 Revisit at the POC exit review (Phase 3).
 
+## Branching and merging (GitHub flow)
+
+- One long-lived branch: `main`. It is always releasable.
+- Work happens on short-lived branches named `<issue-number>-short-slug`, deleted after merge.
+- **Never push directly to `main`.** This applies to humans and agents. Every change goes through a PR.
+- Merge method: squash merge only. The squash commit uses the PR title and body, so `Closes #<issue>` stays on `main`. One issue, one PR, one commit on `main`.
+- No `develop` or release branches. Releases are tags on `main`.
+- Required before merge: `make ci` passes. Required reviews are off (solo developer).
+
+### How the no-push-to-main rule is enforced
+
+Native branch protection may not be available on a private repo with a free plan (F-016). So the rule is enforced in layers:
+
+1. `AGENTS.md` states the rule explicitly for agents.
+2. A local git `pre-push` hook (installed by `make setup`) blocks pushes to `main`. It can be bypassed on purpose, so it is a guard, not security.
+3. A CI check on pushes to `main` fails if a commit on `main` did not come from a merged PR. This is detective, not preventive.
+4. When the plan allows, turn on GitHub branch protection or rulesets (require PR, require `make ci`, squash only, block force push) and make layers 2 and 3 a backup.
+
 ## Traceability (code to commit to issue to PR to release)
 
 - Every change starts from a GitHub issue.

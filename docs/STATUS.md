@@ -21,6 +21,7 @@ Next action: review and merge the Phase 0a PR (issue #1), then start Phase 0b.
   - [ ] Issue and PR templates, labels
   - [ ] GitHub Project v2 board (Status: Todo, In progress, Done; built-in workflows only) and milestones POC-0 to POC-3. Verify F-015 first.
   - [ ] `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
+  - [ ] No-push-to-main layers (see process.md): rule in `AGENTS.md`, local `pre-push` hook via `make setup`, CI check that `main` commits come from merged PRs, repo setting squash merge only plus delete branch on merge, native protection if F-016 allows
 - [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [ ] S1 Odoo: version, demo data content, RAM, seed need
