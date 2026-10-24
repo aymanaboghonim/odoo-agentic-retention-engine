@@ -6,7 +6,7 @@ Next action: start issue #8 (CI and GitHub Actions with local parity). One issue
 
 ## Session handoff
 
-- [x] PR #15 merged; issue #7 is the active next task.
+- [x] PR #15 merged; issue #7 is implemented in PR #16, awaiting owner merge. Issue #8 is next after that merge.
 - [x] Review `github/awesome-copilot` for this repo's use case. It is a broad, community-created collection of agents, instructions, skills, hooks, workflows and plugins. Its README says to inspect third-party customizations before installing. Root LICENSE is MIT; still check each item's license and bundled assets before copying.
 - [x] Compare likely overlaps. Upstream `create-architectural-decision-record` and `create-specification` use different naming/templates than this repo's ADR and spec rules. `repo-standardizer` may be consulted as a checklist for issues #7-#10, but do not install/run it wholesale: it can change repository settings and files, and its sample branch rules can conflict with our no-push-to-main rule. `eval-driven-dev` is a possible reference when the Python LLM app exists, but its required real-LLM evaluation stack does not fit hermetic CI as-is.
 - [x] Local extension-skill name check (2026-10-24): only `create-pull-request` matched the searched names. It is a general PR creation helper; our `pr-workflow` remains because it encodes repo-specific traceability and merge rules. Extension skills may vary across developer environments.
