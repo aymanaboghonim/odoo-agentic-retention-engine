@@ -1,0 +1,41 @@
+name: Feature or behavior spec
+description: Define scope, invariants, risks and checks before implementation.
+title: "spec: "
+labels: [spec]
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What user pain or business need does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: What is included, and what is explicitly excluded?
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Invariants and checks
+      description: List what must always be true and the test or CI gate that checks each item.
+      placeholder: "- INV-1: ... | Check: ..."
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Key behavior and risks
+      description: Include important success, failure and abuse cases.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Give observable acceptance criteria.
+    validations:
+      required: true

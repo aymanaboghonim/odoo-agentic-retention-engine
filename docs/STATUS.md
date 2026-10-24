@@ -2,15 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: merge PR #15 (`6-agents-and-skills`), then start issue #7. Do not start #7 before PR #15 is merged. One issue, one branch, one PR.
-
-## Session handoff
-
-- [ ] After PR #15 is merged, continue issue #7 (issue and PR templates, labels).
-- [x] Review `github/awesome-copilot` for this repo's use case. It is a broad, community-created collection of agents, instructions, skills, hooks, workflows and plugins. Its README says to inspect third-party customizations before installing. Root LICENSE is MIT; still check each item's license and bundled assets before copying.
-- [x] Compare likely overlaps. Upstream `create-architectural-decision-record` and `create-specification` use different naming/templates than this repo's ADR and spec rules. `repo-standardizer` may be consulted as a checklist for issues #7-#10, but do not install/run it wholesale: it can change repository settings and files, and its sample branch rules can conflict with our no-push-to-main rule. `eval-driven-dev` is a possible reference when the Python LLM app exists, but its required real-LLM evaluation stack does not fit hermetic CI as-is.
-- [x] Local extension-skill name check (2026-10-24): only `create-pull-request` matched the searched names. It is a general PR creation helper; our `pr-workflow` remains because it encodes repo-specific traceability and merge rules. Extension skills may vary across developer environments.
-- [ ] Adopt no upstream customization now. Revisit only for a concrete issue; inspect its content, scripts, tool permissions, per-item license and pin the upstream commit SHA before adapting it to our rules.
+Next action: after PR #16 merges, start issue #8 (CI and GitHub Actions with local parity). One issue, one branch, one PR.
 
 ## Phases
 
@@ -20,7 +12,7 @@ Next action: merge PR #15 (`6-agents-and-skills`), then start issue #7. Do not s
   - [x] #4 Apache-2.0 LICENSE, new README
   - [x] #5 Restructure folders to the target tree, remove old stub READMEs
   - [x] #6 `AGENTS.md` and skills in `.github/skills/` (pr-workflow, adr, spec-writing, verify-facts; odoo-adapter, rag-eval, infra-deploy, release are added when first needed; custom agents deferred to Phase 3)
-  - [ ] #7 Issue and PR templates, labels
+  - [x] #7 Issue and PR templates, labels
   - [ ] #8 `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
   - [ ] #9 No-push-to-main layers (see process.md) and repo merge settings. Resolve F-016 (the API probe was inconclusive: 403 came from token scope, so check Settings in the GitHub UI).
   - [ ] #10 GitHub Project v2 board (Status: Todo, In progress, Done; built-in workflows only) and milestones POC-1 to POC-3. Verify F-015 first.
@@ -92,4 +84,5 @@ Next action: merge PR #15 (`6-agents-and-skills`), then start issue #7. Do not s
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done |
-| Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Resolved 2026-10-24: no bulk adoption. Consult relevant items for a concrete issue, inspect and adapt individually; see Session handoff. | Done |
+| Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Resolved 2026-10-24: no bulk adoption. Consider an individual item only for a concrete need, after reviewing content, scripts, permissions and license. | Done |
+| Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Proposed: milestone per phase; use a parent issue only for an outcome split across several issues; keep existing spec, spike, bug and task issue types; user-story format only for user-facing behavior. Decide before POC-1 breakdown. | Open |
