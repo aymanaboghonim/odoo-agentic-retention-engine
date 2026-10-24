@@ -1,0 +1,33 @@
+name: Technical spike
+description: Time-box a research task to resolve a decision or uncertainty.
+title: "spike: "
+labels: [spike]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to resolve
+      description: State the decision or uncertainty this spike will resolve.
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis and options
+      description: What do we expect, and what alternatives must be compared?
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: Method and evidence
+      description: Describe the smallest experiment and what evidence to record.
+    validations:
+      required: true
+  - type: textarea
+    id: exit
+    attributes:
+      label: Exit criteria
+      description: State the result artifact (for example, ADR and facts-register updates).
+    validations:
+      required: true
