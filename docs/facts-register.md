@@ -9,7 +9,7 @@ Status: `unverified`, `verified`, `stale` (older than 90 days).
 | F-001 | Odoo version to use | Odoo 17 (from draft) | to find | - | unverified |
 | F-002 | Odoo Community licence and demo data content (draft carts, customers) | LGPL, demo data has products and customers | to find | - | unverified |
 | F-003 | Odoo built-in abandoned-cart reminder email | Exists in website_sale | to find | - | unverified |
-| F-004 | Gemini Flash-Lite and Flash free-tier limits | Owner says: Flash-Lite free; 5 monthly credits for Flash | to find | - | unverified |
+| F-004 | Gemini free tier and paid tier 1 | Owner says: free tier allows Flash-Lite only, with strict TPM and RPM limits. Owner has 5 USD credit on paid tier 1, usable on any Gemini model. | to find | - | unverified |
 | F-005 | GPT-6 Luna exists and price | Owner pasted: 0.10 input / 0.50 output per 1M tokens (assumed) | to find | - | unverified |
 | F-006 | GPT-6 Luna available on Azure OpenAI, GCC regions | unknown | to find | - | unverified |
 | F-007 | FastEmbed supports BAAI/bge-m3 | unknown (doubtful) | to find | - | unverified |

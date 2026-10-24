@@ -9,7 +9,7 @@ Rule: if it is not written in a file in this repo, it does not exist. Chat and a
 3. **CI-local parity.** `make ci` runs locally exactly what GitHub Actions runs.
 4. **Risk-based testing.** Test money, data leaks, prompt injection, idempotency, and integration contracts. No dogmatic TDD. Tests are hermetic (no real network or paid API in CI).
 5. **Just-in-time planning.** Only the current milestone has detailed issues. Later phases stay as short checklists in STATUS.md.
-6. **One agent, many skills.** One `AGENTS.md` and focused skill files. No multi-agent setup.
+6. **Built-in modes as roles, one skill set.** Use the VS Code Copilot modes as they are: Plan for planning, Agent for execution, Ask for questions. Rules live in one `AGENTS.md`. Domain knowledge (infra, testing, RAG eval, release) lives in focused skill files that load on demand. Add a custom agent only when it needs different tool permissions, for example a read-only reviewer. Do not create one agent per domain.
 7. **Verify volatile facts.** Prices, model names, limits and versions come from official docs, with URL and date, in [facts-register.md](facts-register.md).
 
 ## Traceability (code to commit to issue to PR to release)
