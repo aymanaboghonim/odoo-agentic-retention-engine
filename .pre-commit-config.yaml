@@ -1,0 +1,70 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: check-json
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        exclude: ^blueprint-draft\.md$
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: 341e2a331ba578029e66c2e01183e7a6b5ca9ab4
+    hooks:
+      - id: markdownlint-cli2
+        exclude: ^blueprint-draft\.md$
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (when Python source exists)
+        entry: bash scripts/run_ruff.sh check
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: ruff-format
+        name: ruff format (when Python source exists)
+        entry: bash scripts/run_ruff.sh format
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: mypy
+        name: mypy (when Python source exists)
+        entry: bash scripts/run_mypy.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: actionlint
+        name: lint GitHub Actions workflows
+        entry: bash scripts/lint_workflows.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: check-links-offline
+        name: check local Markdown links (offline)
+        entry: bash scripts/check_links.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: gitleaks-history
+        name: scan repository history for secrets
+        entry: bash scripts/scan_secrets.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: facts-freshness
+        name: check verified facts freshness
+        entry: python scripts/check_facts_freshness.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: pytest-if-tests-exist
+        name: pytest (when tests exist)
+        entry: bash scripts/run_pytest.sh
+        language: system
+        pass_filenames: false
+        always_run: true

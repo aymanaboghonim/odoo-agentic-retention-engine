@@ -7,7 +7,7 @@ Rule: if it is not written in a file in this repo, it does not exist. Chat and a
 1. **Spec-driven.** Each feature has a short spec with invariants (things that must always be true) before code.
 2. **Mechanical gates over promises.** If a rule matters, a CI check enforces it.
 3. **CI-local parity.** `make ci` runs locally exactly what GitHub Actions runs.
-4. **Risk-based testing.** Test money, data leaks, prompt injection, idempotency, and integration contracts. No dogmatic TDD. Tests are hermetic (no real network or paid API in CI).
+4. **Risk-based testing.** Test money, data leaks, prompt injection, idempotency, and integration contracts. No dogmatic TDD. Behavioral tests are hermetic: they do not call live service APIs or paid LLMs. CI may download pinned development tools and container images.
 5. **Just-in-time planning.** Only the current milestone has detailed issues. Later phases stay as short checklists in STATUS.md.
 6. **Built-in modes as roles, one skill set.** Use the VS Code Copilot modes as they are:
    - Plan: planning only. It is read-only. It can write only to the agent memory file, never to files in the repo (no code, no docs).
