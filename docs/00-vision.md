@@ -59,4 +59,4 @@ See [STATUS.md](STATUS.md) for the live checklist. Phases: 0 repo foundation, 1 
 
 ## Acknowledgement
 
-Thanks to Eng. Sameh Amin (https://github.com/samehamin), the course instructor, for the AI Architecture course this project grew from.
+See [ACKNOWLEDGEMENTS.md](../ACKNOWLEDGEMENTS.md). Special thanks to Eng. Sameh Amin (https://github.com/samehamin), the course instructor.
