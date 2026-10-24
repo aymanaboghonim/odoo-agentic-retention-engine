@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: work Phase 0b issues in order (#3 first). One issue, one branch, one PR.
+Next action: work Phase 0b issues in order (next: #6). One issue, one branch, one PR.
 
 ## Phases
 
@@ -10,7 +10,7 @@ Next action: work Phase 0b issues in order (#3 first). One issue, one branch, on
 - [ ] **Phase 0b: Automation** (milestone POC-0)
   - [x] #3 `.gitignore` and `.env.example` (first, before any code)
   - [x] #4 Apache-2.0 LICENSE, new README
-  - [ ] #5 Restructure folders to the target tree, remove old stub READMEs
+  - [x] #5 Restructure folders to the target tree, remove old stub READMEs
   - [ ] #6 `AGENTS.md` and skills in `.github/skills/` (custom agents deferred to Phase 3, see process.md)
   - [ ] #7 Issue and PR templates, labels
   - [ ] #8 `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
