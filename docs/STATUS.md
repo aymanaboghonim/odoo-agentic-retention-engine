@@ -8,8 +8,8 @@ Next action: work Phase 0b issues in order (#3 first). One issue, one branch, on
 
 - [x] **Phase 0a: Capture** (issue #1, PR #2, merged)
 - [ ] **Phase 0b: Automation** (milestone POC-0)
-  - [ ] #3 `.gitignore` and `.env.example` (first, before any code)
-  - [ ] #4 Apache-2.0 LICENSE, new README
+  - [x] #3 `.gitignore` and `.env.example` (first, before any code)
+  - [x] #4 Apache-2.0 LICENSE, new README
   - [ ] #5 Restructure folders to the target tree, remove old stub READMEs
   - [ ] #6 `AGENTS.md` and skills in `.github/skills/` (custom agents deferred to Phase 3, see process.md)
   - [ ] #7 Issue and PR templates, labels

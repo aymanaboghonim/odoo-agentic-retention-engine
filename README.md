@@ -1,20 +1,34 @@
-# AI Architecture Portfolio
+# Odoo Agentic Retention Engine
 
-This repository documents an AI architecture portfolio through scenarios, assumptions, building blocks, architecture decisions, diagrams, and a capstone design.
+An agentic AI layer added on top of an existing e-commerce/ERP system (Odoo), to fix real pain points without rebuilding the core system.
 
-## Repository structure
+First slice (POC): an abandoned cart is found, an agent writes a personal, policy-grounded message, and it is sent by Telegram and email. Discounts are limited by hard rules in code, not by the model.
 
-- `docs/` — one document per architecture session.
-- `diagrams/` — exported PNG/SVG diagrams and their editable source files.
-- `adr/` — architecture decision records, one file per decision.
-- `capstone/` — final architecture PDF and presentation slides.
+## Status
 
-## How to read this repository
+Early stage. The repo foundation is being built. See [docs/STATUS.md](docs/STATUS.md) for the live checklist and the next action.
 
-Start with the session documents in `docs/`, then review the related decisions in `adr/` and diagrams in `diagrams/`. The final consolidated design is maintained in `capstone/`.
+## Where to read
 
-## Assumptions
+| What | Where |
+| :-- | :-- |
+| Vision, goals, scope | [docs/00-vision.md](docs/00-vision.md) |
+| Live progress and open questions | [docs/STATUS.md](docs/STATUS.md) |
+| How we work (process, traceability, branching) | [docs/process.md](docs/process.md) |
+| Architecture decisions | [docs/adr/](docs/adr/) |
+| Volatile facts to verify (prices, limits, versions) | [docs/facts-register.md](docs/facts-register.md) |
 
-- Documents are versioned as the architecture evolves.
-- Diagrams should include editable source files alongside exported artifacts.
-- Each architecture decision should explain its context, decision, alternatives, and consequences.
+## Principles
+
+- If it is not written in a file in this repo, it does not exist.
+- Rules are enforced by checks, not by promises.
+- Every change traces from issue to PR to commit to release.
+- All data is synthetic.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
+
+## Acknowledgements
+
+See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
