@@ -2,7 +2,13 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: work Phase 0b issues in order (next: #7). One issue, one branch, one PR.
+Next action: merge PR #15 (`6-agents-and-skills`), then start issue #7. Do not start #7 before PR #15 is merged. One issue, one branch, one PR.
+
+## Session handoff
+
+- [ ] After PR #15 is merged, continue issue #7 (issue and PR templates, labels).
+- [ ] Resume review of `github/awesome-copilot` for this repo's use case. Initial fetch confirmed it contains separate agents, skills, instructions, hooks and workflows, and its repository LICENSE is MIT. Still inspect its README/contribution guidance and selected relevant examples; then recommend adopt, adapt or defer. Do not copy files before reviewing content, permissions/scripts and license compatibility.
+- [ ] If we adopt any upstream customization, record source URL and pinned commit SHA, adapt it to our rules, and include the review in the issue/PR.
 
 ## Phases
 
@@ -84,3 +90,4 @@ Next action: work Phase 0b issues in order (next: #7). One issue, one branch, on
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done |
+| Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Resume upstream review; choose only for a concrete need, or defer |
