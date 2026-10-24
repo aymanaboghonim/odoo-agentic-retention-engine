@@ -1,0 +1,35 @@
+---
+name: pr-workflow
+description: 'Use when starting, committing, opening a PR for, merging, or cleaning up after any change in this repo. Covers issue, branch name, commit message with Refs, PR with Closes, squash merge, local cleanup, and the no-push-to-main rule.'
+---
+
+# PR workflow
+
+Rules are in [docs/process.md](../../../docs/process.md). This is the step list.
+
+## Procedure
+
+1. Confirm the issue exists (`gh issue view <N>`). If not, create it with a clear "Done when" line. Use the milestone.
+2. Start from fresh main: `git checkout main && git pull`.
+3. Create the branch: `git checkout -b <N>-short-slug`.
+4. Make the change. One issue, one PR, one purpose. Update `docs/STATUS.md` (tick the item, fix the next action).
+5. Commit with a short subject and a `Refs #<N>` line:
+
+   ```text
+   docs: short summary
+
+   Refs #<N>
+   ```
+
+6. Push the branch: `git push -u origin <N>-short-slug`. Never push `main`.
+7. Open the PR: `gh pr create --base main --title "<short title>" --body "Closes #<N> ..."`. The title and body become the squash commit, so write them well.
+8. The owner reviews and merges (squash). Do not merge for the owner.
+9. After merge: `git checkout main && git pull`, then delete the local branch with `git branch -D <branch>`. Use `-D`: squash merge leaves the branch looking unmerged.
+
+## Checks before opening the PR
+
+- Branch name starts with the issue number.
+- Every commit has `Refs #<N>`. The PR has `Closes #<N>`.
+- `make ci` passes (when it exists, issue #8).
+- No secrets, no real customer data.
+- Every decision made in this change is in an ADR, the facts register or STATUS.
