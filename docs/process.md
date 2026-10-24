@@ -9,8 +9,24 @@ Rule: if it is not written in a file in this repo, it does not exist. Chat and a
 3. **CI-local parity.** `make ci` runs locally exactly what GitHub Actions runs.
 4. **Risk-based testing.** Test money, data leaks, prompt injection, idempotency, and integration contracts. No dogmatic TDD. Tests are hermetic (no real network or paid API in CI).
 5. **Just-in-time planning.** Only the current milestone has detailed issues. Later phases stay as short checklists in STATUS.md.
-6. **Built-in modes as roles, one skill set.** Use the VS Code Copilot modes as they are: Plan for planning, Agent for execution, Ask for questions. Rules live in one `AGENTS.md`. Domain knowledge (infra, testing, RAG eval, release) lives in focused skill files that load on demand. Add a custom agent only when it needs different tool permissions, for example a read-only reviewer. Do not create one agent per domain.
+6. **Built-in modes as roles, one skill set.** Use the VS Code Copilot modes as they are:
+   - Plan: planning only. It is read-only. It can write only to the agent memory file, never to files in the repo (no code, no docs).
+   - Agent: execution. It is the only mode that edits repo files, creates issues and opens PRs.
+   - Ask: questions and chat.
+
+   A plan from Plan mode is not durable until Agent mode writes it into the repo (STATUS, specs, issues).
+   Rules live in one `AGENTS.md`. Domain knowledge (infra, testing, RAG eval, release) lives in focused skill files that load on demand.
+   Custom agents are deferred (see below). Do not create one agent per domain.
 7. **Verify volatile facts.** Prices, model names, limits and versions come from official docs, with URL and date, in [facts-register.md](facts-register.md).
+
+### Deferred: custom agents
+
+Not needed now. Add one only when it needs different tool permissions or a different job. Candidates:
+
+- Read-only reviewer: checks a PR against the specs and ADRs and cannot edit.
+- Release agent: allowed to run `gh` release commands that other modes are not.
+
+Revisit at the POC exit review (Phase 3).
 
 ## Traceability (code to commit to issue to PR to release)
 

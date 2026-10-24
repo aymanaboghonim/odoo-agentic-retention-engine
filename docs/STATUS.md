@@ -17,7 +17,7 @@ Next action: review and merge the Phase 0a PR (issue #1), then start Phase 0b.
 - [ ] **Phase 0b: Automation** (issues to be created after 0a)
   - [ ] Rename repo to `odoo-agentic-retention-engine`, restructure folders (target tree below), remove old stub READMEs
   - [ ] Apache-2.0 LICENSE, new README
-  - [ ] `AGENTS.md` and skills in `.github/skills/`
+  - [ ] `AGENTS.md` and skills in `.github/skills/` (custom agents deferred to Phase 3, see process.md)
   - [ ] Issue and PR templates, labels
   - [ ] GitHub Project v2 board and milestones POC-0 to POC-3
   - [ ] `make ci` and GitHub Actions with the same checks: markdown lint, link check, gitleaks, commit and PR link-to-issue check, facts-register freshness check
