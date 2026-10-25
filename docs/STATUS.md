@@ -45,6 +45,7 @@ Next action: continue Phase 0c with issue #26 (data connections and the three da
 - [x] 2 Headless engine pattern: ADR-0002
 - [x] 2 and 4.1 Context and container diagrams (C1, C2, C3 for engine): [system-overview.md](architecture/system-overview.md)
 - [x] 3 PoC vs MVP split: [00-vision.md](00-vision.md) and phases above
+- [ ] #35 Refine the diagrams after #26: add LLM provider, approval step, workflow-to-adapters link; decide which entrypoint dispatches messages and Odoo actions
 - [ ] 4.2 Data connections table (ports, auth, exposure) to `docs/architecture/`
 - [ ] 4.3 Three data channels (read-only SQL, Odoo API, RAG) to `docs/architecture/`
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
