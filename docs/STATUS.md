@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: merge the issue #10 PR, then start issue #11 (repo rename, last in Phase 0b). One issue, one branch, one PR.
+Next action: merge the issue #11 PR. Then Phase 0b still needs the C4 tool ADR (Q5); after that start Phase 0c (blueprint extraction). One issue, one branch, one PR.
 
 ## Phases
 
@@ -16,7 +16,7 @@ Next action: merge the issue #10 PR, then start issue #11 (repo rename, last in 
   - [x] #8 `make ci` and GitHub Actions with the same checks, Python 3.14 only, locked dev tools and no app runtime dependencies yet (PR #17, merged)
   - [x] #9 Active `protect-main` ruleset verified: PR + `Local-parity checks`, linear history, no force-push/deletion, no bypass actors; squash-only and auto-delete are enabled (PR #18, merged).
   - [x] #10 GitHub Project v2 board #14 (Status: Todo, In Progress, Done; built-in workflows only, checked in the UI) and milestones POC-1 to POC-3. F-015 verified (PR pending).
-  - [ ] #11 Rename repo to `odoo-agentic-retention-engine` (last)
+  - [x] #11 Rename repo to `odoo-agentic-retention-engine` (done 2026-10-25; ruleset and board checked after rename; PR pending)
 - [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [ ] S1 Odoo: version, demo data content, RAM, seed need
@@ -69,7 +69,7 @@ Next action: merge the issue #10 PR, then start issue #11 (repo rename, last in 
 - [x] Volatile facts to verify: facts-register.md
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
 - [x] Odoo abandoned-cart email is the as-is baseline: vision (pain point 2)
-- [ ] Repo rename, license Apache-2.0, history cleanup before public: tracked in Phase 0b (not done yet)
+- [ ] History cleanup before public: owner approval needed (Q7). Repo rename and Apache-2.0 license are done.
 - [ ] C4 tool choice (Mermaid default vs Structurizr): needs an ADR in Phase 0b
 
 ## Open questions
