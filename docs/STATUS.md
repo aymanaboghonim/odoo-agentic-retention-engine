@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: continue Phase 0c with issue #24 (agent state machine and human-approval flow); issue #23 extracts the safety-gate spec. One issue, one branch, one PR.
+Next action: continue Phase 0c with issue #25 (C1, C2 and C3 architecture diagrams in Mermaid); issue #24 extracts the agent state machine and human-approval flow. One issue, one branch, one PR.
 
 ## Phases
 
@@ -47,7 +47,7 @@ Next action: continue Phase 0c with issue #24 (agent state machine and human-app
 - [x] 3 PoC vs MVP split: [00-vision.md](00-vision.md) and phases above
 - [ ] 4.2 Data connections table (ports, auth, exposure) to `docs/architecture/`
 - [ ] 4.3 Three data channels (read-only SQL, Odoo API, RAG) to `docs/architecture/`
-- [ ] 5 Agent state machine and HITL flow to `docs/specs/`
+- [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
 - [x] 6 ADR-0001 to 0004: re-written as accepted ADRs (changed: separate AI database, batch instead of streaming)
 - [ ] 7.1 Compliance: data residency, PII masking, retention, right to be forgotten to `docs/specs/`
 - [ ] 7.2 AI threat model (prompt injection, tool misuse, data leakage) to `docs/specs/`
