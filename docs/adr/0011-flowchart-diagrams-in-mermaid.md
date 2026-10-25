@@ -9,7 +9,7 @@
 
 ## Decision
 
-- Keep the C4 levels (context, containers, components) but draw them as Mermaid `flowchart` diagrams.
+- Draw three views (system context, runtime containers, agent execution path) as Mermaid `flowchart` diagrams.
 - Use `flowchart LR`, subgraphs for boundaries and a small shared `classDef` palette (engine, external, data).
 - One diagram per question. About ten nodes at most. Label only the edges that carry meaning.
 - Check each diagram in the GitHub preview before merging.
@@ -23,5 +23,5 @@
 ## Consequences
 
 - Better readability and control with no new tooling.
-- Diagrams are no longer strict C4 notation. The level names (C1, C2, C3) stay as a guide.
+- Diagrams do not use C4 notation or level names. Each view is named by its purpose.
 - Supersedes ADR-0010.
