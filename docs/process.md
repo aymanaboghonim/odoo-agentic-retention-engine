@@ -55,8 +55,8 @@ Revisit at the POC exit review (Phase 3).
 - Board automation uses GitHub built-in project workflows only, no custom Actions and no extra token:
   - new issues and PRs are auto-added with Status Todo
   - closed issue or merged PR sets Done
-  - reopened issue sets In progress
-  - moving to In progress when a PR is opened is done by hand if no built-in rule exists (verify in F-015)
+  - reopened issue or PR sets In Progress
+  - PR linked to an issue (`Closes #N`) sets the issue to In Progress, so no manual move is needed
 - No orphan commits. No delivery without an issue.
 
 Bootstrap exception: the tooling for these rules is built in Phase 0b. Phase 0a already follows the rules by hand.

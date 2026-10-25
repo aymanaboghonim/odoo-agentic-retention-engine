@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: merge the issue #9 PR, then start issue #10 (GitHub Project board and milestones). One issue, one branch, one PR.
+Next action: merge the issue #10 PR, then start issue #11 (repo rename, last in Phase 0b). One issue, one branch, one PR.
 
 ## Phases
 
@@ -14,8 +14,8 @@ Next action: merge the issue #9 PR, then start issue #10 (GitHub Project board a
   - [x] #6 `AGENTS.md` and skills in `.github/skills/` (pr-workflow, adr, spec-writing, verify-facts; odoo-adapter, rag-eval, infra-deploy, release are added when first needed; custom agents deferred to Phase 3)
   - [x] #7 Issue and PR templates, labels
   - [x] #8 `make ci` and GitHub Actions with the same checks, Python 3.14 only, locked dev tools and no app runtime dependencies yet (PR #17, merged)
-  - [x] #9 Active `protect-main` ruleset verified: PR + `Local-parity checks`, linear history, no force-push/deletion, no bypass actors; squash-only and auto-delete are enabled (PR pending).
-  - [ ] #10 GitHub Project v2 board (Status: Todo, In progress, Done; built-in workflows only) and milestones POC-1 to POC-3. Verify F-015 first.
+  - [x] #9 Active `protect-main` ruleset verified: PR + `Local-parity checks`, linear history, no force-push/deletion, no bypass actors; squash-only and auto-delete are enabled (PR #18, merged).
+  - [x] #10 GitHub Project v2 board #14 (Status: Todo, In Progress, Done; built-in workflows only, checked in the UI) and milestones POC-1 to POC-3. F-015 verified (PR pending).
   - [ ] #11 Rename repo to `odoo-agentic-retention-engine` (last)
 - [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
