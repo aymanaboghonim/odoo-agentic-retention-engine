@@ -51,12 +51,12 @@ Revisit at the POC exit review (Phase 3).
 - Every commit message contains `Refs #<issue>`.
 - Every PR contains `Closes #<issue>`.
 - Releases are built from merged PRs. Artifacts are attached to the release.
-- Progress is tracked on a minimal GitHub Project v2 board with three Status values: Todo, In progress, Done. Phases are Milestones (POC-0 to POC-3). Review state is read from the PR, not the board.
+- Progress is tracked on a minimal GitHub Project v2 board with three Status values: Todo, In Progress, Done. Only issues are on the board; PRs are not (each PR has `Closes #N`). Phases are Milestones (POC-0 to POC-3). Review state is read from the PR, not the board.
 - Board automation uses GitHub built-in project workflows only, no custom Actions and no extra token:
-  - new issues and PRs are auto-added with Status Todo
-  - closed issue or merged PR sets Done
-  - reopened issue or PR sets In Progress
-  - PR linked to an issue (`Closes #N`) sets the issue to In Progress, so no manual move is needed
+  - new issues are auto-added with Status Todo (filter `is:issue`; existing items are not back-filled, add them by hand)
+  - closed issue sets Done (a merged PR with `Closes #N` closes its issue)
+  - reopened issue sets In Progress
+  - "PR linked to issue" is on, but it may only act on PRs that are on the board. If an issue is not moved to In Progress when its PR is opened, move it by hand.
 - No orphan commits. No delivery without an issue.
 
 Bootstrap exception: the tooling for these rules is built in Phase 0b. Phase 0a already follows the rules by hand.
