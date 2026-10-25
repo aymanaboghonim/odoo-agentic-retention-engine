@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: continue Phase 0c with issue #26 (data connections and the three data channels); issue #25 extracts the C1, C2 and C3 architecture diagrams. One issue, one branch, one PR.
+Next action: continue Phase 0c with issue #27 (compliance and AI threat model spec). One issue, one branch, one PR.
 
 ## Phases
 
@@ -46,8 +46,7 @@ Next action: continue Phase 0c with issue #26 (data connections and the three da
 - [x] 2 and 4.1 Context and container diagrams (C1, C2, C3 for engine): [system-overview.md](architecture/system-overview.md)
 - [x] 3 PoC vs MVP split: [00-vision.md](00-vision.md) and phases above
 - [ ] #35 Refine the diagrams after #26: add LLM provider, approval step, workflow-to-adapters link; decide which entrypoint dispatches messages and Odoo actions
-- [ ] 4.2 Data connections table (ports, auth, exposure) to `docs/architecture/`
-- [ ] 4.3 Three data channels (read-only SQL, Odoo API, RAG) to `docs/architecture/`
+- [x] 4.2 and 4.3 Data connections and three data channels (decided items only; ports and auth deferred): [data-connections.md](architecture/data-connections.md)
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
 - [x] 6 ADR-0001 to 0004: re-written as accepted ADRs (changed: separate AI database, batch instead of streaming)
 - [ ] 7.1 Compliance: data residency, PII masking, retention, right to be forgotten to `docs/specs/`
@@ -88,3 +87,4 @@ Next action: continue Phase 0c with issue #26 (data connections and the three da
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done; validate defaults in S1 |
 | Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Done. Resolved 2026-10-24: no bulk adoption. Consider individual items only for a concrete need, after reviewing content, scripts, permissions and license. |
 | Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Open. Proposed: milestone per phase; use a parent issue only for an outcome split across several issues; keep existing spec, spike, bug and task issue types; user-story format only for user-facing behavior. Decide before POC-1 breakdown. |
+| Q11 | Ports, protocols, authentication and network layout for each connection | Open. Decide with the first adapter issue or the infra spike; then update [data-connections.md](architecture/data-connections.md) |
