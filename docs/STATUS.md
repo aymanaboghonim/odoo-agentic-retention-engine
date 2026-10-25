@@ -71,7 +71,6 @@ Section numbers below referred to the removed draft.
 - [x] Volatile facts to verify: facts-register.md
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
 - [x] Odoo abandoned-cart reminder is recorded as an unverified baseline assumption (F-003); verify in S1.
-- [ ] History cleanup before public: owner approval needed (Q7). Repo rename and Apache-2.0 license are done.
 - [x] C4 tool choice: Mermaid, ADR-0010; diagram syntax changed to flowcharts, ADR-0011
 
 ## Open questions
