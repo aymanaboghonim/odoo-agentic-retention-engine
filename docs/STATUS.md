@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: merge the issue #11 PR. Then Phase 0b still needs the C4 tool ADR (Q5); after that start Phase 0c (blueprint extraction). One issue, one branch, one PR.
+Next action: merge the issue #21 PR (C4 tooling ADR), which finishes Phase 0b. Then start Phase 0c (blueprint extraction). One issue, one branch, one PR.
 
 ## Phases
 
@@ -16,7 +16,8 @@ Next action: merge the issue #11 PR. Then Phase 0b still needs the C4 tool ADR (
   - [x] #8 `make ci` and GitHub Actions with the same checks, Python 3.14 only, locked dev tools and no app runtime dependencies yet (PR #17, merged)
   - [x] #9 Active `protect-main` ruleset verified: PR + `Local-parity checks`, linear history, no force-push/deletion, no bypass actors; squash-only and auto-delete are enabled (PR #18, merged).
   - [x] #10 GitHub Project v2 board #14 (Status: Todo, In Progress, Done; built-in workflows only, checked in the UI) and milestones POC-1 to POC-3. F-015 verified (PR pending).
-  - [x] #11 Rename repo to `odoo-agentic-retention-engine` (done 2026-10-25; ruleset and board checked after rename; PR pending)
+  - [x] #11 Rename repo to `odoo-agentic-retention-engine` (done 2026-10-25; ruleset and board checked after rename; PR #20, merged)
+  - [x] #21 ADR-0010 C4 diagram tooling: Mermaid (PR pending)
 - [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [ ] S1 Odoo: version, demo data content, RAM, seed need
@@ -70,7 +71,7 @@ Next action: merge the issue #11 PR. Then Phase 0b still needs the C4 tool ADR (
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
 - [x] Odoo abandoned-cart email is the as-is baseline: vision (pain point 2)
 - [ ] History cleanup before public: owner approval needed (Q7). Repo rename and Apache-2.0 license are done.
-- [ ] C4 tool choice (Mermaid default vs Structurizr): needs an ADR in Phase 0b
+- [x] C4 tool choice: Mermaid, ADR-0010
 
 ## Open questions
 
@@ -80,7 +81,7 @@ Next action: merge the issue #11 PR. Then Phase 0b still needs the C4 tool ADR (
 | Q2 | Final LLM model | S2, then update ADR-0003 |
 | Q3 | Final retrieval store | S3, then new ADR superseding ADR-0006 |
 | Q4 | Odoo version (17 or newer) | S1 |
-| Q5 | C4 tooling: Mermaid or Structurizr | ADR in Phase 0b |
+| Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 |
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done; validate defaults in S1 |
