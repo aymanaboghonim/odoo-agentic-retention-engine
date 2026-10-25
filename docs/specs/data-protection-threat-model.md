@@ -1,7 +1,7 @@
 # Spec: Data protection and AI threat model
 
 - Issue: #27
-- ADRs: ADR-0001 (AI database, read-only Odoo access), ADR-0003 (PII masking, synthetic data), ADR-0005 (channel ports), ADR-0007 (observability data).
+- ADRs: ADR-0001 (AI database, read-only Odoo access), ADR-0003 (PII masking, synthetic data), ADR-0013 (POC channels), ADR-0007 (observability data).
 - Status: draft
 
 ## Purpose

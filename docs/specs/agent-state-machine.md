@@ -1,7 +1,7 @@
 # Spec: Agent state machine and human approval
 
 - Issue: #24
-- ADRs: ADR-0002 (modular engine with API and worker), ADR-0004 (scheduled batch work), ADR-0005 (channel ports).
+- ADRs: ADR-0002 (modular engine with API and worker), ADR-0004 (scheduled batch work), ADR-0013 (POC channels).
 - Status: draft
 
 ## Purpose
