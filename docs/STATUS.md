@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: continue Phase 0c with issue #28 (evals, release gates and rollback criteria). One issue, one branch, one PR.
+Next action: continue Phase 0c with issue #29 (capacity and cost estimate). One issue, one branch, one PR.
 
 ## Phases
 
@@ -50,7 +50,7 @@ Next action: continue Phase 0c with issue #28 (evals, release gates and rollback
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
 - [x] 6 ADR-0001 to 0004: re-written as accepted ADRs (changed: separate AI database, batch instead of streaming)
 - [x] 7.1 and 7.2 Data protection and AI threat model (legal details are open questions): [data-protection-threat-model.md](specs/data-protection-threat-model.md)
-- [ ] 8.1 Evals, release gates, rollback criteria to `docs/specs/`
+- [x] 8.1 Evals, release gates, rollback criteria (numeric thresholds are open questions): [evals-release-gates.md](specs/evals-release-gates.md)
 - [ ] 8.2 Capacity and cost estimate to `docs/architecture/` (numbers go to facts register)
 - [ ] 9 Repo structure and course mapping to `course/`
 
@@ -88,3 +88,4 @@ Next action: continue Phase 0c with issue #28 (evals, release gates and rollback
 | Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Open. Proposed: milestone per phase; use a parent issue only for an outcome split across several issues; keep existing spec, spike, bug and task issue types; user-story format only for user-facing behavior. Decide before POC-1 breakdown. |
 | Q11 | Ports, protocols, authentication and network layout for each connection | Open. Decide with the first adapter issue or the infra spike; then update [data-connections.md](architecture/data-connections.md) |
 | Q12 | Applicable data protection laws, residency region, retention period, deletion process, chat authentication | Open. Needs legal review before real customer data; see [data-protection-threat-model.md](specs/data-protection-threat-model.md) |
+| Q13 | Numeric release gates and rollback triggers, fallback definition, who re-enables the agent | Open. Decide after spikes S2 and S3; see [evals-release-gates.md](specs/evals-release-gates.md) |
