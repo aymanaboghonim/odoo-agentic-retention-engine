@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: continue Phase 0c with issue #30 (repo structure and course mapping). One issue, one branch, one PR.
+Next action: complete issue #35 diagram refinements before issue #31 deletes `blueprint-draft.md`; the extraction checklist requires every item to be ticked first. Then begin Phase 1 spikes.
 
 ## Phases
 
@@ -52,7 +52,7 @@ Next action: continue Phase 0c with issue #30 (repo structure and course mapping
 - [x] 7.1 and 7.2 Data protection and AI threat model (legal details are open questions): [data-protection-threat-model.md](specs/data-protection-threat-model.md)
 - [x] 8.1 Evals, release gates, rollback criteria (numeric thresholds are open questions): [evals-release-gates.md](specs/evals-release-gates.md)
 - [x] 8.2 Capacity and cost estimate (POC host needs S1 measurement; production and variable costs remain open): [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md)
-- [ ] 9 Repo structure and course mapping to `course/`
+- [x] 9 Repo structure and course mapping to [course/README.md](../course/README.md)
 
 ## Capture map (approved decisions and where they live)
 
