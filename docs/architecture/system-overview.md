@@ -40,7 +40,7 @@ The Odoo relationship represents the engine's integration boundary: the API requ
 
 ## C3: Agent execution path
 
-This view focuses on one request path. The scheduled worker and retrieval options are shown in C2.
+This view focuses on one request path. C2 shows the runtime containers and AI-owned storage.
 
 ```mermaid
 C4Component
