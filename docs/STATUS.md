@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: continue Phase 0c with issue #26 (data connections and the three data channels); issue #25 extracts the architecture diagrams. One issue, one branch, one PR.
+Next action: continue Phase 0c with issue #26 (data connections and the three data channels); issue #25 extracts the C1, C2 and C3 architecture diagrams. One issue, one branch, one PR.
 
 ## Phases
 
@@ -43,7 +43,7 @@ Next action: continue Phase 0c with issue #26 (data connections and the three da
   - Extra caps: one coupon per customer per cart per day, and a daily total discount budget.
   - Minimum margin per category and the daily budget are config values. Starting numbers (10%, 15%) are defaults, to be checked in S1 and on the golden set.
 - [x] 2 Headless engine pattern: ADR-0002
-- [x] 2 and 4.1 Context and container diagrams (system context, runtime containers, agent execution): [system-overview.md](architecture/system-overview.md)
+- [x] 2 and 4.1 Context and container diagrams (C1, C2, C3 for engine): [system-overview.md](architecture/system-overview.md)
 - [x] 3 PoC vs MVP split: [00-vision.md](00-vision.md) and phases above
 - [ ] 4.2 Data connections table (ports, auth, exposure) to `docs/architecture/`
 - [ ] 4.3 Three data channels (read-only SQL, Odoo API, RAG) to `docs/architecture/`

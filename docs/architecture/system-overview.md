@@ -1,8 +1,8 @@
 # Architecture overview
 
-Three focused diagrams show the system boundary, runtime containers, and agent execution path. They are Mermaid flowcharts, as selected in [ADR-0011](../adr/0011-flowchart-diagrams-in-mermaid.md).
+Three focused diagrams show the system boundary, runtime containers, and agent execution path. They are Mermaid flowcharts that follow the C4 levels, as selected in [ADR-0011](../adr/0011-flowchart-diagrams-in-mermaid.md).
 
-## System context
+## C1: System context
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,7 @@ flowchart LR
 
 The engine reads from Odoo, proposes retention actions, and sends only approved messages. Proposals that need a human are reviewed by a marketing operator.
 
-## Runtime containers
+## C2: Runtime containers
 
 ```mermaid
 flowchart LR
@@ -58,7 +58,7 @@ flowchart LR
 
 The API handles interactive runs. The worker scans carts and refreshes features on a schedule. Both keep state, approvals, and audit data in the AI database, which is separate from Odoo.
 
-## Agent execution path
+## C3: Components (agent execution path)
 
 ```mermaid
 flowchart LR
@@ -94,4 +94,4 @@ The API and the scheduled worker start the same workflow. Every proposal passes 
 - The API and scheduled worker are entrypoints in one modular monolith; scheduled jobs are used instead of a streaming platform in running code ([ADR-0002](../adr/0002-modular-monolith.md), [ADR-0004](../adr/0004-batch-over-streaming.md)).
 - The retrieval store is not selected; pgvector and Qdrant remain candidates until spike S3 ([ADR-0006](../adr/0006-retrieval-store-benchmark.md)).
 - The final LLM provider/model follows spike S2 ([ADR-0003](../adr/0003-llm-interface-and-model-selection.md)). Only synthetic data may be sent to cloud services ([ADR-0007](../adr/0007-free-tier-observability.md)).
-- The agent execution path focuses on the internal workflow and adapter boundary. External systems are shown in the system context and runtime containers diagrams to avoid repeating a dense integration map.
+- C3 focuses on the internal workflow and adapter boundary. External systems are shown in C1 and C2 to avoid repeating a dense integration map.
