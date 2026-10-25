@@ -19,7 +19,7 @@ This project grew from the AI Architecture course (see [ACKNOWLEDGEMENTS.md](../
 | Course deliverable | Source of truth | Status |
 | :-- | :-- | :-- |
 | Problem framing, goals, assumptions | [Vision](../docs/00-vision.md) | Documented; targets are untested |
-| Building blocks and architecture views | [System overview](../docs/architecture/system-overview.md) | Documented; diagram refinement tracked by [issue #35](https://github.com/aymanaboghonim/odoo-agentic-retention-engine/issues/35) |
+| Building blocks and architecture views | [System overview](../docs/architecture/system-overview.md) | Documented; worker-owned execution is recorded in [ADR-0012](../docs/adr/0012-worker-owned-agent-execution.md) |
 | Data connections and channels | [Data connections](../docs/architecture/data-connections.md) | Decided connections documented; ports, auth, and network layout remain open |
 | Capacity and cost | [Capacity and cost estimate](../docs/architecture/capacity-cost-estimate.md) | Planning estimate; S1 and provider selection are still needed |
 | LLM and RAG choices | [ADR-0003](../docs/adr/0003-llm-interface-and-model-selection.md), [ADR-0006](../docs/adr/0006-retrieval-store-benchmark.md) | Candidate interfaces and evaluation plans documented; final choices follow S2/S3 |
