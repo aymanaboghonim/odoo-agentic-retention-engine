@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: complete issue #35 diagram refinements before issue #31 deletes `blueprint-draft.md`; the extraction checklist requires every item to be ticked first. Then begin Phase 1 spikes.
+Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every extraction item is now recorded in its source document. Then begin Phase 1 spikes.
 
 ## Phases
 
@@ -45,7 +45,7 @@ Next action: complete issue #35 diagram refinements before issue #31 deletes `bl
 - [x] 2 Headless engine pattern: ADR-0002
 - [x] 2 and 4.1 Context and container diagrams (C1, C2, C3 for engine): [system-overview.md](architecture/system-overview.md)
 - [x] 3 PoC vs MVP split: [00-vision.md](00-vision.md) and phases above
-- [ ] #35 Refine the diagrams after #26: add LLM provider, approval step, workflow-to-adapters link; decide which entrypoint dispatches messages and Odoo actions
+- [x] #35 Refine the diagrams: LLM provider, human approval, workflow-to-adapters path, and worker-owned side effects ([ADR-0012](adr/0012-worker-owned-agent-execution.md))
 - [x] 4.2 and 4.3 Data connections and three data channels (decided items only; ports and auth deferred): [data-connections.md](architecture/data-connections.md)
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
 - [x] 6 ADR-0001 to 0004: re-written as accepted ADRs (changed: separate AI database, batch instead of streaming)
