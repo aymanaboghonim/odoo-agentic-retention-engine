@@ -2,12 +2,12 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: merge the issue #21 PR (C4 tooling ADR), which finishes Phase 0b. Then start Phase 0c (blueprint extraction). One issue, one branch, one PR.
+Next action: continue Phase 0c with issue #24 (agent state machine and human-approval flow); issue #23 extracts the safety-gate spec. One issue, one branch, one PR.
 
 ## Phases
 
 - [x] **Phase 0a: Capture** (issue #1, PR #2, merged)
-- [ ] **Phase 0b: Automation** (milestone POC-0)
+- [x] **Phase 0b: Automation** (milestone POC-0)
   - [x] #3 `.gitignore` and `.env.example` (first, before any code)
   - [x] #4 Apache-2.0 LICENSE, new README
   - [x] #5 Restructure folders to the target tree, remove old stub READMEs
@@ -15,9 +15,9 @@ Next action: merge the issue #21 PR (C4 tooling ADR), which finishes Phase 0b. T
   - [x] #7 Issue and PR templates, labels
   - [x] #8 `make ci` and GitHub Actions with the same checks, Python 3.14 only, locked dev tools and no app runtime dependencies yet (PR #17, merged)
   - [x] #9 Active `protect-main` ruleset verified: PR + `Local-parity checks`, linear history, no force-push/deletion, no bypass actors; squash-only and auto-delete are enabled (PR #18, merged).
-  - [x] #10 GitHub Project v2 board #14 (Status: Todo, In Progress, Done; built-in workflows only, checked in the UI) and milestones POC-1 to POC-3. F-015 verified (PR pending).
+  - [x] #10 GitHub Project v2 board #14 (Status: Todo, In Progress, Done; built-in workflows only, checked in the UI) and milestones POC-1 to POC-3. F-015 verified (PR #19, merged).
   - [x] #11 Rename repo to `odoo-agentic-retention-engine` (done 2026-10-25; ruleset and board checked after rename; PR #20, merged)
-  - [x] #21 ADR-0010 C4 diagram tooling: Mermaid (PR pending)
+  - [x] #21 ADR-0010 C4 diagram tooling: Mermaid (PR #22, merged)
 - [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [ ] S1 Odoo: version, demo data content, RAM, seed need
@@ -36,7 +36,7 @@ Next action: merge the issue #21 PR (C4 tooling ADR), which finishes Phase 0b. T
 `blueprint-draft.md` must not be deleted until every box is ticked. Section numbers refer to the draft.
 
 - [x] 1 Problem and goals: [00-vision.md](00-vision.md) (SLOs marked "target, untested")
-- [ ] 1.2 Safety gate rules to `docs/specs/`. Tiers accepted by owner (2026-10-24):
+- [x] 1.2 Safety gate rules: [safety-gate.md](specs/safety-gate.md). Tiers accepted by owner (2026-10-24):
   - Auto: discount up to 10% and final price above the product category minimum margin.
   - Human approval: above 10% up to 15%, or any bulk campaign.
   - Hard reject in code: above 15%. A CI test must prove it.
