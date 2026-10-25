@@ -1,6 +1,6 @@
 # ADR-0010: C4 diagrams in Mermaid
 
-- Status: accepted
+- Status: superseded by ADR-0011
 - Date: 2026-10-25
 
 ## Context

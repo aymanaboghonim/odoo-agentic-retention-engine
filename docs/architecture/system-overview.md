@@ -1,68 +1,92 @@
 # Architecture overview
 
-Three focused diagrams show the system boundary, runtime containers, and agent execution path. Mermaid C4 is used as selected in [ADR-0010](../adr/0010-c4-diagrams-in-mermaid.md).
+Three focused diagrams show the system boundary, runtime containers, and agent execution path. They are Mermaid flowcharts that follow the C4 levels, as selected in [ADR-0011](../adr/0011-flowchart-diagrams-in-mermaid.md).
 
 ## C1: System context
 
 ```mermaid
-C4Context
-    title AI Retention Engine - Context
+flowchart LR
+    customer(["Customer"])
+    operator(["Marketing operator"])
+    engine["AI Retention Engine<br/>agentic retention proposals"]
+    odoo[("Odoo<br/>system of record")]
+    channels["Messaging channels<br/>Telegram, email"]
 
-    System(engine, "AI Retention Engine")
-    System_Ext(odoo, "Odoo", "System of record")
-    System_Ext(channels, "Messaging channels", "Telegram and email")
+    customer -- "shops" --> odoo
+    odoo -- "abandoned carts" --> engine
+    engine -- "approved actions" --> odoo
+    engine -- "approved messages" --> channels
+    channels --> customer
+    operator -- "reviews proposals" --> engine
 
-    Rel(engine, odoo, "")
-    Rel(engine, channels, "")
+    classDef engine fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+    classDef external fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    classDef person fill:#fef3c7,stroke:#b45309,color:#0f172a
+    class engine engine
+    class odoo,channels external
+    class customer,operator person
 ```
 
-Customers use Odoo and receive approved messages through the channels. Marketing operators review proposals that require human approval.
+The engine reads from Odoo, proposes retention actions, and sends only approved messages. Proposals that need a human are reviewed by a marketing operator.
 
 ## C2: Runtime containers
 
 ```mermaid
-C4Container
-    title AI Retention Engine - Containers
+flowchart LR
+    odoo[("Odoo")]
 
-    System_Boundary(engine, "AI Retention Engine") {
-        Container(api, "API", "FastAPI", "Handles interactive runs")
-        Container(worker, "Worker", "Scheduled Python jobs", "Scans carts and refreshes features")
-        ContainerDb(ai_db, "AI database", "PostgreSQL", "Stores features, checkpoints, approvals, and audit data")
-    }
+    subgraph engine["AI Retention Engine"]
+        worker["Worker<br/>scheduled Python jobs"]
+        aidb[("AI database<br/>PostgreSQL")]
+        api["API<br/>FastAPI"]
+    end
+    channels["Messaging channels"]
 
-    System_Ext(odoo, "Odoo", "Operational data and business API")
-    Rel(api, odoo, "")
-    Rel(api, ai_db, "")
-    Rel(worker, ai_db, "")
+    odoo -- "abandoned carts" --> worker
+    worker --> aidb
+    api --> aidb
+    api -- "business actions" --> odoo
+    api -- "approved messages" --> channels
+
+    classDef app fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+    classDef data fill:#dcfce7,stroke:#15803d,color:#0f172a
+    classDef external fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    class api,worker app
+    class aidb data
+    class odoo,channels external
 ```
 
-The Odoo relationship represents the engine's integration boundary: the API requests business actions, and the worker reads abandoned carts. The API and worker persist state and features in the AI database. Approved messages use the channel boundary shown in C1.
+The API handles interactive runs. The worker scans carts and refreshes features on a schedule. Both keep state, approvals, and audit data in the AI database, which is separate from Odoo.
 
 ## C3: Agent execution path
 
-This view focuses on one request path. C2 shows the runtime containers and AI-owned storage.
-
 ```mermaid
-C4Component
-    title AI Engine - Agent Execution
+flowchart LR
+    api["API"]
+    worker["Worker"]
 
-    Container_Boundary(engine, "AI Engine") {
-        Component(api, "API", "FastAPI")
-        Component(worker, "Worker", "Scheduled jobs")
-        Component(workflow, "Agent workflow", "LangGraph")
-        Component(policy, "Policy gate", "Deterministic rules")
-        Component(adapters, "Integration adapters", "Odoo, LLM, and channel ports")
-        Component(state_store, "AI database", "PostgreSQL")
-    }
+    subgraph engine["Engine"]
+        workflow["Agent workflow<br/>LangGraph"]
+        policy["Policy gate<br/>deterministic rules"]
+        adapters["Integration adapters<br/>Odoo, LLM, channels"]
+        state[("AI database")]
+    end
 
-    Rel(api, workflow, "")
-    Rel(worker, workflow, "")
-    Rel(workflow, policy, "")
-    Rel(workflow, adapters, "")
-    Rel(workflow, state_store, "")
+    api --> workflow
+    worker --> workflow
+    workflow -- "proposals" --> policy
+    policy -- "allowed actions" --> adapters
+    workflow -- "run state" --> state
+
+    classDef app fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+    classDef safety fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    classDef data fill:#dcfce7,stroke:#15803d,color:#0f172a
+    class api,worker,workflow,adapters app
+    class policy safety
+    class state data
 ```
 
-The API and scheduled worker start the same agent workflow. It evaluates proposals through the policy gate, uses integration adapters, and persists run state.
+The API and the scheduled worker start the same workflow. Every proposal passes the policy gate before an adapter can act, so the LLM never decides money.
 
 ## Architecture constraints
 

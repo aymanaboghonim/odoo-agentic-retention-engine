@@ -71,7 +71,7 @@ Next action: continue Phase 0c with issue #26 (data connections and the three da
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
 - [x] Odoo abandoned-cart email is the as-is baseline: vision (pain point 2)
 - [ ] History cleanup before public: owner approval needed (Q7). Repo rename and Apache-2.0 license are done.
-- [x] C4 tool choice: Mermaid, ADR-0010
+- [x] C4 tool choice: Mermaid, ADR-0010; diagram syntax changed to flowcharts, ADR-0011
 
 ## Open questions
 
@@ -81,7 +81,7 @@ Next action: continue Phase 0c with issue #26 (data connections and the three da
 | Q2 | Final LLM model | S2, then update ADR-0003 |
 | Q3 | Final retrieval store | S3, then new ADR superseding ADR-0006 |
 | Q4 | Odoo version (17 or newer) | S1 |
-| Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 |
+| Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 (diagram syntax: flowcharts, ADR-0011) |
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done; validate defaults in S1 |
