@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: continue Phase 0c with issue #25 (C1, C2 and C3 architecture diagrams in Mermaid); issue #24 extracts the agent state machine and human-approval flow. One issue, one branch, one PR.
+Next action: continue Phase 0c with issue #26 (data connections and the three data channels); issue #25 extracts the C1, C2 and C3 architecture diagrams. One issue, one branch, one PR.
 
 ## Phases
 
@@ -43,8 +43,9 @@ Next action: continue Phase 0c with issue #25 (C1, C2 and C3 architecture diagra
   - Extra caps: one coupon per customer per cart per day, and a daily total discount budget.
   - Minimum margin per category and the daily budget are config values. Starting numbers (10%, 15%) are defaults, to be checked in S1 and on the golden set.
 - [x] 2 Headless engine pattern: ADR-0002
-- [ ] 2 and 4.1 Context and container diagrams (C1, C2, C3 for engine) to `docs/architecture/`
+- [x] 2 and 4.1 Context and container diagrams (C1, C2, C3 for engine): [system-overview.md](architecture/system-overview.md)
 - [x] 3 PoC vs MVP split: [00-vision.md](00-vision.md) and phases above
+- [ ] #35 Refine the diagrams after #26: add LLM provider, approval step, workflow-to-adapters link; decide which entrypoint dispatches messages and Odoo actions
 - [ ] 4.2 Data connections table (ports, auth, exposure) to `docs/architecture/`
 - [ ] 4.3 Three data channels (read-only SQL, Odoo API, RAG) to `docs/architecture/`
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
@@ -71,7 +72,7 @@ Next action: continue Phase 0c with issue #25 (C1, C2 and C3 architecture diagra
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
 - [x] Odoo abandoned-cart email is the as-is baseline: vision (pain point 2)
 - [ ] History cleanup before public: owner approval needed (Q7). Repo rename and Apache-2.0 license are done.
-- [x] C4 tool choice: Mermaid, ADR-0010
+- [x] C4 tool choice: Mermaid, ADR-0010; diagram syntax changed to flowcharts, ADR-0011
 
 ## Open questions
 
@@ -81,7 +82,7 @@ Next action: continue Phase 0c with issue #25 (C1, C2 and C3 architecture diagra
 | Q2 | Final LLM model | S2, then update ADR-0003 |
 | Q3 | Final retrieval store | S3, then new ADR superseding ADR-0006 |
 | Q4 | Odoo version (17 or newer) | S1 |
-| Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 |
+| Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 (diagram syntax: flowcharts, ADR-0011) |
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done; validate defaults in S1 |
