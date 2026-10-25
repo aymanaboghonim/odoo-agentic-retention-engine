@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: continue Phase 0c with issue #29 (capacity and cost estimate). One issue, one branch, one PR.
+Next action: continue Phase 0c with issue #30 (repo structure and course mapping). One issue, one branch, one PR.
 
 ## Phases
 
@@ -51,7 +51,7 @@ Next action: continue Phase 0c with issue #29 (capacity and cost estimate). One 
 - [x] 6 ADR-0001 to 0004: re-written as accepted ADRs (changed: separate AI database, batch instead of streaming)
 - [x] 7.1 and 7.2 Data protection and AI threat model (legal details are open questions): [data-protection-threat-model.md](specs/data-protection-threat-model.md)
 - [x] 8.1 Evals, release gates, rollback criteria (numeric thresholds are open questions): [evals-release-gates.md](specs/evals-release-gates.md)
-- [ ] 8.2 Capacity and cost estimate to `docs/architecture/` (numbers go to facts register)
+- [x] 8.2 Capacity and cost estimate (POC host needs S1 measurement; production and variable costs remain open): [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md)
 - [ ] 9 Repo structure and course mapping to `course/`
 
 ## Capture map (approved decisions and where they live)
@@ -89,3 +89,4 @@ Next action: continue Phase 0c with issue #29 (capacity and cost estimate). One 
 | Q11 | Ports, protocols, authentication and network layout for each connection | Open. Decide with the first adapter issue or the infra spike; then update [data-connections.md](architecture/data-connections.md) |
 | Q12 | Applicable data protection laws, residency region, retention period, deletion process, chat authentication | Open. Needs legal review before real customer data; see [data-protection-threat-model.md](specs/data-protection-threat-model.md) |
 | Q13 | Numeric release gates and rollback triggers, fallback definition, who re-enables the agent | Open. Decide after spikes S2 and S3; see [evals-release-gates.md](specs/evals-release-gates.md) |
+| Q14 | Current POC host plan, capacity, production topology and recurring costs | Open. Measure Odoo and stack use in S1; estimate model and retrieval after S2/S3; see [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md) |
