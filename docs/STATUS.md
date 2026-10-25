@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every extraction item is now recorded in its source document. Then begin Phase 1 spikes.
+Next action: after issue #31 closes, begin Phase 1 with S1 (Odoo version, demo data, abandoned-cart reminder baseline, resource use, and seed need). Create detailed spike issues just in time.
 
 ## Phases
 
@@ -18,9 +18,9 @@ Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every e
   - [x] #10 GitHub Project v2 board #14 (Status: Todo, In Progress, Done; built-in workflows only, checked in the UI) and milestones POC-1 to POC-3. F-015 verified (PR #19, merged).
   - [x] #11 Rename repo to `odoo-agentic-retention-engine` (done 2026-10-25; ruleset and board checked after rename; PR #20, merged)
   - [x] #21 ADR-0010 C4 diagram tooling: Mermaid (PR #22, merged)
-- [ ] **Phase 0c: Blueprint extraction, then delete `blueprint-draft.md`** (see checklist below)
+- [x] **Phase 0c: Blueprint extraction complete; `blueprint-draft.md` removed in issue #31**
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
-  - [ ] S1 Odoo: version, demo data content, RAM, seed need
+  - [ ] S1 Odoo: version, demo data content, abandoned-cart reminder baseline, RAM, seed need
   - [ ] S2 LLM evaluation on golden set
   - [ ] S3 Retrieval: pgvector vs Qdrant, embedding model support
   - [ ] S4 Telegram bot and Mailpit
@@ -33,7 +33,9 @@ Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every e
 
 ## Blueprint extraction checklist
 
-`blueprint-draft.md` must not be deleted until every box is ticked. Section numbers refer to the draft.
+The draft was a planning input, not an authority. Accepted ADRs and owner-approved decisions in specs and STATUS take precedence over conflicting draft claims. Volatile facts are governed by the facts register; unverified claims remain assumptions until checked.
+
+Section numbers below referred to the removed draft.
 
 - [x] 1 Problem and goals: [00-vision.md](00-vision.md) (SLOs marked "target, untested")
 - [x] 1.2 Safety gate rules: [safety-gate.md](specs/safety-gate.md). Tiers accepted by owner (2026-10-24):
@@ -48,7 +50,7 @@ Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every e
 - [x] #35 Refine the diagrams: LLM provider, human approval, workflow-to-adapters path, and worker-owned side effects ([ADR-0012](adr/0012-worker-owned-agent-execution.md))
 - [x] 4.2 and 4.3 Data connections and three data channels (decided items only; ports and auth deferred): [data-connections.md](architecture/data-connections.md)
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
-- [x] 6 ADR-0001 to 0004: re-written as accepted ADRs (changed: separate AI database, batch instead of streaming)
+- [x] 6 ADR-0001 to 0004 captured; ADR-0003 remains proposed until S2 (changes from draft include the separate AI database and batch processing)
 - [x] 7.1 and 7.2 Data protection and AI threat model (legal details are open questions): [data-protection-threat-model.md](specs/data-protection-threat-model.md)
 - [x] 8.1 Evals, release gates, rollback criteria (numeric thresholds are open questions): [evals-release-gates.md](specs/evals-release-gates.md)
 - [x] 8.2 Capacity and cost estimate (POC host needs S1 measurement; production and variable costs remain open): [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md)
@@ -61,14 +63,14 @@ Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every e
 - [x] Modular monolith, import-linter gate: ADR-0002
 - [x] LLM interface, candidates, eval-based choice: ADR-0003
 - [x] Batch over streaming: ADR-0004
-- [x] Telegram first, WhatsApp in MVP, Mailpit: ADR-0005
+- [x] Telegram first for POC, WhatsApp planned for MVP subject to verification, Mailpit: ADR-0013
 - [x] pgvector vs Qdrant benchmark: ADR-0006
 - [x] Free-tier observability, OPEX focus: ADR-0007
 - [x] Language policy: ADR-0008
 - [x] Process rules, traceability, risk-based testing: process.md
 - [x] Volatile facts to verify: facts-register.md
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
-- [x] Odoo abandoned-cart email is the as-is baseline: vision (pain point 2)
+- [x] Odoo abandoned-cart reminder is recorded as an unverified baseline assumption (F-003); verify in S1.
 - [ ] History cleanup before public: owner approval needed (Q7). Repo rename and Apache-2.0 license are done.
 - [x] C4 tool choice: Mermaid, ADR-0010; diagram syntax changed to flowcharts, ADR-0011
 
@@ -76,7 +78,6 @@ Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every e
 
 | # | Question | Resolution / status |
 | :-- | :-- | :-- |
-| Q1 | Owner weekly hours | Owner, to size milestones |
 | Q2 | Final LLM model | S2, then update ADR-0003 |
 | Q3 | Final retrieval store | S3, then new ADR superseding ADR-0006 |
 | Q4 | Odoo version (17 or newer) | S1 |
@@ -85,8 +86,8 @@ Next action: issue #31 deletes `blueprint-draft.md` and closes Phase 0c; every e
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done; validate defaults in S1 |
 | Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Done. Resolved 2026-10-24: no bulk adoption. Consider individual items only for a concrete need, after reviewing content, scripts, permissions and license. |
-| Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Open. Proposed: milestone per phase; use a parent issue only for an outcome split across several issues; keep existing spec, spike, bug and task issue types; user-story format only for user-facing behavior. Decide before POC-1 breakdown. |
-| Q11 | Ports, protocols, authentication and network layout for each connection | Open. Decide with the first adapter issue or the infra spike; then update [data-connections.md](architecture/data-connections.md) |
+| Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Done. Resolved 2026-10-25: milestone per phase; parent issue only when an outcome spans multiple issues; keep spec, spike, bug and task types; use user-story format only for user-facing behavior. |
+| Q11 | Ports, protocols, authentication and network layout for each connection | Open. Decide with the first relevant adapter issue; then update [data-connections.md](architecture/data-connections.md) |
 | Q12 | Applicable data protection laws, residency region, retention period, deletion process, chat authentication | Open. Needs legal review before real customer data; see [data-protection-threat-model.md](specs/data-protection-threat-model.md) |
 | Q13 | Numeric release gates and rollback triggers, fallback definition, who re-enables the agent | Open. Decide after spikes S2 and S3; see [evals-release-gates.md](specs/evals-release-gates.md) |
 | Q14 | Current POC host plan, capacity, production topology and recurring costs | Open. Measure Odoo and stack use in S1; estimate model and retrieval after S2/S3; see [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md) |

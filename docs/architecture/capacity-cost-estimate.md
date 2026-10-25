@@ -26,8 +26,8 @@ Issue: #29. This is a planning estimate, not a deployment decision or a performa
 | Static frontend | Cloudflare Pages static-asset requests are free and unlimited. Pages Functions are billed under Workers instead. | $0 for static asset requests; not a complete frontend/domain cost. |
 | Optional object storage | Cloudflare R2 Standard includes 10 GB-month storage, 1 million Class A and 10 million Class B requests each month; egress is free. Above those allowances the listed rates are $0.015/GB-month, $4.50/million Class A and $0.36/million Class B. | $0 while within the free tier; actual usage and whether R2 is needed are unknown. See [F-013](../facts-register.md). |
 | LLM calls | Provider/model is selected after S2 ([ADR-0003](../adr/0003-llm-interface-and-model-selection.md)). The draft's $0-$5/month is not supported by a token-volume measurement. | **Unknown.** Calculate after model choice and golden-set measurement: `(input_tokens / 1,000,000 × input_rate) + (output_tokens / 1,000,000 × output_rate)`, multiplied by monthly runs and including retries. |
-| Messaging | POC uses Telegram and local Mailpit; the MVP email provider is undecided ([ADR-0005](../adr/0005-channels-telegram-first-email-mailpit.md)). | POC provider spend is not estimated here. Verify provider charges and recipient/message limits before choosing a paid service. |
-| Observability | ADR-0007 targets Grafana Cloud and Langfuse Cloud, with free-tier facts still unverified ([F-010](../facts-register.md), [F-011](../facts-register.md)). | **Unknown** until actual event volumes and free-tier eligibility/limits are checked. |
+| Messaging | POC uses Telegram and local Mailpit; the MVP email provider is undecided ([ADR-0013](../adr/0013-poc-channels-and-whatsapp-verification.md)). | POC provider spend is not estimated here. Verify provider charges and recipient/message limits before choosing a paid service. |
+| Observability | ADR-0007 targets Grafana Cloud and Langfuse Cloud. Verified free tiers: Grafana metrics 10k active series, logs/traces 50 GB ingest each, 14-day retention; Langfuse Hobby 50k units/month and 30-day data access ([F-010](../facts-register.md), [F-011](../facts-register.md)). | $0 only within provider free-tier limits. Actual event volume, eligibility, and whether data-region terms fit requirements remain to be checked. Langfuse lists no GCC region. |
 | Odoo and data services | POC can share the candidate host; separate services change the bill. | Included hosting cost cannot be calculated until S1 confirms whether co-location works. |
 
 There is no reliable total monthly cost yet. The useful POC total will be the confirmed host charge plus measured LLM usage and any paid monitoring, email, domain, storage or backup services. Do not present the historic CX32 launch price or draft's model budget as a current bill.
@@ -39,4 +39,4 @@ There is no reliable total monthly cost yet. The useful POC total will be the co
 - Final model, token usage, and LLM spend; decide and measure in S2.
 - Retrieval implementation and its resource usage; benchmark in S3.
 - Production availability topology, region, retention, and load.
-- Email, observability, backups and domain costs at the intended usage.
+- Email, backups and domain costs at the intended usage; observability costs if the verified free-tier limits are exceeded.

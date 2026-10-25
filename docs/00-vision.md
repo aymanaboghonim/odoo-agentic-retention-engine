@@ -15,7 +15,7 @@ Odoo version, licence, and what the demo data contains are facts to verify (see 
 ## Pain points (as-is)
 
 1. **Static offers.** Every customer sees the same offers. No segmentation.
-2. **Abandoned carts.** No smart, personal follow-up. Odoo has a generic reminder email only. We use it as the baseline to beat.
+2. **Abandoned carts.** No smart, personal follow-up. The draft claims Odoo has a generic reminder email; this is unverified (F-003) and must be checked in S1 before we use it as the baseline to beat.
 3. **Churn and cold start.** No next-best-action based on RFM (recency, frequency, monetary) or CLV (customer lifetime value).
 4. **Slow campaigns.** Marketing spends a long time matching slow-moving products to customer segments.
 
@@ -23,8 +23,8 @@ Odoo version, licence, and what the demo data contains are facts to verify (see 
 
 - Business goal (target, untested): raise CSAT from 60% to 80% with personal, timely contact.
 - Safety goal: 0% breaches of the discount cap and margin rules. This is enforced in code, not by the model.
-- Cost goal: run the MVP on one budget VPS (4 vCPU, 8 GB RAM, about 10 USD per month) with free-tier observability. No GPU in the MVP.
-- Sovereignty goal: the LLM layer supports Azure OpenAI (for GCC data residency) and other providers through one interface.
+- Cost goal (unverified planning target): investigate an MVP on one budget VPS without a GPU. The draft's 4-vCPU / 8-GB size and approximately USD 10/month price are not confirmed; measure capacity in S1 and verify current prices before choosing a host ([capacity estimate](architecture/capacity-cost-estimate.md), F-012, F-014).
+- Sovereignty goal: keep the LLM layer provider-neutral. Azure OpenAI is a candidate for a future GCC-resident deployment, but model and regional availability are unverified (F-006; evaluate in S2).
 
 ### Quality targets (target, untested)
 
@@ -35,7 +35,7 @@ Odoo version, licence, and what the demo data contains are facts to verify (see 
 | P50 latency, precomputed features | under 100 ms | |
 | Peak throughput | 1000 RPS | Blueprint number. Likely not realistic on one VPS. Re-evaluate before MVP. |
 | Discount cap breaches | 0% | Hard gate in code and CI. |
-| Retrieval Recall@5 | at least 90% | Measured on a golden set. |
+| Retrieval Recall@5 | Draft target: at least 90% | Provisional and unmeasured; set the release gate after the S3 benchmark. |
 
 ## Non-goals
 

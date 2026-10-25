@@ -1,6 +1,6 @@
 # ADR-0005: Telegram first behind a ChannelPort; email with Mailpit
 
-- Status: accepted
+- Status: superseded by ADR-0013
 - Date: 2026-10-24
 
 ## Context
