@@ -11,9 +11,8 @@ This project grew from the AI Architecture course (see [ACKNOWLEDGEMENTS.md](../
 | [docs/adr/](../docs/adr/) | Architecture decision records |
 | [docs/specs/](../docs/specs/) | Behavior, safety, security, and evaluation specifications |
 | [scripts/](../scripts/) | Repository and traceability checks |
-| [tests/](../tests/) | Automated tests (implementation tests are added with code) |
 | [course/](./) | This course-to-source map |
-| `src/engine/`, `evals/`, `deploy/` | Planned for implementation phases; not present yet |
+| `src/engine/`, `evals/`, `tests/`, `deploy/` | Planned for implementation phases; not present yet |
 
 ## Deliverables
 
