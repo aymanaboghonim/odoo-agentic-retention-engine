@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: S1 is done and in review (PR for #43). After it merges, start S3 (retrieval benchmark), then S2 and S4. Create each spike's detailed plan just in time.
+Next action: S1 is done and in review (PR for #43). After it merges, start S3 (retrieval benchmark), then S2 and S4. Create each spike's detailed plan just in time. Also fix #49 (pre-commit facts-freshness hook uses bare `python`) right after PR #48 merges.
 
 ## Phases
 

@@ -18,6 +18,7 @@ Spike S1 ([#43](https://github.com/aymanaboghonim/odoo-agentic-retention-engine/
 ## Alternatives
 
 - Odoo 18.0: has the reminder job, but is older. Odoo 20.0: its source explicitly disables the reminder job by default. 19.0 is the newest version that keeps the reminder job.
+- PostgreSQL 17 or 18 instead of 15: not tested in S1. PostgreSQL 15 is the version in the official Odoo Docker Hub instructions (`postgres:15`, checked 2026-10-29, https://hub.docker.com/_/odoo), and Odoo 19.0 source sets a minimum of 13 (`MIN_PG_VERSION` in `odoo/release.py`). We chose it as the vendor-documented, conservative option. No performance or feature reason. A newer version may work but is unverified; test it before changing. This is the Odoo database only; the separate AI database (pgvector) has its own version choice in S3.
 - Seeding carts by SQL: rejected, breaks the Odoo write boundary (DC-2).
 
 ## Consequences
