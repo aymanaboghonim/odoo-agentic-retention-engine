@@ -51,6 +51,6 @@ These checks do not exist yet. They are recorded so the matching implementation 
 
 - Ports, protocols and authentication for each connection (the original draft lists examples, but they are unverified).
 - Network layout, gateway, and what is public or private.
-- Odoo version and API type ([F-001](../facts-register.md)).
+- Odoo version is 19.0 and the API type is JSON-2 with a bearer API key, local only so far ([F-001](../facts-register.md), [ADR-0014](../adr/0014-odoo-19-baseline-and-seeding.md)). Ports, network layout and the read-only database role for non-local use are still open (Q11).
 - Final LLM provider and model (spike S2) and retrieval store (spike S3).
 - Embedding model. The draft assumes `BAAI/bge-m3` with FastEmbed, which is unverified ([F-007](../facts-register.md)).

@@ -15,7 +15,7 @@ Project: an agentic AI layer on top of Odoo (abandoned carts, retention). Read [
 - Do not use a price, model name, limit or version from memory. Use a verified row in [docs/facts-register.md](docs/facts-register.md), or verify it first.
 - Decisions go in an ADR in [docs/adr/](docs/adr/). Never edit an accepted ADR. Write a new one that supersedes it.
 - Update `docs/STATUS.md` in every PR.
-- Never commit secrets. All data is synthetic. Never write into the Odoo database.
+- Never commit secrets. All data is synthetic. The agent runtime never writes directly to the Odoo database: it reads with a read-only database role, and runtime state changes go through the supported Odoo API/worker path. A local setup fixture may create synthetic data through Odoo's supported API only in the isolated local development instance. Never seed through SQL or target a real/shared Odoo instance.
 - The LLM never decides money. Discount limits are enforced in code and tested.
 - Plan mode does not edit repo files. Only Agent mode does.
 - Do not invent facts or results. Say "unknown" and add it to the open questions.

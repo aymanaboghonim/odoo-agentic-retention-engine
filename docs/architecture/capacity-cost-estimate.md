@@ -12,11 +12,11 @@ Issue: #29. This is a planning estimate, not a deployment decision or a performa
 | Workload | Current planning assumption | Evidence and limitation |
 | :-- | :-- | :-- |
 | POC host | 4 vCPU / 8 GB RAM was proposed in the blueprint as a starting point. | Not measured. It is not yet established that Odoo, the AI database, API, worker and retrieval fit or perform adequately together. |
-| Odoo plus demo data | Unknown. | Measure peak and steady memory, CPU and disk in S1; see [F-014](../facts-register.md). |
+| Odoo plus demo data | Measured 2026-10-29 (Odoo 19.0, PostgreSQL 15): about 192 MiB + 167 MiB RAM idle, about 0% CPU, 171 MB database and 10 MB filestore. Light read load did not raise RAM. | Install-time and worker-load peaks not measured; see [F-014](../facts-register.md) and [ADR-0014](../adr/0014-odoo-19-baseline-and-seeding.md). |
 | Retrieval and embeddings | Unknown until S3 selects the store and embedding model. | Benchmark memory, latency and Recall@5 on the Arabic and English retrieval set ([ADR-0006](../adr/0006-retrieval-store-benchmark.md)). |
 | Production | Not estimated. | The draft's “two pods on one node” is not a high-availability design: one node failure still removes both pods. Define availability and residency first, then size and price multiple failure domains. |
 
-**S1 measurement:** deploy the intended synthetic Odoo demo data and POC services on the candidate host. Record peak and idle RAM, CPU, disk, and response latency during the abandoned-cart scan, feature refresh, retrieval, and an interactive run. If the workload approaches host capacity or misses the agreed latency target, size up or separate services before calling the setup viable. No benchmark has been run yet.
+**S1 measurement (done, Odoo + PostgreSQL only):** see the table above. The full-stack measurement (abandoned-cart scan, feature refresh, retrieval, interactive run) moves to Phase 2, when the engine, worker and retrieval exist. If the workload approaches host capacity or misses the agreed latency target, size up or separate services before calling the setup viable. No benchmark has been run yet.
 
 ## Cost model
 

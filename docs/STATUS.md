@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: after issue #31 closes, begin Phase 1 with S1 (Odoo version, demo data, abandoned-cart reminder baseline, resource use, and seed need). Create detailed spike issues just in time.
+Next action: S1 is done and in review (PR for #43). After it merges, start S3 (retrieval benchmark), then S2 and S4. Create each spike's detailed plan just in time.
 
 ## Phases
 
@@ -20,7 +20,7 @@ Next action: after issue #31 closes, begin Phase 1 with S1 (Odoo version, demo d
   - [x] #21 ADR-0010 C4 diagram tooling: Mermaid (PR #22, merged)
 - [x] **Phase 0c: Blueprint extraction complete; `blueprint-draft.md` removed in issue #31**
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
-  - [ ] S1 Odoo: version, demo data content, abandoned-cart reminder baseline, RAM, seed need
+  - [x] S1 Odoo (#43): Odoo 19.0, demo data has aged abandoned carts so no seed needed, reminder is opt-in, about 360 MiB idle ([ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md))
   - [ ] S2 LLM evaluation on golden set
   - [ ] S3 Retrieval: pgvector vs Qdrant, embedding model support
   - [ ] S4 Telegram bot and Mailpit
@@ -79,7 +79,7 @@ Section numbers below referred to the removed draft.
 | :-- | :-- | :-- |
 | Q2 | Final LLM model | S2, then update ADR-0003 |
 | Q3 | Final retrieval store | S3, then new ADR superseding ADR-0006 |
-| Q4 | Odoo version (17 or newer) | S1 |
+| Q4 | Odoo version (17 or newer) | Done. Resolved 2026-10-29: 19.0, [ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md). 19.0 support/EOL dates unverified. |
 | Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 (diagram syntax: flowcharts, ADR-0011) |
 | Q6 | Free email service for MVP | MVP planning |
 | Q7 | History cleanup and force push before going public | Owner approval at that time |
@@ -89,4 +89,4 @@ Section numbers below referred to the removed draft.
 | Q11 | Ports, protocols, authentication and network layout for each connection | Open. Decide with the first relevant adapter issue; then update [data-connections.md](architecture/data-connections.md) |
 | Q12 | Applicable data protection laws, residency region, retention period, deletion process, chat authentication | Open. Needs legal review before real customer data; see [data-protection-threat-model.md](specs/data-protection-threat-model.md) |
 | Q13 | Numeric release gates and rollback triggers, fallback definition, who re-enables the agent | Open. Decide after spikes S2 and S3; see [evals-release-gates.md](specs/evals-release-gates.md) |
-| Q14 | Current POC host plan, capacity, production topology and recurring costs | Open. Measure Odoo and stack use in S1; estimate model and retrieval after S2/S3; see [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md) |
+| Q14 | Current POC host plan, capacity, production topology and recurring costs | Open. S1 measured Odoo + PostgreSQL only (about 360 MiB idle, [F-014](facts-register.md)). Full stack in Phase 2; model and retrieval after S2/S3; see [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md) |
