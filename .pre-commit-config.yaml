@@ -58,7 +58,7 @@ repos:
         always_run: true
       - id: facts-freshness
         name: check verified facts freshness
-        entry: python scripts/check_facts_freshness.py
+        entry: uv run --no-sync python scripts/check_facts_freshness.py
         language: system
         pass_filenames: false
         always_run: true
