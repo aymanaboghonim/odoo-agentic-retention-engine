@@ -30,6 +30,8 @@ This runbook starts an isolated Odoo Community 19.0 instance with synthetic demo
 
 The probe and optional fixture reject non-loopback Odoo URLs. The fixture never uses SQL. The normal runtime remains read-only against the Odoo database; state-changing runtime operations use the Odoo API/worker path.
 
+When VS Code is connected to this machine with Remote-SSH, forward port `8069` from the **Ports** panel, then open `http://localhost:8069/web/login` in the integrated browser. The service remains bound to loopback; do not expose it on the LAN.
+
 ## Stop and measure
 
 Stop the containers without deleting the database or filestore:
