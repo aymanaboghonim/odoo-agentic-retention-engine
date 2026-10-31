@@ -1410,8 +1410,9 @@ def render_markdown_summary(report: dict[str, object]) -> str:
                 "ranking comparison rather than assuming parity."
             ),
             (
-                "- The retrieval-store decision remains open pending owner review; this "
-                "report does not select a backend."
+                "- The owner selected PostgreSQL FTS + pgvector for POC retrieval in "
+                "[ADR-0015](../../../docs/adr/0015-postgresql-retrieval-store.md); these "
+                "benchmark results remain local evidence, not production or statistical proof."
             ),
             (
                 "- Detailed language, task, challenge, and per-query results are in the "

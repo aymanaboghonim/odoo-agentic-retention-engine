@@ -41,7 +41,7 @@ Single-roundtrip ranking comparisons use exact ordered-list equality and mean to
 - This is a small local benchmark, not production-performance evidence or a statistically significant store decision.
 - PostgreSQL and Qdrant use different lexical tokenization and scoring; strict gates are operationally analogous, not token-identical.
 - Qdrant native fusion and client-side RRF are distinct. Review the measured ranking comparison rather than assuming parity.
-- The retrieval-store decision remains open pending owner review; this report does not select a backend.
+- The owner selected PostgreSQL FTS + pgvector for POC retrieval in [ADR-0015](../../../docs/adr/0015-postgresql-retrieval-store.md); these benchmark results remain local evidence, not production or statistical proof.
 - Detailed language, task, challenge, and per-query results are in the machine-readable report.
 
 ## Detailed artifacts

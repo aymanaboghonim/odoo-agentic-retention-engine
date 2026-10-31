@@ -434,6 +434,7 @@ def test_markdown_summary_is_human_readable_and_links_machine_report(
     assert "Single-request native FusionQuery RRF" in markdown
     assert "statistically significant store decision" in markdown
     assert "not production-performance evidence" in markdown
+    assert "PostgreSQL FTS + pgvector for POC retrieval in [ADR-0015]" in markdown
     assert "Qdrant score threshold:" in markdown
     assert "[s3-benchmark.json](./s3-benchmark.json)" in markdown
 
