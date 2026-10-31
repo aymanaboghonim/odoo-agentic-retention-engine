@@ -30,6 +30,7 @@ from scripts.s3_retrieval_benchmark import (
     evaluate_mode,
     hard_negative_outrank_count,
     load_dataset,
+    markdown_summary_path,
     mrr_at_k,
     ndcg_at_k,
     parse_docker_stats,
@@ -38,7 +39,9 @@ from scripts.s3_retrieval_benchmark import (
     query_overlap_diagnostics,
     recall_at_k,
     reciprocal_rank_fusion,
+    render_markdown_summary,
     run_benchmark,
+    write_markdown_summary,
 )
 
 
@@ -410,6 +413,40 @@ def test_report_documents_pinned_qdrant_capabilities() -> None:
     assert "distinct" in QDRANT_CAPABILITY_SUMMARY["native_vs_parity_note"]
 
 
+def test_markdown_summary_is_human_readable_and_links_machine_report(
+    tmp_path: Path,
+) -> None:
+    report = json.loads(
+        Path("evals/retrieval/results/s3-benchmark.json").read_text(encoding="utf-8")
+    )
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    summary_path = write_markdown_summary(report_path, report)
+    markdown = summary_path.read_text(encoding="utf-8")
+
+    assert summary_path == tmp_path / "report.md"
+    assert markdown == render_markdown_summary(report)
+    assert markdown.startswith("# S3 bilingual retrieval benchmark: review summary")
+    assert "| Backend | Variant | Recall@5 | MRR@5 | nDCG@5 |" in markdown
+    assert "Hard-negative outrank" in markdown
+    assert "Client-side RRF 50:50" in markdown
+    assert "Single-roundtrip SQL CTE" in markdown
+    assert "Single-request native FusionQuery RRF" in markdown
+    assert "statistically significant store decision" in markdown
+    assert "not production-performance evidence" in markdown
+    assert "Qdrant score threshold:" in markdown
+    assert "[s3-benchmark.json](./s3-benchmark.json)" in markdown
+
+
+def test_markdown_summary_path_handles_canonical_and_staged_reports() -> None:
+    assert markdown_summary_path(Path("/reports/s3-benchmark.json")) == Path(
+        "/reports/s3-benchmark.md"
+    )
+    assert markdown_summary_path(Path("/reports/.s3-benchmark.abc")) == Path(
+        "/reports/.s3-benchmark.abc.md"
+    )
+
+
 def test_strict_lexical_gate_is_enabled_for_both_backends(monkeypatch: pytest.MonkeyPatch) -> None:
     class Model:
         def __init__(self, **kwargs: object) -> None:
@@ -619,7 +656,11 @@ def test_docker_stats_are_scoped_parseable_container_memory() -> None:
 
 def test_memory_monitor_adds_both_container_peaks_to_report(tmp_path: Path) -> None:
     report_path = tmp_path / "report.json"
-    report_path.write_text(json.dumps({"benchmark": "s3"}), encoding="utf-8")
+    report = json.loads(
+        Path("evals/retrieval/results/s3-benchmark.json").read_text(encoding="utf-8")
+    )
+    report.pop("container_memory_max_mib", None)
+    report_path.write_text(json.dumps(report), encoding="utf-8")
     maximums = {name: 64.0 for name in CONTAINER_NAMES}
 
     update_report_memory(report_path, maximums)
@@ -627,6 +668,9 @@ def test_memory_monitor_adds_both_container_peaks_to_report(tmp_path: Path) -> N
     assert (
         json.loads(report_path.read_text(encoding="utf-8"))["container_memory_max_mib"] == maximums
     )
+    summary = markdown_summary_path(report_path).read_text(encoding="utf-8")
+    assert "Container peak memory:" in summary
+    assert "64.0 MiB" in summary
 
 
 def test_memory_monitor_rejects_missing_container_measurement(tmp_path: Path) -> None:
@@ -670,3 +714,6 @@ def test_launcher_uses_caller_identity_and_run_scoped_report() -> None:
     assert 'mktemp "$report_dir/.s3-benchmark.XXXXXX"' in launcher
     assert '--report "$run_report_path"' in launcher
     assert 'mv -f -- "$run_report_path" "$final_report_path"' in launcher
+    assert 'run_markdown_path="${run_report_path}.md"' in launcher
+    assert '[[ ! -s "$run_markdown_path" ]]' in launcher
+    assert 'mv -f -- "$run_markdown_path" "$final_markdown_path"' in launcher

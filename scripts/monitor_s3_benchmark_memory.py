@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Sequence
 
-from scripts.s3_retrieval_benchmark import parse_docker_stats
+from scripts.s3_retrieval_benchmark import parse_docker_stats, write_markdown_summary
 
 CONTAINER_NAMES = (
     "s3-retrieval-benchmark-pgvector-1",
@@ -55,6 +55,7 @@ def update_report_memory(report_path: Path, maximums: dict[str, float]) -> None:
     report_path.write_text(
         json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+    write_markdown_summary(report_path, report)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

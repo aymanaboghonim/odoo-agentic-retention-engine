@@ -8,6 +8,7 @@ compose=(
 )
 report_dir="$(pwd)/evals/retrieval/results"
 final_report_path="$report_dir/s3-benchmark.json"
+final_markdown_path="$report_dir/s3-benchmark.md"
 export S3_BENCHMARK_REPORT_DIR="$report_dir"
 export S3_BENCHMARK_HF_CACHE_DIR="${HF_HUB_CACHE:-${HF_HOME:-${HOME}/.cache/huggingface}/hub}"
 export S3_BENCHMARK_UID="$(id -u)"
@@ -15,6 +16,7 @@ export S3_BENCHMARK_GID="$(id -g)"
 mkdir -p "$report_dir" "$S3_BENCHMARK_HF_CACHE_DIR"
 run_report_path="$(mktemp "$report_dir/.s3-benchmark.XXXXXX")"
 run_report_name="$(basename "$run_report_path")"
+run_markdown_path="${run_report_path}.md"
 
 monitor_dir=""
 monitor_pid=""
@@ -46,6 +48,9 @@ cleanup() {
   fi
   if [[ -e "$run_report_path" ]]; then
     rm -- "$run_report_path" || status=1
+  fi
+  if [[ -e "$run_markdown_path" ]]; then
+    rm -- "$run_markdown_path" || status=1
   fi
   exit "$status"
 }
@@ -79,4 +84,9 @@ if [[ ! -s "$run_report_path" ]]; then
   echo "Benchmark completed without a report" >&2
   exit 1
 fi
+if [[ ! -s "$run_markdown_path" ]]; then
+  echo "Benchmark completed without a Markdown summary" >&2
+  exit 1
+fi
+mv -f -- "$run_markdown_path" "$final_markdown_path"
 mv -f -- "$run_report_path" "$final_report_path"

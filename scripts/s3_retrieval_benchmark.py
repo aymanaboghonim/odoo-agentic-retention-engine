@@ -1191,6 +1191,254 @@ def _embedding_latency_report(latencies: dict[str, float]) -> dict[str, float | 
     }
 
 
+def markdown_summary_path(report_path: Path) -> Path:
+    if report_path.suffix == ".json":
+        return report_path.with_suffix(".md")
+    return report_path.with_name(f"{report_path.name}.md")
+
+
+def _report_mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError(f"Benchmark report field {field} must be an object")
+    return value
+
+
+def _report_number(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"Benchmark report field {field} must be a finite number")
+    return float(value)
+
+
+def render_markdown_summary(report: dict[str, object]) -> str:
+    dataset_version = report.get("dataset_version")
+    created_at = report.get("created_at_utc")
+    if not isinstance(dataset_version, str) or not isinstance(created_at, str):
+        raise ValueError("Benchmark report is missing its dataset version or creation time")
+
+    embedding = _report_mapping(report.get("embedding"), "embedding")
+    backends = _report_mapping(report.get("backend_versions"), "backend_versions")
+    methodology = _report_mapping(report.get("methodology"), "methodology")
+    qdrant_capabilities = _report_mapping(
+        methodology.get("qdrant_capabilities"), "methodology.qdrant_capabilities"
+    )
+    results = _report_mapping(report.get("results"), "results")
+    quality_modes = {
+        "pgvector": (
+            ("hybrid", "Client-side RRF 50:50"),
+            ("hybrid_rrf_70_30", "Client-side RRF 70:30"),
+            ("hybrid_rrf_80_20", "Client-side RRF 80:20"),
+            ("hybrid_strict_lexical_gate", "Strict lexical gate"),
+            ("hybrid_sql_cte", "Single-roundtrip SQL CTE"),
+        ),
+        "qdrant": (
+            ("hybrid", "Client-side RRF 50:50"),
+            ("hybrid_rrf_70_30", "Client-side RRF 70:30"),
+            ("hybrid_rrf_80_20", "Client-side RRF 80:20"),
+            ("hybrid_strict_lexical_gate", "Strict lexical gate"),
+            ("hybrid_server_fusion_default", "Single-request native FusionQuery RRF"),
+            ("hybrid_server_rrf_parity", "Single-request RrfQuery parity parameters"),
+        ),
+    }
+
+    rows: list[str] = []
+    for backend, modes in quality_modes.items():
+        backend_results = _report_mapping(results.get(backend), f"results.{backend}")
+        for mode, label in modes:
+            metrics = _report_mapping(backend_results.get(mode), f"results.{backend}.{mode}")
+            search_latency = _report_mapping(
+                metrics.get("search_latency_ms"),
+                f"results.{backend}.{mode}.search_latency_ms",
+            )
+            end_to_end_latency = _report_mapping(
+                metrics.get("end_to_end_latency_ms"),
+                f"results.{backend}.{mode}.end_to_end_latency_ms",
+            )
+            comparison = metrics.get("client_ranking_comparison")
+            comparison_text = "n/a"
+            if comparison is not None:
+                comparison_metrics = _report_mapping(
+                    comparison, f"results.{backend}.{mode}.client_ranking_comparison"
+                )
+                exact = int(
+                    _report_number(
+                        comparison_metrics.get("exact_order_match_queries"),
+                        f"results.{backend}.{mode}.client_ranking_comparison.exact_order_match_queries",
+                    )
+                )
+                compared = int(
+                    _report_number(
+                        comparison_metrics.get("query_count"),
+                        f"results.{backend}.{mode}.client_ranking_comparison.query_count",
+                    )
+                )
+                overlap = _report_number(
+                    comparison_metrics.get("mean_candidate_set_overlap"),
+                    f"results.{backend}.{mode}.client_ranking_comparison.mean_candidate_set_overlap",
+                )
+                comparison_text = f"{exact}/{compared} exact; {overlap:.1%} overlap"
+
+            hard_negative_rate = _report_number(
+                metrics.get("hard_negative_outrank_rate"),
+                f"results.{backend}.{mode}.hard_negative_outrank_rate",
+            )
+            search_p95 = _report_number(
+                search_latency.get("p95"),
+                f"results.{backend}.{mode}.search_latency_ms.p95",
+            )
+            end_to_end_p95 = _report_number(
+                end_to_end_latency.get("p95"),
+                f"results.{backend}.{mode}.end_to_end_latency_ms.p95",
+            )
+            rows.append(
+                "| "
+                + " | ".join(
+                    (
+                        backend,
+                        label,
+                        f"{_report_number(metrics.get('recall_at_5'), 'recall_at_5'):.4f}",
+                        f"{_report_number(metrics.get('mrr_at_5'), 'mrr_at_5'):.4f}",
+                        f"{_report_number(metrics.get('ndcg_at_5'), 'ndcg_at_5'):.4f}",
+                        f"{hard_negative_rate:.1%}",
+                        f"{search_p95:.3f}",
+                        f"{end_to_end_p95:.3f}",
+                        comparison_text,
+                    )
+                )
+                + " |"
+            )
+
+    postgresql_version = backends.get("postgresql")
+    if not isinstance(postgresql_version, str):
+        raise ValueError("Benchmark report is missing the PostgreSQL version")
+    postgres_match = re.search(r"PostgreSQL\s+(\d+(?:\.\d+)?)", postgresql_version)
+    if postgres_match is None:
+        raise ValueError("Benchmark report has an unrecognized PostgreSQL version")
+    qdrant_version = _report_mapping(backends.get("qdrant"), "backend_versions.qdrant")
+    hardware = _report_mapping(report.get("hardware"), "hardware")
+    platform_name = hardware.get("platform")
+    if not isinstance(platform_name, str):
+        raise ValueError("Benchmark report is missing the platform")
+    if "WSL2" in platform_name:
+        platform_name = "Linux/WSL2"
+    container_memory = report.get("container_memory_max_mib")
+    if container_memory is None:
+        memory_text = "Not yet collected by the host-side monitor."
+    else:
+        memory_values = _report_mapping(container_memory, "container_memory_max_mib")
+        memory_text = "; ".join(
+            f"{name}: {_report_number(value, f'container_memory_max_mib.{name}'):.1f} MiB"
+            for name, value in sorted(memory_values.items())
+        )
+    runner_rss = _report_number(
+        report.get("benchmark_process_max_rss_mib"), "benchmark_process_max_rss_mib"
+    )
+    query_count = int(_report_number(report.get("dataset_queries"), "dataset_queries"))
+    scenario_count = int(_report_number(report.get("dataset_scenarios"), "dataset_scenarios"))
+    document_count = int(_report_number(report.get("dataset_documents"), "dataset_documents"))
+    qdrant_client_version = qdrant_capabilities.get("qdrant_client_version")
+    if not isinstance(qdrant_client_version, str):
+        raise ValueError("Benchmark report is missing the qdrant-client version")
+
+    return "\n".join(
+        (
+            "# S3 bilingual retrieval benchmark: review summary",
+            "",
+            f"- Dataset: `{dataset_version}`; {document_count} documents.",
+            (
+                f"- Queries: {query_count} language queries over {scenario_count} paired "
+                "scenarios; language pairs are not independent samples."
+            ),
+            f"- Run: {created_at}; command: `make benchmark-s3`.",
+            (
+                f"- Embedding: `{embedding.get('model')}` at revision "
+                f"`{embedding.get('source_revision')}`."
+            ),
+            (
+                f"- Backends: PostgreSQL {postgres_match.group(1)} with pgvector "
+                f"{backends.get('pgvector_extension')}; Qdrant {qdrant_version.get('version')} "
+                f"with qdrant-client {qdrant_client_version}."
+            ),
+            "",
+            "## Results",
+            "",
+            (
+                "Recall@5, MRR@5, and nDCG@5 are macro-averaged over the query set. "
+                "Search latency is client-observed and excludes query embedding; "
+                "end-to-end latency includes query embedding."
+            ),
+            "",
+            (
+                "| Backend | Variant | Recall@5 | MRR@5 | nDCG@5 | "
+                "Hard-negative outrank | Search p95 (ms) | End-to-end p95 (ms) | "
+                "Ranking vs client RRF 50:50 |"
+            ),
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+            *rows,
+            "",
+            (
+                "Single-roundtrip ranking comparisons use exact ordered-list equality and "
+                "mean top-20 candidate-set overlap. Similar candidate sets do not imply "
+                "identical ranking formulas."
+            ),
+            "",
+            "## Runtime and verified capabilities",
+            "",
+            f"- Hardware: {hardware.get('cpu_model')}; {platform_name}.",
+            f"- Container peak memory: {memory_text}",
+            f"- Benchmark process peak RSS: {runner_rss:.1f} MiB.",
+            f"- Qdrant text query: {qdrant_capabilities.get('text_query')}",
+            f"- Qdrant score threshold: {qdrant_capabilities.get('score_threshold')}",
+            (
+                f"- Qdrant strict matching and phrase support: "
+                f"{qdrant_capabilities.get('strict_lexical')}; "
+                f"{qdrant_capabilities.get('phrase_matching')}."
+            ),
+            f"- Qdrant server fusion: {qdrant_capabilities.get('server_fusion')}",
+            "",
+            "## Interpretation and limits",
+            "",
+            (
+                "- This is a small local benchmark, not production-performance evidence or "
+                "a statistically significant store decision."
+            ),
+            (
+                "- PostgreSQL and Qdrant use different lexical tokenization and scoring; "
+                "strict gates are operationally analogous, not token-identical."
+            ),
+            (
+                "- Qdrant native fusion and client-side RRF are distinct. Review the measured "
+                "ranking comparison rather than assuming parity."
+            ),
+            (
+                "- The retrieval-store decision remains open pending owner review; this "
+                "report does not select a backend."
+            ),
+            (
+                "- Detailed language, task, challenge, and per-query results are in the "
+                "machine-readable report."
+            ),
+            "",
+            "## Detailed artifacts",
+            "",
+            "- Machine-readable measurements: [s3-benchmark.json](./s3-benchmark.json).",
+            "- Dataset and qrels: [s3_dataset.json](../s3_dataset.json).",
+            (
+                "- Procedure and limitations: "
+                "[runbook](../../../docs/runbooks/s3-retrieval-benchmark.md)."
+            ),
+            "- Verified Qdrant capabilities: [F-025](../../../docs/facts-register.md#f-025).",
+            "",
+        )
+    )
+
+
+def write_markdown_summary(report_path: Path, report: dict[str, object]) -> Path:
+    summary_path = markdown_summary_path(report_path)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(render_markdown_summary(report), encoding="utf-8")
+    return summary_path
+
+
 def require_approved_dataset(dataset: Dataset) -> None:
     if dataset.review_status != "approved":
         raise ValueError("Dataset is pending owner review; no benchmark may run")
@@ -1364,6 +1612,7 @@ def run_benchmark(dataset: Dataset, report_path: Path) -> dict[str, object]:
     report_path.write_text(
         json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+    write_markdown_summary(report_path, report)
     return report
 
 
@@ -1400,8 +1649,12 @@ def main() -> int:
     except (OSError, ValueError) as error:
         print(f"S3 benchmark refused: {error}", file=sys.stderr)
         return 2
-    report = run_benchmark(dataset, arguments.report)
-    print(json.dumps(report, indent=2, ensure_ascii=False))
+    run_benchmark(dataset, arguments.report)
+    print(
+        "Benchmark completed. "
+        f"JSON report: {arguments.report}; "
+        f"Markdown summary: {markdown_summary_path(arguments.report)}"
+    )
     return 0
 
 

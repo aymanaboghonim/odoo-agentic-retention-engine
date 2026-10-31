@@ -33,6 +33,7 @@ Non-goals: cross-language retrieval, live Odoo access during a run, production s
 | S3-11 | Capability claims for Qdrant text search and fusion match both the pinned client schemas and live pinned server behavior; unsupported features and algorithm differences are explicit. | `test_report_documents_pinned_qdrant_capabilities` and explicit runtime capability probes in `make benchmark-s3` |
 | S3-12 | Strict lexical gating requires every surviving query term in both systems: PostgreSQL uses conjunctive `plainto_tsquery`; Qdrant BM25 uses `TextQuery` plus a full-text `MatchText` filter. | `test_strict_lexical_gate_is_enabled_for_both_backends` |
 | S3-13 | Single-roundtrip latency compares PostgreSQL SQL-CTE fusion and Qdrant server-side prefetch fusion against each backend's client-side two-call RRF on the same vectors, queries, candidate depth, and report methodology. | `test_single_roundtrip_fusion_matches_candidate_contracts` |
+| S3-14 | Every S3 run publishes a human-readable Markdown review summary beside the machine-readable JSON, generated from the same measurements and promoted only after memory collection succeeds. | `test_markdown_summary_is_human_readable_and_links_machine_report`, `test_memory_monitor_adds_both_container_peaks_to_report`, and `test_launcher_uses_caller_identity_and_run_scoped_report` |
 
 ## Behavior
 
@@ -48,6 +49,7 @@ Non-goals: cross-language retrieval, live Odoo access during a run, production s
 - **Given** a strict-gate hybrid query, **when** the lexical list is produced, **then** only documents matching every normalized query term remain eligible before fusion; the report records the distinct PostgreSQL and Qdrant filter implementations.
 - **Given** a single-roundtrip hybrid run, **when** latency is measured, **then** PostgreSQL fuses ranked candidates in one SQL statement and Qdrant uses a single query request with dense and BM25 prefetches. Qdrant's native RRF parameters are recorded, and its result is not called formula-equivalent unless ranking parity is checked.
 - **Given** a Qdrant feature claim, **when** the benchmark reports it, **then** the claim is supported by the locked `qdrant-client` schema and an operation against the pinned server.
+- **Given** a completed benchmark intended for owner review, **when** the launcher promotes results, **then** it publishes both machine-readable JSON and a concise Markdown summary with links, key results, interpretation, provenance, and limitations.
 - **Given** an absent backend, model, or required input, **when** the benchmark starts, **then** it exits with an explicit error and produces no success-shaped report.
 
 ## Risks
