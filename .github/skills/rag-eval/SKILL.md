@@ -18,6 +18,9 @@ Use this skill when creating or changing a retrieval corpus, relevance labels, r
 - Report each lexical algorithm by name. Do not call different ranking functions equivalent.
 - Compute metrics from reviewed relevance labels. Report Recall@k, graded ranking metrics, and hard-negative behavior by language, task, and challenge type, along with latency methodology and resource observations.
 - Keep CI hermetic. Container benchmarks and model downloads run only through an explicit command.
+- Follow the project-wide preflight, smoke, progress, failure/output, and review-report rules in `docs/process.md`; a smoke result is not proof of full-run success or retrieval quality.
+- Emit stage and query/repetition progress with elapsed time, and publish Markdown plus machine-readable results only after the same run completes successfully.
+- Keep execution sequential for isolated latency measurements unless a controlled comparison shows a parallel mode preserves ranking and measurement reliability; document the comparison or why it is not relevant.
 - Treat proposed quality thresholds as non-binding until measured results and owner approval support a gate.
 
 ## Procedure
