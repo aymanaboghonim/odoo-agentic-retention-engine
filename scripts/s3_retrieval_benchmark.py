@@ -8,14 +8,19 @@ import os
 import platform
 import re
 import resource
+import shutil
 import statistics
+import subprocess
 import sys
+import tempfile
+import threading
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, Sequence
+from typing import Iterator, Protocol, Sequence, TextIO
 from urllib.request import urlopen
 
 DATASET_PATH = Path("evals/retrieval/s3_dataset.json")
@@ -76,6 +81,101 @@ QDRANT_CAPABILITY_SUMMARY = {
     ),
 }
 RELEASE_GATE = None
+HEARTBEAT_SECONDS = 30.0
+PROGRESS_INTERVAL_SECONDS = 2.0
+EXECUTION_STRATEGY = {
+    "mode": "sequential",
+    "parallel_comparison": "not relevant to the S3 acceptance metrics",
+    "rationale": (
+        "S3 measures isolated per-query ranking and latency, not throughput. "
+        "Parallel backend or query execution would add shared CPU and database contention "
+        "and change the latency being compared. The single-threaded embedding stage also "
+        "remains serial; a separate load test is needed if throughput becomes a requirement."
+    ),
+}
+
+
+class StageFailure(RuntimeError):
+    def __init__(self, stage: str, cause: Exception) -> None:
+        self.stage = stage
+        self.cause = cause
+        super().__init__(f"{stage}: {type(cause).__name__}: {cause}")
+
+
+class ProgressReporter:
+    def __init__(
+        self,
+        *,
+        heartbeat_seconds: float = HEARTBEAT_SECONDS,
+        progress_interval_seconds: float = PROGRESS_INTERVAL_SECONDS,
+        output: TextIO | None = None,
+    ) -> None:
+        if heartbeat_seconds <= 0 or progress_interval_seconds < 0:
+            raise ValueError("Heartbeat must be positive and the progress interval non-negative")
+        self.heartbeat_seconds = heartbeat_seconds
+        self.progress_interval_seconds = progress_interval_seconds
+        self.output = output or sys.stderr
+        self._write_lock = threading.Lock()
+
+    @contextmanager
+    def stage(
+        self, name: str, *, total: int | None = None, unit: str | None = None
+    ) -> Iterator[Callable[[int], None]]:
+        if total is not None and (total < 0 or not unit):
+            raise ValueError("Progress totals require a non-negative total and a unit")
+
+        started = time.monotonic()
+        last_output = [started]
+        completed = [0]
+
+        def write(status: str, error_type: str | None = None) -> None:
+            now = time.monotonic()
+            fields = (
+                f" completed={completed[0]} total={total} unit={unit}" if total is not None else ""
+            )
+            error = f" error_type={error_type}" if error_type else ""
+            print(
+                f"progress stage={name} status={status}{fields}"
+                f"{error} elapsed_seconds={now - started:.1f}",
+                file=self.output,
+                flush=True,
+            )
+            last_output[0] = now
+
+        def heartbeat() -> None:
+            while not stop_event.wait(self.heartbeat_seconds):
+                with self._write_lock:
+                    write("heartbeat")
+
+        stop_event = threading.Event()
+        with self._write_lock:
+            write("started")
+        heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
+        heartbeat_thread.start()
+
+        def advance(amount: int = 1) -> None:
+            with self._write_lock:
+                completed[0] += amount
+                if total is not None and completed[0] > total:
+                    raise ValueError(f"Progress for {name} exceeded its declared total")
+                now = time.monotonic()
+                if completed[0] == total or now - last_output[0] >= self.progress_interval_seconds:
+                    write("progress")
+
+        try:
+            yield advance
+        except StageFailure:
+            raise
+        except Exception as error:
+            with self._write_lock:
+                write("failed", type(error).__name__)
+            raise StageFailure(name, error) from error
+        else:
+            with self._write_lock:
+                write("completed")
+        finally:
+            stop_event.set()
+            heartbeat_thread.join()
 
 
 @dataclass(frozen=True)
@@ -1013,6 +1113,7 @@ def _run_mode(
     query_vectors: dict[str, list[float]],
     encode_query: Callable[[str], list[float]],
     mode: str,
+    on_query_complete: Callable[[], None] | None = None,
 ) -> tuple[dict[str, object], dict[str, list[str]]]:
     ranked_results: dict[str, list[str]] = {}
     latency_ms: list[float] = []
@@ -1032,6 +1133,8 @@ def _run_mode(
             end_to_end_latency_ms.append((finished - end_to_end_started) * 1000)
             if repetition == 0:
                 ranked_results[query.id] = results
+        if on_query_complete is not None:
+            on_query_complete()
     return (
         evaluate_mode(
             dataset.queries,
@@ -1218,6 +1321,18 @@ def render_markdown_summary(report: dict[str, object]) -> str:
     embedding = _report_mapping(report.get("embedding"), "embedding")
     backends = _report_mapping(report.get("backend_versions"), "backend_versions")
     methodology = _report_mapping(report.get("methodology"), "methodology")
+    execution_strategy_value = methodology.get("execution_strategy")
+    if isinstance(execution_strategy_value, dict):
+        execution_strategy = _report_mapping(
+            execution_strategy_value, "methodology.execution_strategy"
+        )
+        execution_mode = execution_strategy.get("mode")
+        execution_rationale = execution_strategy.get("rationale")
+        if not isinstance(execution_mode, str) or not isinstance(execution_rationale, str):
+            raise ValueError("Benchmark report has incomplete execution strategy metadata")
+    else:
+        execution_mode = "not recorded"
+        execution_rationale = "This historical report predates execution-mode metadata."
     qdrant_capabilities = _report_mapping(
         methodology.get("qdrant_capabilities"), "methodology.qdrant_capabilities"
     )
@@ -1386,6 +1501,7 @@ def render_markdown_summary(report: dict[str, object]) -> str:
             f"- Hardware: {hardware.get('cpu_model')}; {platform_name}.",
             f"- Container peak memory: {memory_text}",
             f"- Benchmark process peak RSS: {runner_rss:.1f} MiB.",
+            f"- Execution mode: {execution_mode}; {execution_rationale}",
             f"- Qdrant text query: {qdrant_capabilities.get('text_query')}",
             f"- Qdrant score threshold: {qdrant_capabilities.get('score_threshold')}",
             (
@@ -1440,20 +1556,296 @@ def write_markdown_summary(report_path: Path, report: dict[str, object]) -> Path
     return summary_path
 
 
+def publish_report_pair(staged_report_path: Path, final_report_path: Path) -> None:
+    staged_summary_path = markdown_summary_path(staged_report_path)
+    final_summary_path = markdown_summary_path(final_report_path)
+    if staged_report_path.resolve() == final_report_path.resolve():
+        raise ValueError("Staged and published report paths must be different")
+    if staged_report_path.parent.resolve() != final_report_path.parent.resolve():
+        raise ValueError("Staged and published reports must be on the same filesystem directory")
+    for path in (staged_report_path, staged_summary_path):
+        if not path.is_file() or path.stat().st_size == 0:
+            raise FileNotFoundError(f"Staged report artifact is missing or empty: {path}")
+
+    final_report_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_paths: dict[Path, Path | None] = {}
+    try:
+        for path in (final_report_path, final_summary_path):
+            if not path.exists():
+                backup_paths[path] = None
+                continue
+            descriptor, backup_name = tempfile.mkstemp(
+                prefix=f".{path.name}.backup-", dir=path.parent
+            )
+            os.close(descriptor)
+            created_backup_path = Path(backup_name)
+            backup_paths[path] = created_backup_path
+            shutil.copy2(path, created_backup_path)
+    except OSError:
+        for backup_value in backup_paths.values():
+            if backup_value is not None:
+                backup_value.unlink(missing_ok=True)
+        raise
+
+    published_paths: list[Path] = []
+    try:
+        os.replace(staged_summary_path, final_summary_path)
+        published_paths.append(final_summary_path)
+        os.replace(staged_report_path, final_report_path)
+        published_paths.append(final_report_path)
+    except OSError as error:
+        rollback_errors: list[str] = []
+        for path in reversed(published_paths):
+            target_backup = backup_paths[path]
+            try:
+                if target_backup is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    os.replace(target_backup, path)
+                    backup_paths[path] = None
+            except OSError as rollback_error:
+                rollback_errors.append(f"{path}: {rollback_error}")
+        if rollback_errors:
+            retained = ", ".join(
+                str(backup_value)
+                for backup_value in backup_paths.values()
+                if backup_value is not None
+            )
+            raise RuntimeError(
+                f"Report publication failed: {error}; rollback failed: "
+                f"{'; '.join(rollback_errors)}; retained backups: {retained}"
+            ) from error
+        for backup_value in backup_paths.values():
+            if backup_value is not None:
+                backup_value.unlink(missing_ok=True)
+        raise
+    else:
+        cleanup_errors = []
+        for backup_value in backup_paths.values():
+            if backup_value is not None:
+                try:
+                    backup_value.unlink()
+                except OSError as error:
+                    cleanup_errors.append(f"{backup_value}: {error}")
+        if cleanup_errors:
+            print(
+                "Warning: report pair was published, but backup cleanup failed: "
+                + "; ".join(cleanup_errors),
+                file=sys.stderr,
+                flush=True,
+            )
+
+
 def require_approved_dataset(dataset: Dataset) -> None:
     if dataset.review_status != "approved":
         raise ValueError("Dataset is pending owner review; no benchmark may run")
 
 
-def run_benchmark(dataset: Dataset, report_path: Path) -> dict[str, object]:
-    require_approved_dataset(dataset)
-    _wait_for_services()
-    postgres = PostgresRetriever()
-    qdrant = QdrantRetriever()
+def _cache_path() -> Path:
+    if "S3_BENCHMARK_HF_CACHE_DIR" in os.environ:
+        return Path(os.environ["S3_BENCHMARK_HF_CACHE_DIR"]).expanduser()
+    if "HF_HUB_CACHE" in os.environ:
+        return Path(os.environ["HF_HUB_CACHE"]).expanduser()
+    home = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
+    return home.expanduser() / "hub"
+
+
+def _check_writable_directory(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix=".s3-preflight-", dir=path):
+        pass
+
+
+def run_preflight(dataset_path: Path, report_path: Path) -> Dataset:
+    reporter = ProgressReporter()
+    with reporter.stage("preflight"):
+        dataset = load_dataset(dataset_path)
+        require_approved_dataset(dataset)
+
+        required_files = (
+            Path("deploy/s3-benchmark-compose.yml"),
+            Path("deploy/s3-benchmark-runner.Dockerfile"),
+            Path("pyproject.toml"),
+            Path("uv.lock"),
+            Path("scripts/s3_retrieval_benchmark.py"),
+            Path("scripts/monitor_s3_benchmark_memory.py"),
+        )
+        missing_files = [str(path) for path in required_files if not path.is_file()]
+        if missing_files:
+            missing = ", ".join(missing_files)
+            raise FileNotFoundError(f"Required benchmark files are missing: {missing}")
+
+        docker = shutil.which("docker")
+        if docker is None:
+            raise FileNotFoundError("Required tool is missing: docker")
+        if shutil.which("uv") is None:
+            raise FileNotFoundError("Required tool is missing: uv")
+
+        os.environ.setdefault("S3_BENCHMARK_UID", str(os.getuid()))
+        os.environ.setdefault("S3_BENCHMARK_GID", str(os.getgid()))
+        report_directory = report_path.expanduser().resolve().parent
+        os.environ.setdefault("S3_BENCHMARK_REPORT_DIR", str(report_directory))
+        os.environ.setdefault("S3_BENCHMARK_HF_CACHE_DIR", str(_cache_path().resolve()))
+
+        compose = [
+            docker,
+            "compose",
+            "--project-name",
+            "s3-retrieval-benchmark",
+            "--file",
+            "deploy/s3-benchmark-compose.yml",
+        ]
+        try:
+            subprocess.run(
+                [docker, "info", "--format", "{{.ServerVersion}}"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            subprocess.run(
+                [*compose, "config", "--quiet"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            subprocess.run(
+                [sys.executable, "scripts/s3_retrieval_benchmark.py", "--help"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            subprocess.run(
+                [sys.executable, "-m", "scripts.monitor_s3_benchmark_memory", "--help"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            existing_containers = subprocess.run(
+                [*compose, "ps", "--quiet", "--all"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            ).stdout.strip()
+            existing_networks = subprocess.run(
+                [
+                    docker,
+                    "network",
+                    "ls",
+                    "--quiet",
+                    "--filter",
+                    "label=com.docker.compose.project=s3-retrieval-benchmark",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            ).stdout.strip()
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or error.stdout or str(error)).strip()
+            raise RuntimeError(f"Docker preflight failed: {detail}") from error
+        if existing_containers or existing_networks:
+            raise RuntimeError(
+                "The S3 Compose project already has containers or networks; "
+                "inspect and remove them before starting a new run"
+            )
+
+        report_directory = report_path.expanduser().resolve().parent
+        cache_directory = Path(os.environ["S3_BENCHMARK_HF_CACHE_DIR"]).expanduser().resolve()
+        _check_writable_directory(report_directory)
+        _check_writable_directory(cache_directory)
+
+    print(
+        "Preflight passed: approved dataset and hash, required files, Docker/Compose "
+        "configuration, idle project namespace, and writable report/cache directories. "
+        "It does not start services, build images, download the model, or assess retrieval "
+        "quality.",
+        file=sys.stderr,
+        flush=True,
+    )
+    return dataset
+
+
+def run_smoke_check() -> None:
+    reporter = ProgressReporter()
+    with reporter.stage("smoke_service_readiness"):
+        _wait_for_services()
+
+    document = Document(
+        id="preflight-smoke-001",
+        kind="policy",
+        title_en="Synthetic smoke record",
+        title_ar="سجل اختبار اصطناعي",
+        text_en="Synthetic preflight smoke record",
+        text_ar="سجل اختبار تمهيدي اصطناعي",
+        origin="synthetic_preflight",
+    )
+    vector = [0.1] * MODEL_DIMENSIONS
+    vectors = {document.id: {"en": vector, "ar": vector}}
+    postgres: PostgresRetriever | None = None
+    qdrant: QdrantRetriever | None = None
     try:
-        document_vectors, query_vectors, embedding_latencies, encode_query = _embed(dataset)
-        postgres.load(dataset.documents, document_vectors)
-        qdrant.load(dataset.documents, document_vectors)
+        with reporter.stage("smoke_connect_backends"):
+            postgres = PostgresRetriever()
+            qdrant = QdrantRetriever()
+        assert postgres is not None and qdrant is not None
+        with reporter.stage("smoke_load_synthetic_record", total=2, unit="backends") as advance:
+            postgres.load((document,), vectors)
+            advance(1)
+            qdrant.load((document,), vectors)
+            advance(1)
+        with reporter.stage("smoke_dense_and_lexical_queries", total=8, unit="checks") as advance:
+            for retriever in (postgres, qdrant):
+                for language, text in (("en", "preflight"), ("ar", "اختبار")):
+                    dense_ids = retriever.search_dense(vector, language, 1)
+                    lexical_ids = retriever.search_lexical(text, language, 1)
+                    if dense_ids != [document.id] or lexical_ids != [document.id]:
+                        raise RuntimeError(
+                            f"{retriever.name} {language} smoke retrieval did not return "
+                            "the synthetic record"
+                        )
+                    advance(2)
+    finally:
+        with reporter.stage("smoke_cleanup"):
+            try:
+                if postgres is not None:
+                    postgres.close()
+            finally:
+                if qdrant is not None:
+                    qdrant.close()
+
+    print(
+        "Smoke check passed: both backends loaded one synthetic record and returned it "
+        "for dense and lexical English/Arabic queries. No embedding model was loaded; "
+        "this does not validate model downloads, full-run behavior, or retrieval quality.",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def run_benchmark(dataset: Dataset, report_path: Path) -> dict[str, object]:
+    reporter = ProgressReporter()
+    require_approved_dataset(dataset)
+    with reporter.stage("service_readiness"):
+        _wait_for_services()
+
+    postgres: PostgresRetriever | None = None
+    qdrant: QdrantRetriever | None = None
+    try:
+        with reporter.stage("connect_backends"):
+            postgres = PostgresRetriever()
+            qdrant = QdrantRetriever()
+        assert postgres is not None and qdrant is not None
+        with reporter.stage("embedding"):
+            document_vectors, query_vectors, embedding_latencies, encode_query = _embed(dataset)
+        with reporter.stage("load_documents", total=2, unit="backends") as advance:
+            postgres.load(dataset.documents, document_vectors)
+            advance(1)
+            qdrant.load(dataset.documents, document_vectors)
 
         results: dict[str, dict[str, object]] = {}
         for retriever in (postgres, qdrant):
@@ -1469,24 +1861,39 @@ def run_benchmark(dataset: Dataset, report_path: Path) -> dict[str, object]:
             backend_results: dict[str, object] = {}
             baseline_rankings: dict[str, list[str]] | None = None
             for mode in modes:
-                mode_result, ranked_results = _run_mode(
-                    retriever, dataset, query_vectors, encode_query, mode
-                )
-                if mode == "hybrid":
-                    baseline_rankings = ranked_results
-                elif mode in SINGLE_ROUNDTRIP_MODES[retriever.name]:
-                    if baseline_rankings is None:
-                        raise RuntimeError("Client-side hybrid baseline must run first")
-                    mode_result["client_ranking_comparison"] = _ranking_comparison(
-                        baseline_rankings, ranked_results
+                with reporter.stage(
+                    f"retrieval_{retriever.name}_{mode}",
+                    total=len(dataset.queries),
+                    unit="queries",
+                ) as advance:
+                    mode_result, ranked_results = _run_mode(
+                        retriever,
+                        dataset,
+                        query_vectors,
+                        encode_query,
+                        mode,
+                        on_query_complete=lambda: advance(1),
                     )
-                backend_results[mode] = mode_result
+                    if mode == "hybrid":
+                        baseline_rankings = ranked_results
+                    elif mode in SINGLE_ROUNDTRIP_MODES[retriever.name]:
+                        if baseline_rankings is None:
+                            raise RuntimeError("Client-side hybrid baseline must run first")
+                        mode_result["client_ranking_comparison"] = _ranking_comparison(
+                            baseline_rankings, ranked_results
+                        )
+                    backend_results[mode] = mode_result
             results[retriever.name] = backend_results
         postgres_version = postgres.version
         qdrant_version = qdrant.version_info
     finally:
-        postgres.close()
-        qdrant.close()
+        with reporter.stage("cleanup_backends"):
+            try:
+                if postgres is not None:
+                    postgres.close()
+            finally:
+                if qdrant is not None:
+                    qdrant.close()
 
     report: dict[str, object] = {
         "benchmark": "S3 bilingual retrieval benchmark",
@@ -1516,6 +1923,7 @@ def run_benchmark(dataset: Dataset, report_path: Path) -> dict[str, object]:
             "qdrant": qdrant_version,
         },
         "methodology": {
+            "execution_strategy": EXECUTION_STRATEGY,
             "warmup_rounds_per_query_and_mode": WARMUP_ROUNDS,
             "measurement_repetitions_per_query_and_mode": MEASUREMENT_REPETITIONS,
             "candidate_depth": CANDIDATE_DEPTH,
@@ -1609,11 +2017,12 @@ def run_benchmark(dataset: Dataset, report_path: Path) -> dict[str, object]:
         "benchmark_process_max_rss_mib": _benchmark_process_max_rss_mib(),
         "results": results,
     }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    write_markdown_summary(report_path, report)
+    with reporter.stage("write_reports"):
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        write_markdown_summary(report_path, report)
     return report
 
 
@@ -1643,14 +2052,40 @@ def main() -> int:
         type=Path,
         default=Path("evals/retrieval/results/s3-benchmark.json"),
     )
+    run_kind = parser.add_mutually_exclusive_group()
+    run_kind.add_argument(
+        "--preflight", action="store_true", help="Validate local inputs and Docker readiness only"
+    )
+    run_kind.add_argument(
+        "--smoke", action="store_true", help="Exercise synthetic backend retrieval without a model"
+    )
+    run_kind.add_argument(
+        "--publish-staged-report",
+        type=Path,
+        help="Publish a completed staged JSON/Markdown report pair to --report",
+    )
     arguments = parser.parse_args()
     try:
+        if arguments.preflight:
+            run_preflight(arguments.dataset, arguments.report)
+            return 0
+        if arguments.smoke:
+            run_smoke_check()
+            return 0
+        if arguments.publish_staged_report is not None:
+            with ProgressReporter().stage("publish_reports"):
+                publish_report_pair(arguments.publish_staged_report, arguments.report)
+            return 0
         dataset = load_dataset(arguments.dataset)
         require_approved_dataset(dataset)
+        with ProgressReporter().stage("benchmark_run"):
+            run_benchmark(dataset, arguments.report)
+    except StageFailure as error:
+        print(f"S3 benchmark failed at stage '{error.stage}': {error.cause}", file=sys.stderr)
+        return 1
     except (OSError, ValueError) as error:
         print(f"S3 benchmark refused: {error}", file=sys.stderr)
         return 2
-    run_benchmark(dataset, arguments.report)
     print(
         "Benchmark completed. "
         f"JSON report: {arguments.report}; "

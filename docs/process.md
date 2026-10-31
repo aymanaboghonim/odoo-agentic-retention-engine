@@ -61,6 +61,18 @@ Revisit at the POC exit review (Phase 3).
 
 Bootstrap exception: the tooling for these rules is built in Phase 0b. Phase 0a already follows the rules by hand.
 
+## Long-running work and review outputs
+
+This standard applies across all project phases and domains. It covers benchmarks, evaluations, data preparation, model runs, migrations, and commands that use external services or change state. S3 is the first concrete application, not the scope limit.
+
+- **Preflight first.** Before expensive setup or side effects, validate required inputs, configuration, tools, permissions, and output paths. Check service readiness and a representative contract when appropriate. Fail with the missing prerequisite named. A preflight must be fast and must say what it does not verify.
+- **Use a bounded smoke check when useful.** Exercise a small representative contract before the full run. State whether it loads models, checks production-scale behavior, or proves result quality; do not imply guarantees it does not provide. Normal CI must remain hermetic and must not start benchmark services or download models.
+- **Show progress.** Report the current stage, elapsed time, and completed/total units when countable. For a stage without countable progress, emit a heartbeat at least every 30 seconds. Progress messages must not expose credentials or sensitive records.
+- **Fail explicitly and preserve outputs.** Identify the failed stage, return a nonzero exit, and clean up only resources created by that run. Write reports to temporary paths and publish only after all required work and report generation succeeds. A failed run must not replace the last successful result with partial output.
+- **Make review results readable.** A benchmark, evaluation, or other result intended for human review must provide a concise Markdown summary alongside machine-readable data, generated from the same successful run. Include key results, interpretation, configuration/provenance, limitations, and links between the summary and raw data.
+- **Choose execution mode with evidence.** Prefer sequential execution for isolated per-request measurements. When parallel execution is plausible, compare controlled runs using the same inputs and measurement settings; record elapsed time, resource impact, and ranking/measurement reliability. If parallelism would invalidate the objective or is not relevant, document why and the limits of that conclusion. A smoke check is not a performance comparison.
+- **Inventory existing commands.** When adding or applying this standard, identify existing long-running commands. Fix relevant gaps in scope and create follow-up issues for unrelated gaps rather than expanding the current change.
+
 ## Decisions
 
 - Architecture decisions are ADRs in `docs/adr/`. An ADR is never edited after acceptance. A new ADR supersedes it.

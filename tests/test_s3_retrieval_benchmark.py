@@ -1,15 +1,20 @@
 import json
+import os
 import re
+import subprocess
 import sys
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
+import scripts.s3_retrieval_benchmark as benchmark
 from scripts.monitor_s3_benchmark_memory import CONTAINER_NAMES, update_report_memory
 from scripts.s3_retrieval_benchmark import (
     CANDIDATE_DEPTH,
     DATASET_PATH,
+    EXECUTION_STRATEGY,
     LEXICAL_METHODS,
     MODEL_DIMENSIONS,
     MODEL_NAME,
@@ -24,8 +29,10 @@ from scripts.s3_retrieval_benchmark import (
     SINGLE_ROUNDTRIP_MODES,
     WEIGHTED_RRF_CONFIGS,
     PostgresRetriever,
+    ProgressReporter,
     QdrantRetriever,
     Query,
+    StageFailure,
     _ranking_comparison,
     evaluate_mode,
     hard_negative_outrank_count,
@@ -36,11 +43,14 @@ from scripts.s3_retrieval_benchmark import (
     parse_docker_stats,
     parse_memory_mib,
     percentile,
+    publish_report_pair,
     query_overlap_diagnostics,
     recall_at_k,
     reciprocal_rank_fusion,
     render_markdown_summary,
     run_benchmark,
+    run_preflight,
+    run_smoke_check,
     write_markdown_summary,
 )
 
@@ -227,6 +237,189 @@ def test_benchmark_refuses_unreviewed_dataset_before_starting_services(tmp_path)
         run_benchmark(dataset, tmp_path / "report.json")
 
     assert not (tmp_path / "report.json").exists()
+
+
+def test_preflight_rejects_invalid_inputs_before_docker(tmp_path, monkeypatch) -> None:
+    source = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    source["review_status"] = "draft_pending_owner_review"
+    dataset_path = tmp_path / "draft-dataset.json"
+    dataset_path.write_text(json.dumps(source), encoding="utf-8")
+
+    def docker_must_not_be_checked(_name: str) -> str:
+        pytest.fail("Docker checks must not run for an invalid dataset")
+
+    monkeypatch.setattr(benchmark.shutil, "which", docker_must_not_be_checked)
+    with pytest.raises(StageFailure, match="pending owner review"):
+        run_preflight(dataset_path, tmp_path / "reports" / "report.json")
+
+    assert not (tmp_path / "reports").exists()
+
+
+def test_preflight_rejects_missing_runner_file_before_docker(tmp_path, monkeypatch) -> None:
+    real_is_file = Path.is_file
+
+    def missing_monitor_script(path: Path) -> bool:
+        if path == Path("scripts/monitor_s3_benchmark_memory.py"):
+            return False
+        return real_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", missing_monitor_script)
+    monkeypatch.setattr(
+        benchmark.shutil,
+        "which",
+        lambda _name: pytest.fail("Docker checks must not run when a runner file is missing"),
+    )
+    with pytest.raises(StageFailure, match="monitor_s3_benchmark_memory.py"):
+        run_preflight(DATASET_PATH, tmp_path / "reports" / "report.json")
+
+    assert not (tmp_path / "reports").exists()
+
+
+def test_preflight_and_smoke_document_limits(tmp_path, monkeypatch, capsys) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(benchmark.shutil, "which", lambda _name: "/usr/bin/tool")
+    monkeypatch.setattr(benchmark.subprocess, "run", fake_run)
+    monkeypatch.setenv("S3_BENCHMARK_HF_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.delenv("S3_BENCHMARK_REPORT_DIR", raising=False)
+    run_preflight(DATASET_PATH, tmp_path / "reports" / "report.json")
+
+    preflight_output = capsys.readouterr().err
+    assert "does not start services, build images, download the model" in preflight_output
+    assert all("up" not in command and "build" not in command for command in commands)
+
+    class FakeRetriever:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+
+        def load(self, documents, vectors) -> None:
+            assert len(documents) == 1
+            assert len(vectors[documents[0].id]["en"]) == MODEL_DIMENSIONS
+
+        def search_dense(self, _vector, _language: str, _limit: int) -> list[str]:
+            return ["preflight-smoke-001"]
+
+        def search_lexical(self, _text: str, _language: str, _limit: int) -> list[str]:
+            return ["preflight-smoke-001"]
+
+        def close(self) -> None:
+            self.closed = True
+
+    retrievers = [FakeRetriever("pgvector"), FakeRetriever("qdrant")]
+    monkeypatch.setattr(benchmark, "PostgresRetriever", lambda: retrievers[0])
+    monkeypatch.setattr(benchmark, "QdrantRetriever", lambda: retrievers[1])
+    monkeypatch.setattr(benchmark, "_wait_for_services", lambda: None)
+    monkeypatch.setattr(
+        benchmark, "_embed", lambda _dataset: pytest.fail("Smoke must not load the model")
+    )
+    run_smoke_check()
+
+    smoke_output = capsys.readouterr().err
+    assert "No embedding model was loaded" in smoke_output
+    assert "does not validate model downloads, full-run behavior, or retrieval quality" in (
+        smoke_output
+    )
+    assert all(retriever.closed for retriever in retrievers)
+
+
+def test_s3_smoke_checks_backends_without_model_download(monkeypatch, capsys) -> None:
+    exercised: list[tuple[str, str, str]] = []
+
+    class FakeRetriever:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def load(self, documents, _vectors) -> None:
+            exercised.append((self.name, "load", documents[0].id))
+
+        def search_dense(self, _vector, language: str, _limit: int) -> list[str]:
+            exercised.append((self.name, f"dense_{language}", "preflight-smoke-001"))
+            return ["preflight-smoke-001"]
+
+        def search_lexical(self, _text: str, language: str, _limit: int) -> list[str]:
+            exercised.append((self.name, f"lexical_{language}", "preflight-smoke-001"))
+            return ["preflight-smoke-001"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(benchmark, "PostgresRetriever", lambda: FakeRetriever("pgvector"))
+    monkeypatch.setattr(benchmark, "QdrantRetriever", lambda: FakeRetriever("qdrant"))
+    monkeypatch.setattr(benchmark, "_wait_for_services", lambda: None)
+    monkeypatch.setattr(
+        benchmark, "_embed", lambda _dataset: pytest.fail("Smoke must not load the model")
+    )
+    run_smoke_check()
+
+    assert len(exercised) == 10
+    assert {row[1] for row in exercised} >= {
+        "dense_en",
+        "dense_ar",
+        "lexical_en",
+        "lexical_ar",
+    }
+    assert "No embedding model was loaded" in capsys.readouterr().err
+
+
+def test_progress_reports_stage_units_and_elapsed(capsys) -> None:
+    reporter = ProgressReporter(heartbeat_seconds=1, progress_interval_seconds=0)
+    with reporter.stage("document_load", total=2, unit="backends") as advance:
+        advance(1)
+        advance(1)
+
+    output = capsys.readouterr().err
+    assert "progress stage=document_load status=started" in output
+    assert "completed=1 total=2 unit=backends" in output
+    assert "completed=2 total=2 unit=backends" in output
+    assert "status=completed" in output
+    assert "elapsed_seconds=" in output
+
+
+def test_slow_stage_emits_heartbeat(capsys) -> None:
+    reporter = ProgressReporter(heartbeat_seconds=0.01)
+    with reporter.stage("model_download"):
+        time.sleep(0.035)
+
+    assert "progress stage=model_download status=heartbeat" in capsys.readouterr().err
+
+
+def test_failure_names_stage_and_cleans_run_resources(monkeypatch, capsys) -> None:
+    class FakeRetriever:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+
+        def load(self, _documents, _vectors) -> None:
+            pass
+
+        def search_dense(self, _vector, _language: str, _limit: int) -> list[str]:
+            return ["preflight-smoke-001"]
+
+        def search_lexical(self, _text: str, _language: str, _limit: int) -> list[str]:
+            if self.name == "qdrant":
+                raise RuntimeError("synthetic query failure")
+            return ["preflight-smoke-001"]
+
+        def close(self) -> None:
+            self.closed = True
+
+    retrievers = [FakeRetriever("pgvector"), FakeRetriever("qdrant")]
+    monkeypatch.setattr(benchmark, "PostgresRetriever", lambda: retrievers[0])
+    monkeypatch.setattr(benchmark, "QdrantRetriever", lambda: retrievers[1])
+    monkeypatch.setattr(benchmark, "_wait_for_services", lambda: None)
+
+    with pytest.raises(StageFailure, match="smoke_dense_and_lexical_queries"):
+        run_smoke_check()
+
+    assert all(retriever.closed for retriever in retrievers)
+    output = capsys.readouterr().err
+    assert "status=failed" in output
+    assert "error_type=RuntimeError" in output
 
 
 def test_dataset_rejects_unknown_relevance_ids(tmp_path) -> None:
@@ -437,6 +630,214 @@ def test_markdown_summary_is_human_readable_and_links_machine_report(
     assert "PostgreSQL FTS + pgvector for POC retrieval in [ADR-0015]" in markdown
     assert "Qdrant score threshold:" in markdown
     assert "[s3-benchmark.json](./s3-benchmark.json)" in markdown
+
+
+def test_execution_mode_metadata_is_reported() -> None:
+    report = json.loads(
+        Path("evals/retrieval/results/s3-benchmark.json").read_text(encoding="utf-8")
+    )
+    methodology = report["methodology"]
+    assert isinstance(methodology, dict)
+    methodology["execution_strategy"] = EXECUTION_STRATEGY
+
+    markdown = render_markdown_summary(report)
+
+    assert EXECUTION_STRATEGY["mode"] == "sequential"
+    assert "Execution mode: sequential" in markdown
+    assert "not throughput" in EXECUTION_STRATEGY["rationale"]
+
+
+def test_benchmark_report_records_execution_mode(tmp_path: Path, monkeypatch) -> None:
+    dataset = load_dataset()
+
+    class FakePostgres:
+        name = "pgvector"
+        version = "PostgreSQL 15.0"
+
+        def load(self, _documents, _vectors) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakeQdrant:
+        name = "qdrant"
+        version_info = {"version": "1.20.0"}
+
+        def load(self, _documents, _vectors) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(benchmark, "_wait_for_services", lambda: None)
+    monkeypatch.setattr(benchmark, "PostgresRetriever", FakePostgres)
+    monkeypatch.setattr(benchmark, "QdrantRetriever", FakeQdrant)
+    monkeypatch.setattr(
+        benchmark,
+        "_embed",
+        lambda _dataset: ({}, {}, {"query": 1.0}, lambda _text: [0.0]),
+    )
+    monkeypatch.setattr(benchmark, "_pgvector_version", lambda: "0.8.7")
+    monkeypatch.setattr(benchmark, "_distribution_version", lambda _name: "test-version")
+    monkeypatch.setattr(
+        benchmark,
+        "_embedding_latency_report",
+        lambda _latencies: {"p50_ms": 1.0, "p95_ms": 1.0, "query_count": 1},
+    )
+    monkeypatch.setattr(
+        benchmark, "_hardware_info", lambda: {"platform": "test", "cpu_model": "test"}
+    )
+    monkeypatch.setattr(benchmark, "_benchmark_process_max_rss_mib", lambda: 1.0)
+
+    def fake_run_mode(_retriever, run_dataset, _vectors, _encode, _mode, on_query_complete=None):
+        if on_query_complete is not None:
+            for _query in run_dataset.queries:
+                on_query_complete()
+        return ({}, {query.id: ["doc"] for query in run_dataset.queries})
+
+    monkeypatch.setattr(benchmark, "_run_mode", fake_run_mode)
+    monkeypatch.setattr(benchmark, "write_markdown_summary", lambda _path, _report: _path)
+    report_path = tmp_path / "report.json"
+
+    run_benchmark(dataset, report_path)
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["methodology"]["execution_strategy"] == EXECUTION_STRATEGY
+
+
+def test_report_pair_publication_rolls_back_after_failure(tmp_path: Path, monkeypatch) -> None:
+    staged_report = tmp_path / ".s3-benchmark.staged"
+    staged_summary = markdown_summary_path(staged_report)
+    final_report = tmp_path / "s3-benchmark.json"
+    final_summary = markdown_summary_path(final_report)
+    staged_report.write_text('{"run": "new"}\n', encoding="utf-8")
+    staged_summary.write_text("# new run\n", encoding="utf-8")
+    final_report.write_text('{"run": "previous"}\n', encoding="utf-8")
+    final_summary.write_text("# previous run\n", encoding="utf-8")
+
+    real_replace = benchmark.os.replace
+
+    def fail_new_report(source, destination) -> None:
+        if Path(source) == staged_report:
+            raise OSError("injected report-publish failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(benchmark.os, "replace", fail_new_report)
+    with pytest.raises(OSError, match="injected report-publish failure"):
+        publish_report_pair(staged_report, final_report)
+
+    assert final_report.read_text(encoding="utf-8") == '{"run": "previous"}\n'
+    assert final_summary.read_text(encoding="utf-8") == "# previous run\n"
+
+
+@pytest.mark.parametrize(
+    ("failure_stage", "expected_status"),
+    (("benchmark", 23), ("cleanup", 17)),
+)
+def test_launcher_failure_keeps_published_reports(
+    tmp_path: Path, failure_stage: str, expected_status: int
+) -> None:
+    workspace = tmp_path / "workspace"
+    scripts = workspace / "scripts"
+    results = workspace / "evals" / "retrieval" / "results"
+    bin_dir = tmp_path / "bin"
+    home = tmp_path / "home"
+    scripts.mkdir(parents=True)
+    results.mkdir(parents=True)
+    bin_dir.mkdir()
+    home.mkdir()
+    (scripts / "run_s3_benchmark.sh").write_text(
+        Path("scripts/run_s3_benchmark.sh").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (results / "s3-benchmark.json").write_text('{"run": "previous"}\n', encoding="utf-8")
+    (results / "s3-benchmark.md").write_text("# previous run\n", encoding="utf-8")
+
+    uv = bin_dir / "uv"
+    uv.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    uv.chmod(0o755)
+    docker = bin_dir / "docker"
+    docker.write_text(
+        """#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$S3_TEST_DOCKER_LOG"
+case " $* " in
+  *" benchmark --smoke "*)
+    exit 0
+    ;;
+  *" benchmark --report "*)
+    previous=""
+    for argument in "$@"; do
+      if [[ "$previous" == "--report" ]]; then
+        report_container_path="$argument"
+      fi
+      previous="$argument"
+    done
+    if [[ "$S3_TEST_FAILURE_STAGE" == "cleanup" ]]; then
+      report_name="$(basename "$report_container_path")"
+      printf '{"run": "new"}\\n' > "$S3_BENCHMARK_REPORT_DIR/$report_name"
+      printf '# new run\\n' > "$S3_BENCHMARK_REPORT_DIR/$report_name.md"
+      exit 0
+    fi
+    exit 23
+    ;;
+  *" down --volumes "*)
+    if [[ "$S3_TEST_FAILURE_STAGE" == "cleanup" && ! -e "$S3_TEST_DOWN_MARKER" ]]; then
+      touch "$S3_TEST_DOWN_MARKER"
+      exit 17
+    fi
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+
+    environment = os.environ.copy()
+    environment["PATH"] = f"{bin_dir}:{environment['PATH']}"
+    environment["HOME"] = str(home)
+    environment["HF_HOME"] = str(home / ".cache" / "huggingface")
+    environment["S3_TEST_DOCKER_LOG"] = str(tmp_path / "docker.log")
+    environment["S3_TEST_DOWN_MARKER"] = str(tmp_path / "down-once")
+    environment["S3_TEST_FAILURE_STAGE"] = failure_stage
+    result = subprocess.run(
+        ["bash", "scripts/run_s3_benchmark.sh"],
+        cwd=workspace,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == expected_status
+    assert (results / "s3-benchmark.json").read_text(encoding="utf-8") == ('{"run": "previous"}\n')
+    assert (results / "s3-benchmark.md").read_text(encoding="utf-8") == "# previous run\n"
+    assert not list(results.glob(".s3-benchmark.*"))
+    assert "status=failed" in result.stderr
+    if failure_stage == "cleanup":
+        assert "stage=cleanup_compose status=failed" in result.stderr
+    else:
+        assert "stage=benchmark status=failed" in result.stderr
+
+    launcher = Path("scripts/run_s3_benchmark.sh").read_text(encoding="utf-8")
+    assert launcher.index("run_stage preflight") < launcher.index("run_stage docker_startup")
+    assert launcher.index("run_stage backend_smoke") < launcher.index("run_stage benchmark")
+    smoke_exit = launcher.index("if ((smoke_only)); then")
+    assert launcher.index("run_stage backend_smoke") < smoke_exit
+    assert smoke_exit < launcher.index("run_stage benchmark")
+    cleanup_index = launcher.rindex("run_stage cleanup_compose")
+    publish_index = launcher.index("run_stage publish_reports")
+    assert cleanup_index > launcher.index('wait "$monitor_pid"')
+    assert cleanup_index < publish_index
+    assert publish_index > launcher.index("run_stage benchmark")
+    assert "--publish-staged-report" in launcher
+    assert "mv -f --" not in launcher
+    assert "if ((compose_started)); then" in launcher
 
 
 def test_markdown_summary_path_handles_canonical_and_staged_reports() -> None:
@@ -695,7 +1096,7 @@ def test_report_does_not_apply_provisional_recall_target_as_gate() -> None:
 
 def test_default_checks_do_not_start_benchmark_services() -> None:
     makefile = Path("Makefile").read_text(encoding="utf-8")
-    ci_target = makefile.split("\nci:\n", maxsplit=1)[1].split("\nbenchmark-s3:\n", maxsplit=1)[0]
+    ci_target = makefile.split("\nci:\n", maxsplit=1)[1].split("\nverify-uv:\n", maxsplit=1)[0]
 
     assert "docker compose" not in ci_target
     assert "run_s3_benchmark.sh" not in ci_target
@@ -714,7 +1115,7 @@ def test_launcher_uses_caller_identity_and_run_scoped_report() -> None:
     assert 'export S3_BENCHMARK_GID="$(id -g)"' in launcher
     assert 'mktemp "$report_dir/.s3-benchmark.XXXXXX"' in launcher
     assert '--report "$run_report_path"' in launcher
-    assert 'mv -f -- "$run_report_path" "$final_report_path"' in launcher
     assert 'run_markdown_path="${run_report_path}.md"' in launcher
     assert '[[ ! -s "$run_markdown_path" ]]' in launcher
-    assert 'mv -f -- "$run_markdown_path" "$final_markdown_path"' in launcher
+    assert '--publish-staged-report "$run_report_path" --report "$final_report_path"' in launcher
+    assert "mv -f --" not in launcher

@@ -17,6 +17,7 @@ Project: an agentic AI layer on top of Odoo (abandoned carts, retention). Read [
 - Update `docs/STATUS.md` in every PR.
 - Never commit secrets. All data is synthetic. The agent runtime never writes directly to the Odoo database: it reads with a read-only database role, and runtime state changes go through the supported Odoo API/worker path. A local setup fixture may create synthetic data through Odoo's supported API only in the isolated local development instance. Never seed through SQL or target a real/shared Odoo instance.
 - The LLM never decides money. Discount limits are enforced in code and tested.
+- Long-running or side-effecting commands follow the project-wide preflight, progress, failure, and report rules in `docs/process.md`; do not launch the full operation before its documented preflight.
 - Plan mode does not edit repo files. Only Agent mode does.
 - Do not invent facts or results. Say "unknown" and add it to the open questions.
 - Docs are in English, simple words, technical terms kept as they are. Arabic only for customer-facing UI and messages, test data and optional summaries.

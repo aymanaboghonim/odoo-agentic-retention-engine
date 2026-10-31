@@ -6,17 +6,35 @@ This benchmark compares pgvector and Qdrant using a fixed bilingual corpus of sy
 
 Prerequisites: Docker, the repository's locked `uv` toolchain, and network access to build the pinned runner image and download the pinned Hugging Face model files on the first run.
 
+Run the fast host-side checks before a full run:
+
+```sh
+make preflight-s3
+```
+
+Preflight validates the approved dataset and hash, required repository files, `uv` and Docker availability, Docker daemon readiness, Compose configuration, an unused benchmark project namespace, and writable report/cache directories. It does not start services, build the image, download the model, or assess retrieval quality. `make benchmark-s3` runs the same preflight automatically before starting the benchmark.
+
+Run the end-to-end synthetic smoke separately when you want to validate the backend contract without beginning the full benchmark:
+
+```sh
+make smoke-s3
+```
+
+This starts the disposable backends, builds the runner image, runs the smoke check, and cleans up the project. It does not load the model or write benchmark reports. The first run may still spend time building the pinned image.
+
 Run the complete benchmark from the repository root:
 
 ```sh
 make benchmark-s3
 ```
 
-The command starts only the `s3-retrieval-benchmark` Compose project. The Python runner and both backends communicate over the private Compose network; database ports are not published to the host. The PostgreSQL trust-auth setting is limited to this disposable, synthetic benchmark container. Backend storage is temporary, and the launcher removes only this Compose project's containers and volumes on exit.
+After preflight, the launcher starts only the `s3-retrieval-benchmark` Compose project, builds the runner image, and runs a bounded backend smoke check before the full benchmark. The smoke check loads one synthetic record and checks dense and lexical retrieval in English and Arabic against both backends without loading the embedding model. A passing smoke check does not guarantee model download, full-run success, or retrieval quality.
 
-The runner uses the pinned Python image recorded in [F-024](../facts-register.md) and installs the locked `retrieval-benchmark` dependency group. The first run downloads the model snapshot recorded in [F-007](../facts-register.md); later runs use the host Hugging Face hub cache, mounted without the token cache. The exact model revision is passed to the downloader with token use disabled. No embedding model or backend service is started by `make ci`.
+The Python runner and both backends communicate over the private Compose network; database ports are not published to the host. The PostgreSQL trust-auth setting is limited to this disposable, synthetic benchmark container. Backend storage is temporary, and the launcher removes only the Compose containers, network, and volumes for the project it started; it keeps the built runner image and host model cache for reuse. If the project namespace already has containers or networks, preflight stops rather than reusing or deleting them.
 
-The benchmark runs as the invoking user's UID/GID to avoid root-owned files in the host cache and results directory. Each run writes a unique temporary JSON report and a Markdown review summary from the same measurements. The launcher regenerates the summary after memory collection and promotes both to `evals/retrieval/results/s3-benchmark.json` and `evals/retrieval/results/s3-benchmark.md` only after retrieval, Markdown generation, and memory collection all succeed. Commit both reports with the spike decision. A nonzero exit means the measurement did not complete; do not treat a partial report as a successful result.
+The runner uses the pinned Python image recorded in [F-024](../facts-register.md) and installs the locked `retrieval-benchmark` dependency group. The first full run downloads the model snapshot recorded in [F-007](../facts-register.md); later runs use the host Hugging Face hub cache, mounted without the token cache. The exact model revision is passed to the downloader with token use disabled. No embedding model or backend service is started by `make ci`.
+
+The benchmark runs as the invoking user's UID/GID to avoid root-owned files in the host cache and results directory. Progress reports the current stage, elapsed time, and completed/total queries where applicable; stages without countable units emit a heartbeat at least every 30 seconds. A failed stage is named and exits nonzero. Each run writes a unique temporary JSON report and a Markdown review summary from the same measurements. The launcher regenerates the summary after memory collection and publishes both to `evals/retrieval/results/s3-benchmark.json` and `evals/retrieval/results/s3-benchmark.md` only after retrieval, Markdown generation, memory collection, and Compose cleanup all succeed. Publication rolls back the pair if either replacement fails; a retained backup is reported if rollback itself fails. Commit both reports with the spike decision. A nonzero exit means the measurement did not complete; do not treat a partial report as a successful result.
 
 The checked-in dataset has owner approval and must keep `review_status: "approved"` to run. The runner refuses any pending dataset before contacting the benchmark services or downloading the model. Odoo data is used only in the one-time snapshot recorded in the dataset metadata. The `corpus_sha256` value is computed from the canonical JSON representation of the `documents` list.
 
@@ -38,5 +56,13 @@ The checked-in dataset has owner approval and must keep `review_status: "approve
 - Quality: report macro-average Recall@5, MRR@5, and nDCG@5 overall and by language, product/policy task, and query challenge. Report hard-negative outrank rate for contrastive cases. Treat paired English/Arabic scenarios as clusters; do not claim the 80 strings are 80 independent samples.
 - Latency: client-observed search time excludes query embedding; embedding and end-to-end timings are reported separately. Percentiles use nearest-rank.
 - Resources: a host-side monitor samples Docker memory for the two named backend containers without mounting the Docker socket into the runner. Report their maximum memory and the runner process's maximum RSS. Record host details and exact image/model versions.
+- Execution mode: the benchmark remains sequential. It measures isolated per-query ranking and latency, not throughput; running backends or queries concurrently would add shared CPU/database contention and change the latency being compared. No parallel-versus-sequential performance pilot is claimed, and this decision does not establish throughput capacity or an optimal production execution mode.
+
+## Existing command inventory
+
+- `make setup` uses `uv sync --locked`, which checks the lockfile and emits package progress; its existing tool-version and Docker checks are the fast preflight. No extra progress framework is needed.
+- `make ci` reports each pre-commit check and traceability result, so it already gives per-check progress and a final status.
+- `make benchmark-s3` is the first full application of the project-wide preflight, smoke, progress, failure, and report rules in this runbook.
+- The S1 Odoo Compose startup and `scripts/spike_s1_odoo.py` probe/seed do not yet show stage progress. Track that out-of-scope gap in [issue #53](https://github.com/aymanaboghonim/odoo-agentic-retention-engine/issues/53).
 
 Do not treat the provisional 90% Recall@5 figure as a pass/fail condition. If the small corpus cannot support a reliable gate or store choice, record the limitation and keep the decision open.
