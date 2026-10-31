@@ -1,0 +1,36 @@
+services:
+  pgvector:
+    image: pgvector/pgvector:0.8.7-pg15@sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c
+    environment:
+      POSTGRES_DB: s3bench
+      POSTGRES_USER: s3bench
+      POSTGRES_HOST_AUTH_METHOD: trust
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U s3bench -d s3bench"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.0@sha256:2d1b0bfd0a961275481ea09400fc98008216ae54e1b52ed7d24520d63050c644
+    tmpfs:
+      - /qdrant/storage
+
+  benchmark:
+    build:
+      context: ..
+      dockerfile: deploy/s3-benchmark-runner.Dockerfile
+    command: ["--report", "/reports/s3-benchmark.json"]
+    user: "${S3_BENCHMARK_UID:?Set S3_BENCHMARK_UID}:${S3_BENCHMARK_GID:?Set S3_BENCHMARK_GID}"
+    environment:
+      HF_HUB_CACHE: /hf-cache
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      S3_BENCHMARK_POSTGRES_DSN: postgresql://s3bench@pgvector:5432/s3bench
+      S3_BENCHMARK_QDRANT_URL: http://qdrant:6333
+      S3_BENCHMARK_RUNNER_IMAGE: python:3.14.9-slim-bookworm@sha256:945c2676dc2b18e0c1f16879244122c57c0ffede60006bf3df159c507a31bcae
+    volumes:
+      - "${S3_BENCHMARK_HF_CACHE_DIR:?Set S3_BENCHMARK_HF_CACHE_DIR}:/hf-cache"
+      - "${S3_BENCHMARK_REPORT_DIR:?Set S3_BENCHMARK_REPORT_DIR}:/reports"

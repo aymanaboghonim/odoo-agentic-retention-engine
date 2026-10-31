@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: after #49 merges, continue Phase 1 in the agreed order: S3 (retrieval benchmark), S2 (LLM evaluation), then S4 (channels). Create each spike's detailed plan just in time.
+Next action: owner reviews the completed S3 closing ablations in [the benchmark report](../evals/retrieval/results/s3-benchmark.json) before any store decision or ADR change. After S3, handle the preflight/progress follow-up in #51 before the next long benchmark run.
 
 ## Phases
 
@@ -22,7 +22,7 @@ Next action: after #49 merges, continue Phase 1 in the agreed order: S3 (retriev
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [x] S1 Odoo (#43): Odoo 19.0, demo data has aged abandoned carts so no seed needed, reminder is opt-in, about 360 MiB idle ([ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md))
   - [ ] S2 LLM evaluation on golden set
-  - [ ] S3 Retrieval: pgvector vs Qdrant, embedding model support
+  - [ ] S3 Retrieval (#47): approved baseline and closing ablations complete; report ready for owner review; no store selected and no ADR change until review
   - [ ] S4 Telegram bot and Mailpit
 - [ ] **Phase 2: POC walking skeleton** (detailed issues written just in time)
 - [ ] **Phase 3: POC exit review, MVP plan**
@@ -78,7 +78,7 @@ Section numbers below referred to the removed draft.
 | # | Question | Resolution / status |
 | :-- | :-- | :-- |
 | Q2 | Final LLM model | S2, then update ADR-0003 |
-| Q3 | Final retrieval store | S3, then new ADR superseding ADR-0006 |
+| Q3 | Final retrieval store | Await owner review of [the S3 benchmark report](../evals/retrieval/results/s3-benchmark.json); only after review, decide whether to write an ADR superseding ADR-0006 |
 | Q4 | Odoo version (17 or newer) | Done. Resolved 2026-10-29: 19.0, [ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md). 19.0 support/EOL dates unverified. |
 | Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 (diagram syntax: flowcharts, ADR-0011) |
 | Q6 | Free email service for MVP | MVP planning |

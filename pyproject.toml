@@ -15,6 +15,11 @@ dev = [
   "pytest==9.1.1",
   "ruff==0.17.2",
 ]
+retrieval-benchmark = [
+    "fastembed==0.9.1",
+    "psycopg[binary]==3.3.6",
+    "qdrant-client==1.20.0",
+]
 
 [tool.ruff]
 line-length = 100
