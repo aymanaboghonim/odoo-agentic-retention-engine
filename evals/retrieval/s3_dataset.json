@@ -1,0 +1,878 @@
+{
+  "dataset_version": "s3-3",
+  "review_status": "approved",
+  "source": "one-time snapshot of synthetic Odoo demo product.template records (consu/combo) plus synthetic policy text; no customer/cart/order data; benchmark runtime has no Odoo connection",
+  "source_snapshot": {
+    "model": "product.template",
+    "snapshot_date": "2026-10-30",
+    "total_template_count": 39,
+    "included_template_count": 29,
+    "included_type_counts": {
+      "consu": 28,
+      "combo": 1
+    },
+    "excluded_service_count": 10
+  },
+  "corpus_sha256": "826d239bdcb8c93f1179a72507bac26d72df07c964bacede576b21ad6f2a9f97",
+  "documents": [
+    {
+      "id": "product-0005",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 5,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Office Chair",
+      "title_ar": "كرسي المكتب",
+      "text_en": "Office Chair. Comfortable yellow chair for daily work. Category: Office.",
+      "text_ar": "كرسي المكتب. كرسي أصفر مريح للاستخدام اليومي. الفئة: مكتب."
+    },
+    {
+      "id": "product-0006",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 6,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Office Lamp",
+      "title_ar": "مصباح المكتب",
+      "text_en": "Office Lamp. Category: Office.",
+      "text_ar": "مصباح المكتب. الفئة: مكتب."
+    },
+    {
+      "id": "product-0007",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 7,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Office Design Software",
+      "title_ar": "برنامج تصميم المكاتب",
+      "text_en": "Office Design Software. Design and plan smart offices with ease. Category: Office.",
+      "text_ar": "برنامج تصميم المكاتب. يتيح تصميم المكاتب الذكية وتخطيطها بسهولة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0008",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 8,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Desk Combination",
+      "title_ar": "مجموعة المكتب",
+      "text_en": "Desk Combination. Black-brown desk combination with chair and drawer. Category: Office.",
+      "text_ar": "مجموعة المكتب. طقم مكتب باللونين الأسود والبني يضم كرسيًا ومكتبًا ودرجًا. الفئة: مكتب."
+    },
+    {
+      "id": "product-0009",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 9,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Customizable Desk",
+      "title_ar": "مكتب قابل للتخصيص",
+      "text_en": "Customizable Desk. 160 x 80 cm, with large legs. Category: Office.",
+      "text_ar": "مكتب قابل للتخصيص. مقاسه 160 × 80 سم وله أرجل كبيرة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0010",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 10,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Corner Desk Right Sit",
+      "title_ar": "مكتب زاوية بمساحة عمل يمينية",
+      "text_en": "Corner Desk Right Sit. Right-aligned desk with storage. Category: Office.",
+      "text_ar": "مكتب زاوية بمساحة عمل يمينية. مكتب مع مساحة تخزين على الجانب الأيمن. الفئة: مكتب."
+    },
+    {
+      "id": "product-0011",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 11,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Large Cabinet",
+      "title_ar": "خزانة كبيرة",
+      "text_en": "Large Cabinet. Category: Office.",
+      "text_ar": "خزانة كبيرة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0012",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 12,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Storage Box",
+      "title_ar": "صندوق تخزين",
+      "text_en": "Storage Box. Blue plastic bin for flexible office storage. Category: Office.",
+      "text_ar": "صندوق تخزين. حاوية بلاستيكية زرقاء للتخزين المرن في المكتب. الفئة: مكتب."
+    },
+    {
+      "id": "product-0013",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 13,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Large Desk",
+      "title_ar": "مكتب كبير",
+      "text_en": "Large Desk. Minimalist wooden desk for executive use. Category: Office.",
+      "text_ar": "مكتب كبير. مكتب خشبي بتصميم بسيط للاستخدام التنفيذي. الفئة: مكتب."
+    },
+    {
+      "id": "product-0014",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 14,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Pedal Bin",
+      "title_ar": "سلة مهملات ببدال",
+      "text_en": "Pedal Bin. Soft-close pedal bin for office use. Category: Office.",
+      "text_ar": "سلة مهملات ببدال. سلة مكتبية بآلية إغلاق هادئة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0015",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 15,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Cabinet with Doors",
+      "title_ar": "خزانة بأبواب",
+      "text_en": "Cabinet with Doors. Category: Office.",
+      "text_ar": "خزانة بأبواب. الفئة: مكتب."
+    },
+    {
+      "id": "product-0016",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 16,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Conference Chair",
+      "title_ar": "كرسي اجتماعات",
+      "text_en": "Conference Chair. Category: Office.",
+      "text_ar": "كرسي اجتماعات. الفئة: مكتب."
+    },
+    {
+      "id": "product-0017",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 17,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Office Chair Black",
+      "title_ar": "كرسي مكتب أسود",
+      "text_en": "Office Chair Black. High-back office chair with great support. Category: Office.",
+      "text_ar": "كرسي مكتب أسود. كرسي بظهر مرتفع ودعم جيد. الفئة: مكتب."
+    },
+    {
+      "id": "product-0018",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 18,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Corner Desk Left Sit",
+      "title_ar": "مكتب زاوية بمساحة عمل يسارية",
+      "text_en": "Corner Desk Left Sit. Left-sided workspace with storage. Category: Office.",
+      "text_ar": "مكتب زاوية بمساحة عمل يسارية. مكتب مع مساحة تخزين على الجانب الأيسر. الفئة: مكتب."
+    },
+    {
+      "id": "product-0019",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 19,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Drawer Black",
+      "title_ar": "درج أسود",
+      "text_en": "Drawer Black. Category: Office.",
+      "text_ar": "درج أسود. الفئة: مكتب."
+    },
+    {
+      "id": "product-0020",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 20,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Flipover",
+      "title_ar": "لوح عرض ورقي قابل للقلب",
+      "text_en": "Flipover. Category: Office.",
+      "text_ar": "لوح عرض ورقي قابل للقلب. الفئة: مكتب."
+    },
+    {
+      "id": "product-0021",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 21,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Desk Stand with Screen",
+      "title_ar": "حامل مكتب مزود بشاشة",
+      "text_en": "Desk Stand with Screen. Category: Office.",
+      "text_ar": "حامل مكتب مزود بشاشة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0022",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 22,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Individual Workplace",
+      "title_ar": "مساحة عمل فردية",
+      "text_en": "Individual Workplace. Private pod with desk and chair. Category: Office.",
+      "text_ar": "مساحة عمل فردية. حجرة خاصة تضم مكتبًا وكرسيًا. الفئة: مكتب."
+    },
+    {
+      "id": "product-0023",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 23,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Acoustic Bloc Screens",
+      "title_ar": "ألواح حاجزة للصوت",
+      "text_en": "Acoustic Bloc Screens. Noise-reducing panels for open spaces. Category: Office.",
+      "text_ar": "ألواح حاجزة للصوت. ألواح لتقليل الضوضاء في المساحات المفتوحة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0024",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 24,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Drawer",
+      "title_ar": "درج",
+      "text_en": "Drawer. Category: Office.",
+      "text_ar": "درج. الفئة: مكتب."
+    },
+    {
+      "id": "product-0025",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 25,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Four Person Desk",
+      "title_ar": "مكتب لأربعة أشخاص",
+      "text_en": "Four Person Desk. Category: Office.",
+      "text_ar": "مكتب لأربعة أشخاص. الفئة: مكتب."
+    },
+    {
+      "id": "product-0026",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 26,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Large Meeting Table",
+      "title_ar": "طاولة اجتماعات كبيرة",
+      "text_en": "Large Meeting Table. Big table seats 10–12 for team discussions. Category: Office.",
+      "text_ar": "طاولة اجتماعات كبيرة. طاولة واسعة تتسع من 10 إلى 12 شخصًا للنقاشات الجماعية. الفئة: مكتب."
+    },
+    {
+      "id": "product-0027",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 27,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Two-Seat Sofa",
+      "title_ar": "أريكة بمقعدين",
+      "text_en": "Two-Seat Sofa. Two-seater sofa with oak wood frame. Category: Office.",
+      "text_ar": "أريكة بمقعدين. أريكة بإطار من خشب البلوط. الفئة: مكتب."
+    },
+    {
+      "id": "product-0030",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 30,
+      "source_record_type": "consu",
+      "category_en": "Outdoor",
+      "title_en": "Outdoor dining table",
+      "title_ar": "طاولة طعام خارجية",
+      "text_en": "Outdoor dining table. Category: Outdoor.",
+      "text_ar": "طاولة طعام خارجية. الفئة: خارجي."
+    },
+    {
+      "id": "product-0031",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 31,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Desk Organizer",
+      "title_ar": "منظم مكتب",
+      "text_en": "Desk Organizer. Five loose boxes can be moved and arranged to store small items. Category: Office.",
+      "text_ar": "منظم مكتب. يتكون من خمسة صناديق منفصلة يمكن نقلها وترتيبها لتخزين الأشياء الصغيرة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0032",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 32,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Desk Pad",
+      "title_ar": "لبادة مكتب",
+      "text_en": "Desk Pad. Category: Office.",
+      "text_ar": "لبادة مكتب. الفئة: مكتب."
+    },
+    {
+      "id": "product-0033",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 33,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Monitor Stand",
+      "title_ar": "حامل شاشة",
+      "text_en": "Monitor Stand. Category: Office.",
+      "text_ar": "حامل شاشة. الفئة: مكتب."
+    },
+    {
+      "id": "product-0034",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 34,
+      "source_record_type": "combo",
+      "category_en": "Office",
+      "title_en": "Office Combo",
+      "title_ar": "طقم مكتبي",
+      "text_en": "Office Combo. Category: Office.",
+      "text_ar": "طقم مكتبي. الفئة: مكتب."
+    },
+    {
+      "id": "product-0036",
+      "kind": "product",
+      "synthetic": true,
+      "origin": "odoo_demo_snapshot",
+      "source_record_id": 36,
+      "source_record_type": "consu",
+      "category_en": "Office",
+      "title_en": "Chair floor protection",
+      "title_ar": "واقي أرضية لكراسي المكتب",
+      "text_en": "Chair floor protection. Office chairs can damage the floor. Category: Office.",
+      "text_ar": "واقي أرضية لكراسي المكتب. قد تتسبب كراسي المكتب في إتلاف الأرضية. الفئة: مكتب."
+    },
+    {
+      "id": "policy-001",
+      "kind": "policy",
+      "synthetic": true,
+      "origin": "synthetic_policy",
+      "title_en": "Return Policy",
+      "title_ar": "سياسة الإرجاع",
+      "text_en": "Synthetic return policy: unused products may be returned within 30 days when the customer presents a receipt.",
+      "text_ar": "سياسة إرجاع اصطناعية: يمكن إرجاع المنتجات غير المستخدمة خلال 30 يومًا عند تقديم الإيصال."
+    },
+    {
+      "id": "policy-002",
+      "kind": "policy",
+      "synthetic": true,
+      "origin": "synthetic_policy",
+      "title_en": "Standard Delivery Policy",
+      "title_ar": "سياسة التوصيل القياسي",
+      "text_en": "Synthetic delivery policy: standard delivery takes 3 to 5 business days. A tracking number is sent after dispatch.",
+      "text_ar": "سياسة توصيل اصطناعية: يستغرق التوصيل القياسي من 3 إلى 5 أيام عمل. يُرسل رقم التتبع بعد الشحن."
+    },
+    {
+      "id": "policy-003",
+      "kind": "policy",
+      "synthetic": true,
+      "origin": "synthetic_policy",
+      "title_en": "Electronics Warranty",
+      "title_ar": "ضمان الأجهزة الإلكترونية",
+      "text_en": "Synthetic warranty policy: electronic devices have a 12-month warranty when proof of purchase is available.",
+      "text_ar": "سياسة ضمان اصطناعية: تتمتع الأجهزة الإلكترونية بضمان لمدة 12 شهرًا عند توفر إثبات الشراء."
+    },
+    {
+      "id": "policy-004",
+      "kind": "policy",
+      "synthetic": true,
+      "origin": "synthetic_policy",
+      "title_en": "Coupon Use",
+      "title_ar": "استخدام القسائم",
+      "text_en": "Synthetic coupon policy: only one coupon may be used per cart per day, and coupons cannot be combined.",
+      "text_ar": "سياسة قسائم اصطناعية: يسمح باستخدام قسيمة واحدة لكل سلة في اليوم ولا يمكن جمع القسائم."
+    },
+    {
+      "id": "policy-005",
+      "kind": "policy",
+      "synthetic": true,
+      "origin": "synthetic_policy",
+      "title_en": "Customer Privacy",
+      "title_ar": "خصوصية العملاء",
+      "text_en": "Synthetic privacy policy: do not disclose customer information. This benchmark contains no real customer data.",
+      "text_ar": "سياسة خصوصية اصطناعية: لا تفصح عن معلومات العملاء. لا يحتوي هذا الاختبار على بيانات عملاء حقيقية."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "product-lex-01",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Yellow office chair for daily work.",
+      "text_ar": "كرسي المكتب الأصفر المخصص للعمل اليومي.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0005": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The catalog title and source description identify the yellow daily-use chair."
+    },
+    {
+      "id": "product-lex-02",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Office lamp.",
+      "text_ar": "مصباح المكتب.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0006": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query names the exact product concept."
+    },
+    {
+      "id": "product-lex-03",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Office Design Software for smart-office planning.",
+      "text_ar": "برنامج تصميم المكاتب لتخطيط المكاتب الذكية.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0007": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The product title and sales description match the named software."
+    },
+    {
+      "id": "product-lex-04",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Desk Combination with a chair, desk, and drawer.",
+      "text_ar": "مجموعة المكتب التي تضم كرسيًا ومكتبًا ودرجًا.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0008": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The catalog description explicitly lists the chair, desk, and drawer combination."
+    },
+    {
+      "id": "product-lex-05",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Customizable Desk, 160 x 80 cm, with large legs.",
+      "text_ar": "مكتب قابل للتخصيص بمقاس 160 × 80 سم وأرجل كبيرة.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0009": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The dimensions and large-leg detail match the source description."
+    },
+    {
+      "id": "product-lex-06",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Corner Desk Right Sit with right-aligned storage.",
+      "text_ar": "مكتب زاوية بمساحة عمل يمينية مع تخزين على الجانب الأيمن.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0010": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query deliberately names the right-side desk variant."
+    },
+    {
+      "id": "product-lex-07",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Blue plastic Storage Box for office storage.",
+      "text_ar": "صندوق تخزين بلاستيكي أزرق للمكتب.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0012": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The color, material, and storage purpose match the source description."
+    },
+    {
+      "id": "product-lex-08",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Soft-close Pedal Bin for office use.",
+      "text_ar": "سلة مهملات ببدال للإغلاق الهادئ في المكتب.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0014": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The source title and description match the office bin request."
+    },
+    {
+      "id": "product-lex-09",
+      "task": "product_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Flipover office presentation board.",
+      "text_ar": "لوح عرض ورقي قابل للقلب للمكتب.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0020": 3}},
+      "hard_negative_ids": [],
+      "rationale": "This intentionally tests direct matching for the catalog's Flipover item."
+    },
+    {
+      "id": "product-para-01",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A roomy office cupboard.",
+      "text_ar": "أحتاج إلى دولاب مكتبي واسع.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0011": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The wording paraphrases a large office cabinet without copying its title."
+    },
+    {
+      "id": "product-para-02",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "Guest seating for a formal gathering.",
+      "text_ar": "مقعد لغرفة مؤتمرات.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0016": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query paraphrases the conference-chair use without repeating the title."
+    },
+    {
+      "id": "product-para-03",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A dark storage compartment for an office.",
+      "text_ar": "وحدة تخزين داكنة للاستخدام المكتبي.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0019": 3, "product-0024": 1}},
+      "hard_negative_ids": [],
+      "rationale": "The query describes the black drawer without copying its title."
+    },
+    {
+      "id": "product-para-04",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "An office fixture supplied with a display panel.",
+      "text_ar": "قطعة مكتبية تأتي معها وحدة عرض.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0021": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query restates the product concept using different wording."
+    },
+    {
+      "id": "product-para-05",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A single-user booth furnished with a seat and table.",
+      "text_ar": "مقصورة لشخص واحد مجهزة بمقعد ومنضدة.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0022": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The private-pod and included-furniture facts match the product description."
+    },
+    {
+      "id": "product-para-06",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "Conversations carry across a shared workspace; what can dampen them?",
+      "text_ar": "تنتقل الأصوات في مساحة عمل مشتركة؛ ما الذي يخففها؟",
+      "qrels": {"default_grade": 0, "overrides": {"product-0023": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query paraphrases noise-reducing panels for open spaces."
+    },
+    {
+      "id": "product-para-07",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A collaborative station for a quartet.",
+      "text_ar": "مساحة عمل تستوعب مجموعة من أربعة أفراد.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0025": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query paraphrases the four-person capacity."
+    },
+    {
+      "id": "product-para-08",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A couch for a pair with an oak frame.",
+      "text_ar": "أبحث عن كنبة لشخصين بهيكل من خشب السنديان.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0027": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query uses couch and capacity phrasing for the two-seat sofa."
+    },
+    {
+      "id": "product-para-09",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "An eating surface for meals in the open air.",
+      "text_ar": "أبحث عن منضدة لتناول الوجبات في الهواء الطلق.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0030": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query describes outdoor dining without copying the title."
+    },
+    {
+      "id": "product-para-10",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A furniture compartment that pulls outward to reach stored items.",
+      "text_ar": "جزء من الأثاث يُسحب إلى الخارج للوصول إلى الأغراض المخزنة.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0024": 3, "product-0019": 2}},
+      "hard_negative_ids": [],
+      "rationale": "The outward-moving furniture compartment identifies a drawer; the black drawer is an acceptable color variant."
+    },
+    {
+      "id": "product-para-11",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A protective blotter mat that lies flat on a writing surface.",
+      "text_ar": "مفرش حماية يوضع على سطح العمل المخصص للكتابة.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0032": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query paraphrases the desk-pad item without repeating its title."
+    },
+    {
+      "id": "product-para-12",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "A coordinated group of workplace furnishings offered together.",
+      "text_ar": "تشكيلة متناسقة من الأثاث تُباع كوحدة واحدة.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0034": 3, "product-0008": 2}},
+      "hard_negative_ids": [],
+      "rationale": "The query paraphrases a combo product."
+    },
+    {
+      "id": "product-para-13",
+      "task": "product_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "Protect the ground beneath office seating from scratches.",
+      "text_ar": "أحتاج إلى حماية السطح أسفل المقاعد من التلف أثناء الاستخدام المكتبي.",
+      "qrels": {"default_grade": 0, "overrides": {"product-0036": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query restates the floor-protection use in the product description."
+    },
+    {
+      "id": "product-hard-01",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "A corner workstation with a left-side sitting position and storage.",
+      "text_ar": "محطة عمل مكتبية ركنية بموضع جلوس على اليسار مع وحدة تخزين.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0018": 3}
+      },
+      "hard_negative_ids": ["product-0010"],
+      "rationale": "The two corner desks share category and storage, but differ on the requested side."
+    },
+    {
+      "id": "product-hard-02",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "A dark high-back seat with good support.",
+      "text_ar": "مقعد داكن ذو ظهر مرتفع ودعم جيد.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0017": 3}
+      },
+      "hard_negative_ids": ["product-0005"],
+      "rationale": "The chair records overlap by category but differ in color and described support."
+    },
+    {
+      "id": "product-hard-03",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "An office storage unit with a front closure.",
+      "text_ar": "وحدة تخزين مكتبية بواجهة قابلة للإغلاق.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0015": 3}
+      },
+      "hard_negative_ids": ["product-0011"],
+      "rationale": "Both records are cabinets, while only one explicitly specifies doors."
+    },
+    {
+      "id": "product-hard-04",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "Five separate containers that can be rearranged to keep small items sorted on a work surface.",
+      "text_ar": "خمس حاويات مستقلة يمكن نقلها وترتيبها لحفظ الأدوات الصغيرة على سطح العمل.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0031": 3}
+      },
+      "hard_negative_ids": ["product-0012"],
+      "rationale": "The five movable containers distinguish the desk organizer from a flexible storage bin."
+    },
+    {
+      "id": "product-hard-05",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "A separate support for positioning a display above the work surface.",
+      "text_ar": "قاعدة مستقلة لوضع جهاز العرض فوق سطح العمل.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0033": 3}
+      },
+      "hard_negative_ids": ["product-0021"],
+      "rationale": "Both products mention a screen, but the query asks only for a monitor support."
+    },
+    {
+      "id": "product-hard-06",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "A broad surface for group discussions of about twelve participants.",
+      "text_ar": "منضدة نقاش واسعة تتسع لنحو اثني عشر شخصًا.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0026": 3}
+      },
+      "hard_negative_ids": ["product-0025"],
+      "rationale": "The table and four-person desk are both group furniture but differ in stated capacity."
+    },
+    {
+      "id": "product-hard-07",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "A two-tone office furniture set combining a work surface, seating, and a storage compartment.",
+      "text_ar": "تشكيلة أثاث مكتبي بلونين متباينين تضم سطحًا للعمل ومقعدًا وحجرة تخزين.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0008": 3}
+      },
+      "hard_negative_ids": ["product-0022"],
+      "rationale": "The target is a coordinated furniture set with storage; the near match is an individual workstation."
+    },
+    {
+      "id": "product-hard-08",
+      "task": "product_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "A pared-back timber work table suited to an executive workspace.",
+      "text_ar": "سطح خشبي بسيط للاستخدام التنفيذي.",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"product-0013": 3}
+      },
+      "hard_negative_ids": ["product-0009"],
+      "rationale": "The two desks are similar, but their stated dimensions and intended descriptions differ."
+    },
+    {
+      "id": "policy-lex-01",
+      "task": "policy_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Return Policy: unused products, 30 days, receipt.",
+      "text_ar": "سياسة الإرجاع: منتج غير مستخدم، 30 يومًا، وإيصال.",
+      "qrels": {"default_grade": 0, "overrides": {"policy-001": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query directly matches the return-policy terms and conditions."
+    },
+    {
+      "id": "policy-lex-02",
+      "task": "policy_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Standard Delivery Policy: delivery timing and tracking after dispatch.",
+      "text_ar": "سياسة التوصيل القياسي: مدة التوصيل ورقم التتبع بعد الشحن.",
+      "qrels": {"default_grade": 0, "overrides": {"policy-002": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query names the delivery and tracking facts in the policy."
+    },
+    {
+      "id": "policy-lex-03",
+      "task": "policy_grounding",
+      "challenge_type": "lexical",
+      "text_en": "Coupon Use: can more than one coupon be used per cart per day?",
+      "text_ar": "استخدام القسائم: هل يسمح بأكثر من قسيمة واحدة لكل سلة في اليوم؟",
+      "qrels": {"default_grade": 0, "overrides": {"policy-004": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query directly tests the coupon-count rule."
+    },
+    {
+      "id": "policy-para-01",
+      "task": "policy_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "If it is unused and I still have proof of purchase, can I send it back within a month?",
+      "text_ar": "إذا كان المنتج غير مستخدم وما زال لدي إثبات الشراء، فهل يمكنني إعادته خلال شهر؟",
+      "qrels": {"default_grade": 0, "overrides": {"policy-001": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query paraphrases the unused-item, receipt, and 30-day conditions."
+    },
+    {
+      "id": "policy-para-02",
+      "task": "policy_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "After the parcel leaves, when should I expect its tracking number?",
+      "text_ar": "بعد مغادرة الطرد، متى يُفترض أن يصلني رقم تتبعه؟",
+      "qrels": {"default_grade": 0, "overrides": {"policy-002": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query asks for the dispatch-to-tracking timing without copying the policy sentence."
+    },
+    {
+      "id": "policy-para-03",
+      "task": "policy_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "An electronic device failed before a year had passed; what proof is needed for its coverage?",
+      "text_ar": "تعطل جهاز إلكتروني قبل مرور عام؛ ما الإثبات المطلوب للاستفادة من تغطيته؟",
+      "qrels": {"default_grade": 0, "overrides": {"policy-003": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query paraphrases the warranty period and proof-of-purchase condition."
+    },
+    {
+      "id": "policy-para-04",
+      "task": "policy_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "Can I stack two vouchers on the same basket?",
+      "text_ar": "هل يمكن جمع قسيمتين في السلة نفسها؟",
+      "qrels": {"default_grade": 0, "overrides": {"policy-004": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query uses voucher/stacking language for the coupon combination rule."
+    },
+    {
+      "id": "policy-para-05",
+      "task": "policy_grounding",
+      "challenge_type": "paraphrase",
+      "text_en": "May a recovery reminder mention another shopper's account details?",
+      "text_ar": "هل يجوز أن تتضمن رسالة تذكير بيانات حساب متسوق آخر؟",
+      "qrels": {"default_grade": 0, "overrides": {"policy-005": 3}},
+      "hard_negative_ids": [],
+      "rationale": "The query tests the synthetic customer-information non-disclosure rule."
+    },
+    {
+      "id": "policy-hard-01",
+      "task": "policy_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "My electronic device stopped working eight months after purchase, and I can show proof of purchase. Which coverage applies?",
+      "text_ar": "توقف جهازي الإلكتروني عن العمل بعد ثمانية أشهر من الشراء، ولدي إثبات الشراء. أي تغطية تنطبق عليه؟",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"policy-003": 3}
+      },
+      "hard_negative_ids": ["policy-001"],
+      "rationale": "Warranty and returns are related but the device-failure scenario matches warranty."
+    },
+    {
+      "id": "policy-hard-02",
+      "task": "policy_grounding",
+      "challenge_type": "hard_negative",
+      "text_en": "An item bought 20 days ago remains unused, and I have the receipt; is sending it back permitted?",
+      "text_ar": "اشتريت منتجًا منذ 20 يومًا، وما زال غير مستخدم ولدي الإيصال؛ هل يمكن إعادته؟",
+      "qrels": {
+        "default_grade": 0,
+        "overrides": {"policy-001": 3}
+      },
+      "hard_negative_ids": ["policy-003"],
+      "rationale": "The unused product and receipt within 30 days match returns, not warranty."
+    }
+  ]
+}

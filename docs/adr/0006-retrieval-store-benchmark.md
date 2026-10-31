@@ -1,6 +1,6 @@
 # ADR-0006: Retrieval store: benchmark pgvector and Qdrant, then decide
 
-- Status: proposed (decided after spike S3)
+- Status: superseded by ADR-0015
 - Date: 2026-10-24
 
 ## Context

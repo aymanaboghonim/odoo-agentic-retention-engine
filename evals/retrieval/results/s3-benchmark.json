@@ -1,0 +1,1212 @@
+{
+  "benchmark": "S3 bilingual retrieval benchmark",
+  "created_at_utc": "2026-10-31T08:12:08.285907+00:00",
+  "dataset_version": "s3-3",
+  "dataset_corpus_sha256": "826d239bdcb8c93f1179a72507bac26d72df07c964bacede576b21ad6f2a9f97",
+  "dataset_documents": 34,
+  "dataset_queries": 80,
+  "dataset_scenarios": 40,
+  "dataset_query_pairs_are_independent": false,
+  "query_overlap_diagnostics": {
+    "en": {
+      "lexical": {
+        "query_count": 12,
+        "mean_target_document_token_overlap": 0.621,
+        "queries_containing_full_target_title": 12
+      },
+      "paraphrase": {
+        "query_count": 18,
+        "mean_target_document_token_overlap": 0.1208,
+        "queries_containing_full_target_title": 0
+      },
+      "hard_negative": {
+        "query_count": 10,
+        "mean_target_document_token_overlap": 0.2599,
+        "queries_containing_full_target_title": 0
+      }
+    },
+    "ar": {
+      "lexical": {
+        "query_count": 12,
+        "mean_target_document_token_overlap": 0.4753,
+        "queries_containing_full_target_title": 12
+      },
+      "paraphrase": {
+        "query_count": 18,
+        "mean_target_document_token_overlap": 0.0515,
+        "queries_containing_full_target_title": 0
+      },
+      "hard_negative": {
+        "query_count": 10,
+        "mean_target_document_token_overlap": 0.2328,
+        "queries_containing_full_target_title": 0
+      }
+    }
+  },
+  "embedding": {
+    "model": "intfloat/multilingual-e5-large",
+    "source_repository": "Qdrant/multilingual-e5-large-onnx",
+    "source_revision": "ac6781cd1cf88b8306a536d7c9d18a5bd57cc14b",
+    "model_weight_sha256": "0cf1883fee81c63819a44e2ba0efa51d4043d9759685a4ebebbde97e0623d15c",
+    "fastembed_version": "0.9.1",
+    "dimensions": 1024,
+    "query_prefix": "query: ",
+    "passage_prefix": "passage: ",
+    "device": "CPU",
+    "latency": {
+      "p50_ms": 133.021,
+      "p95_ms": 170.893,
+      "query_count": 80,
+      "samples_per_query": 5
+    }
+  },
+  "backend_versions": {
+    "postgresql": "PostgreSQL 15.19 (Debian 15.19-1.pgdg12+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit",
+    "pgvector_extension": "0.8.7",
+    "qdrant": {
+      "title": "qdrant - vector search engine",
+      "version": "1.20.0",
+      "commit": "222b2e44ab1c3f17e8246396ead6558e45041df7"
+    }
+  },
+  "methodology": {
+    "warmup_rounds_per_query_and_mode": 2,
+    "measurement_repetitions_per_query_and_mode": 5,
+    "candidate_depth": 20,
+    "recall_k": 5,
+    "relevance_grades": {
+      "3": "exact",
+      "2": "acceptable substitute or supporting answer when explicitly requested",
+      "1": "related but insufficient",
+      "0": "irrelevant",
+      "relevant_grades_for_recall_and_mrr": [
+        2,
+        3
+      ],
+      "ndcg_gain": "2^grade - 1"
+    },
+    "hard_negative_outrank_rate": "fraction of labeled hard-negative documents ranked above the first relevant document within candidate depth",
+    "query_mix": {
+      "lexical": 12,
+      "paraphrase": 18,
+      "hard_negative": 10
+    },
+    "query_tasks": {
+      "product_grounding": 30,
+      "policy_grounding": 10
+    },
+    "rrf": {
+      "implementation": "shared client-side weighted reciprocal_rank_fusion",
+      "k": 60,
+      "rank_positions": "zero-based; score = sum(weight / (k + rank + 1))",
+      "weighted_sweep": {
+        "50:50": [
+          0.5,
+          0.5
+        ],
+        "70:30": [
+          0.7,
+          0.3
+        ],
+        "80:20": [
+          0.8,
+          0.2
+        ]
+      },
+      "tie_break": "document ID ascending"
+    },
+    "strict_lexical_gate": {
+      "pgvector": "conjunctive plainto_tsquery; every non-stopword query term must match",
+      "qdrant": "BM25 TextQuery with a MatchText filter over the full query; every term must match",
+      "tokenization_caveat": "PostgreSQL language configurations and Qdrant's word tokenizer differ; strict gates are operationally analogous, not token-identical"
+    },
+    "single_roundtrip": {
+      "pgvector": "one SQL statement with dense and disjunctive lexical candidate CTEs, then the shared 50:50 RRF formula",
+      "qdrant_default": "one query_points call with dense and TextQuery Prefetch, using native FusionQuery RRF",
+      "qdrant_formula_parity": "one query_points call with RrfQuery(k=61, weights=[1, 1]); compared against client-side 50:50 rankings",
+      "ranking_comparison": "single-roundtrip results include exact-order match rate and mean candidate-set overlap against client-side 50:50 RRF"
+    },
+    "qdrant_capabilities": {
+      "qdrant_client_version": "1.20.0",
+      "text_query": "native BM25 over a full-text payload index; any-term retrieval; TextQuery has no score-threshold or phrase field",
+      "score_threshold": "supported as a query_points/Prefetch parameter; tested separately, not applied because score scales are backend-specific",
+      "strict_lexical": "MatchText filter over the full query acts conjunctively",
+      "phrase_matching": "TextIndexParams.phrase_matching and MatchPhrase are supported when phrase matching is enabled on the index",
+      "server_fusion": "Prefetch accepts TextQuery; FusionQuery(RRF) and RrfQuery with k and weights are supported",
+      "native_vs_parity_note": "FusionQuery native defaults and weighted client RRF are distinct; the RrfQuery path is evaluated separately for ranking parity"
+    },
+    "lexical_methods": {
+      "pgvector": {
+        "english": "PostgreSQL english configuration with ts_rank_cd",
+        "arabic": "PostgreSQL arabic configuration with ts_rank_cd"
+      },
+      "qdrant": "native BM25 full-text index; word tokenizer; lowercase; scoring enabled"
+    },
+    "search_latency": "client-observed retrieval latency; excludes query embedding",
+    "end_to_end_latency": "query embedding plus retrieval and RRF; lexical mode does not embed",
+    "ram": "maximum sampled container memory; benchmark process RSS reported separately",
+    "release_gate": null,
+    "provisional_recall_at_5_target": 0.9
+  },
+  "hardware": {
+    "platform": "Linux-5.15.153.1-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+    "architecture": "x86_64",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i7-12650H",
+    "cpu_count": 8,
+    "host_memory_mib": 11966.0
+  },
+  "benchmark_runtime": {
+    "python": "3.14.9",
+    "runner_image": "python:3.14.9-slim-bookworm@sha256:945c2676dc2b18e0c1f16879244122c57c0ffede60006bf3df159c507a31bcae",
+    "network": "private Compose service network"
+  },
+  "benchmark_process_max_rss_mib": 1845.1,
+  "results": {
+    "pgvector": {
+      "dense": {
+        "query_count": 80,
+        "recall_at_5": 0.9625,
+        "mrr_at_5": 0.9035,
+        "ndcg_at_5": 0.917,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9187,
+            "ndcg_at_5": 0.9358
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.925,
+            "mrr_at_5": 0.8883,
+            "ndcg_at_5": 0.8983
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.8714,
+            "ndcg_at_5": 0.8894
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.9167,
+            "mrr_at_5": 0.8343,
+            "ndcg_at_5": 0.8519
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9125,
+            "ndcg_at_5": 0.9346
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 0.935,
+          "p95": 1.118,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 133.572,
+          "p95": 179.668,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "lexical": {
+        "query_count": 80,
+        "recall_at_5": 0.625,
+        "mrr_at_5": 0.5702,
+        "ndcg_at_5": 0.5839,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.6,
+            "mrr_at_5": 0.5342,
+            "ndcg_at_5": 0.5504
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.65,
+            "mrr_at_5": 0.6062,
+            "ndcg_at_5": 0.6173
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.55,
+            "mrr_at_5": 0.4936,
+            "ndcg_at_5": 0.5075
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 0.85,
+            "mrr_at_5": 0.8,
+            "ndcg_at_5": 0.8131
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 0.9583,
+            "mrr_at_5": 0.9375,
+            "ndcg_at_5": 0.943
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.3056,
+            "mrr_at_5": 0.2523,
+            "ndcg_at_5": 0.2656
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.8,
+            "mrr_at_5": 0.7017,
+            "ndcg_at_5": 0.7259
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 0.498,
+          "p95": 0.983,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 0.499,
+          "p95": 0.984,
+          "samples": 400,
+          "includes_query_embedding": false
+        }
+      },
+      "hybrid": {
+        "query_count": 80,
+        "recall_at_5": 0.8875,
+        "mrr_at_5": 0.7342,
+        "ndcg_at_5": 0.7722,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.7537,
+            "ndcg_at_5": 0.8023
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.825,
+            "mrr_at_5": 0.7146,
+            "ndcg_at_5": 0.7421
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.85,
+            "mrr_at_5": 0.6733,
+            "ndcg_at_5": 0.7169
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9167,
+            "ndcg_at_5": 0.9381
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.7778,
+            "mrr_at_5": 0.5148,
+            "ndcg_at_5": 0.5805
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.81,
+            "ndcg_at_5": 0.844
+          }
+        },
+        "hard_negative_outrank_rate": 0.15,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 1.67,
+          "p95": 2.161,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 132.588,
+          "p95": 178.933,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_rrf_70_30": {
+        "query_count": 80,
+        "recall_at_5": 0.9187,
+        "mrr_at_5": 0.7758,
+        "ndcg_at_5": 0.8114,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.8113,
+            "ndcg_at_5": 0.8571
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.8375,
+            "mrr_at_5": 0.7404,
+            "ndcg_at_5": 0.7657
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.8917,
+            "mrr_at_5": 0.7289,
+            "ndcg_at_5": 0.7692
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9167,
+            "ndcg_at_5": 0.9381
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.8472,
+            "mrr_at_5": 0.5875,
+            "ndcg_at_5": 0.6523
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.8458,
+            "ndcg_at_5": 0.8715
+          }
+        },
+        "hard_negative_outrank_rate": 0.15,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 1.662,
+          "p95": 2.158,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 133.378,
+          "p95": 171.742,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_rrf_80_20": {
+        "query_count": 80,
+        "recall_at_5": 0.9187,
+        "mrr_at_5": 0.7821,
+        "ndcg_at_5": 0.8156,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.8238,
+            "ndcg_at_5": 0.8656
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.8375,
+            "mrr_at_5": 0.7404,
+            "ndcg_at_5": 0.7657
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.8917,
+            "mrr_at_5": 0.7372,
+            "ndcg_at_5": 0.7748
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9167,
+            "ndcg_at_5": 0.9381
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.8472,
+            "mrr_at_5": 0.6014,
+            "ndcg_at_5": 0.6617
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.8458,
+            "ndcg_at_5": 0.8715
+          }
+        },
+        "hard_negative_outrank_rate": 0.15,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 1.652,
+          "p95": 2.192,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 129.508,
+          "p95": 180.154,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_strict_lexical_gate": {
+        "query_count": 80,
+        "recall_at_5": 0.9625,
+        "mrr_at_5": 0.9035,
+        "ndcg_at_5": 0.917,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9187,
+            "ndcg_at_5": 0.9358
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.925,
+            "mrr_at_5": 0.8883,
+            "ndcg_at_5": 0.8983
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.8714,
+            "ndcg_at_5": 0.8894
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.9167,
+            "mrr_at_5": 0.8343,
+            "ndcg_at_5": 0.8519
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9125,
+            "ndcg_at_5": 0.9346
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 1.422,
+          "p95": 1.714,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 128.997,
+          "p95": 173.584,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_sql_cte": {
+        "query_count": 80,
+        "recall_at_5": 0.8875,
+        "mrr_at_5": 0.7342,
+        "ndcg_at_5": 0.7722,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.7537,
+            "ndcg_at_5": 0.8023
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.825,
+            "mrr_at_5": 0.7146,
+            "ndcg_at_5": 0.7421
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.85,
+            "mrr_at_5": 0.6733,
+            "ndcg_at_5": 0.7169
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9167,
+            "ndcg_at_5": 0.9381
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.7778,
+            "mrr_at_5": 0.5148,
+            "ndcg_at_5": 0.5805
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.81,
+            "ndcg_at_5": 0.844
+          }
+        },
+        "hard_negative_outrank_rate": 0.15,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 1.472,
+          "p95": 1.998,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 128.51,
+          "p95": 174.754,
+          "samples": 400,
+          "includes_query_embedding": true
+        },
+        "client_ranking_comparison": {
+          "exact_order_match_queries": 80,
+          "query_count": 80,
+          "exact_order_match_rate": 1.0,
+          "mean_candidate_set_overlap": 1.0
+        }
+      }
+    },
+    "qdrant": {
+      "dense": {
+        "query_count": 80,
+        "recall_at_5": 0.9625,
+        "mrr_at_5": 0.9035,
+        "ndcg_at_5": 0.917,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9187,
+            "ndcg_at_5": 0.9358
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.925,
+            "mrr_at_5": 0.8883,
+            "ndcg_at_5": 0.8983
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.8714,
+            "ndcg_at_5": 0.8894
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.9167,
+            "mrr_at_5": 0.8343,
+            "ndcg_at_5": 0.8519
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9125,
+            "ndcg_at_5": 0.9346
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 2.286,
+          "p95": 2.67,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 129.12,
+          "p95": 175.854,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "lexical": {
+        "query_count": 80,
+        "recall_at_5": 0.65,
+        "mrr_at_5": 0.5819,
+        "ndcg_at_5": 0.5984,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.675,
+            "mrr_at_5": 0.5713,
+            "ndcg_at_5": 0.5963
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.625,
+            "mrr_at_5": 0.5925,
+            "ndcg_at_5": 0.6004
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.5833,
+            "mrr_at_5": 0.5092,
+            "ndcg_at_5": 0.5268
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 0.85,
+            "mrr_at_5": 0.8,
+            "ndcg_at_5": 0.8131
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.3611,
+            "mrr_at_5": 0.2681,
+            "ndcg_at_5": 0.2907
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.75,
+            "mrr_at_5": 0.645,
+            "ndcg_at_5": 0.6702
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 1.541,
+          "p95": 60.012,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 1.542,
+          "p95": 60.014,
+          "samples": 400,
+          "includes_query_embedding": false
+        }
+      },
+      "hybrid": {
+        "query_count": 80,
+        "recall_at_5": 0.9,
+        "mrr_at_5": 0.7273,
+        "ndcg_at_5": 0.7707,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.9375,
+            "mrr_at_5": 0.7312,
+            "ndcg_at_5": 0.7828
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.8625,
+            "mrr_at_5": 0.7233,
+            "ndcg_at_5": 0.7585
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.8667,
+            "mrr_at_5": 0.6714,
+            "ndcg_at_5": 0.7208
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.895,
+            "ndcg_at_5": 0.9202
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.8333,
+            "mrr_at_5": 0.4995,
+            "ndcg_at_5": 0.5834
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.9,
+            "mrr_at_5": 0.81,
+            "ndcg_at_5": 0.8324
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 4.421,
+          "p95": 54.554,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 160.022,
+          "p95": 210.879,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_rrf_70_30": {
+        "query_count": 80,
+        "recall_at_5": 0.9187,
+        "mrr_at_5": 0.7562,
+        "ndcg_at_5": 0.7975,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.975,
+            "mrr_at_5": 0.7796,
+            "ndcg_at_5": 0.8289
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.8625,
+            "mrr_at_5": 0.7329,
+            "ndcg_at_5": 0.7661
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.8917,
+            "mrr_at_5": 0.71,
+            "ndcg_at_5": 0.7566
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.895,
+            "ndcg_at_5": 0.9202
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.8472,
+            "mrr_at_5": 0.5583,
+            "ndcg_at_5": 0.6324
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.82,
+            "ndcg_at_5": 0.8518
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 4.493,
+          "p95": 54.674,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 160.114,
+          "p95": 219.477,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_rrf_80_20": {
+        "query_count": 80,
+        "recall_at_5": 0.9187,
+        "mrr_at_5": 0.7698,
+        "ndcg_at_5": 0.8076,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.975,
+            "mrr_at_5": 0.7921,
+            "ndcg_at_5": 0.8382
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.8625,
+            "mrr_at_5": 0.7475,
+            "ndcg_at_5": 0.7771
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.8917,
+            "mrr_at_5": 0.7281,
+            "ndcg_at_5": 0.7701
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.895,
+            "ndcg_at_5": 0.9202
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.8472,
+            "mrr_at_5": 0.5792,
+            "ndcg_at_5": 0.6483
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.8367,
+            "ndcg_at_5": 0.8637
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 4.577,
+          "p95": 54.213,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 160.04,
+          "p95": 219.543,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_strict_lexical_gate": {
+        "query_count": 80,
+        "recall_at_5": 0.9625,
+        "mrr_at_5": 0.9035,
+        "ndcg_at_5": 0.917,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9187,
+            "ndcg_at_5": 0.9358
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.925,
+            "mrr_at_5": 0.8883,
+            "ndcg_at_5": 0.8983
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.95,
+            "mrr_at_5": 0.8714,
+            "ndcg_at_5": 0.8894
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.9167,
+            "mrr_at_5": 0.8343,
+            "ndcg_at_5": 0.8519
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.9125,
+            "ndcg_at_5": 0.9346
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 3.678,
+          "p95": 4.323,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 132.211,
+          "p95": 171.339,
+          "samples": 400,
+          "includes_query_embedding": true
+        }
+      },
+      "hybrid_server_fusion_default": {
+        "query_count": 80,
+        "recall_at_5": 0.95,
+        "mrr_at_5": 0.7848,
+        "ndcg_at_5": 0.8265,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.9875,
+            "mrr_at_5": 0.7842,
+            "ndcg_at_5": 0.8342
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.9125,
+            "mrr_at_5": 0.7854,
+            "ndcg_at_5": 0.8189
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.9333,
+            "mrr_at_5": 0.7519,
+            "ndcg_at_5": 0.7977
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.8833,
+            "ndcg_at_5": 0.9131
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.8889,
+            "mrr_at_5": 0.6111,
+            "ndcg_at_5": 0.6818
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.8392,
+            "ndcg_at_5": 0.879
+          }
+        },
+        "hard_negative_outrank_rate": 0.05,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 2.443,
+          "p95": 2.814,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 131.36,
+          "p95": 176.11,
+          "samples": 400,
+          "includes_query_embedding": true
+        },
+        "client_ranking_comparison": {
+          "exact_order_match_queries": 17,
+          "query_count": 80,
+          "exact_order_match_rate": 0.2125,
+          "mean_candidate_set_overlap": 0.9969
+        }
+      },
+      "hybrid_server_rrf_parity": {
+        "query_count": 80,
+        "recall_at_5": 0.9,
+        "mrr_at_5": 0.7279,
+        "ndcg_at_5": 0.7712,
+        "metrics_by_language": {
+          "en": {
+            "query_count": 40,
+            "recall_at_5": 0.9375,
+            "mrr_at_5": 0.7325,
+            "ndcg_at_5": 0.7839
+          },
+          "ar": {
+            "query_count": 40,
+            "recall_at_5": 0.8625,
+            "mrr_at_5": 0.7233,
+            "ndcg_at_5": 0.7585
+          }
+        },
+        "metrics_by_task": {
+          "product_grounding": {
+            "query_count": 60,
+            "recall_at_5": 0.8667,
+            "mrr_at_5": 0.675,
+            "ndcg_at_5": 0.7237
+          },
+          "policy_grounding": {
+            "query_count": 20,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 0.8867,
+            "ndcg_at_5": 0.9137
+          }
+        },
+        "metrics_by_challenge_type": {
+          "lexical": {
+            "query_count": 24,
+            "recall_at_5": 1.0,
+            "mrr_at_5": 1.0,
+            "ndcg_at_5": 1.0
+          },
+          "paraphrase": {
+            "query_count": 36,
+            "recall_at_5": 0.8333,
+            "mrr_at_5": 0.5009,
+            "ndcg_at_5": 0.5847
+          },
+          "hard_negative": {
+            "query_count": 20,
+            "recall_at_5": 0.9,
+            "mrr_at_5": 0.81,
+            "ndcg_at_5": 0.8324
+          }
+        },
+        "hard_negative_outrank_rate": 0.1,
+        "hard_negative_pairs": 20,
+        "hard_negative_queries": 20,
+        "search_latency_ms": {
+          "p50": 2.425,
+          "p95": 2.766,
+          "samples": 400
+        },
+        "end_to_end_latency_ms": {
+          "p50": 130.595,
+          "p95": 172.017,
+          "samples": 400,
+          "includes_query_embedding": true
+        },
+        "client_ranking_comparison": {
+          "exact_order_match_queries": 39,
+          "query_count": 80,
+          "exact_order_match_rate": 0.4875,
+          "mean_candidate_set_overlap": 0.9981
+        }
+      }
+    }
+  },
+  "container_memory_max_mib": {
+    "s3-retrieval-benchmark-pgvector-1": 83.0,
+    "s3-retrieval-benchmark-qdrant-1": 203.1
+  }
+}
