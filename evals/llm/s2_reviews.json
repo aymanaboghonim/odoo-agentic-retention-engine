@@ -1,0 +1,12 @@
+{
+  "dataset_version": "s2-golden-v1",
+  "dataset_sha256": "60aae367238e7d2b122d772bc2b7e1450d5bc7c0fc2fbf2b0ab2d795bb9ca8af",
+  "reviewer_assignments": {
+    "hijazi": "",
+    "najdi": "",
+    "emirati": "",
+    "egyptian": "",
+    "levantine": ""
+  },
+  "cases": {}
+}

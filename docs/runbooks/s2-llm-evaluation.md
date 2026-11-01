@@ -7,10 +7,10 @@ This runbook uses the frozen synthetic S2 dataset. CI and all commands below are
 Generate the human worksheet and the pending machine-readable review ledger:
 
 ```sh
-uv run python scripts/s2_llm_cli.py review-assets
+uv run --no-sync python -m scripts.s2_llm_cli review-assets
 ```
 
-Review all cases, approve English/MSA pairs, and record qualified reviewers for each dialect in `evals/llm/s2_reviews.json`. The dataset stays in draft status; do not make cases runnable by changing its status. The review ledger must match the exact dataset hash. Any dataset edit requires a new review.
+Review every input and its paired meaning, expected action, risk/category, required tool use, price-check flag, and synthetic cart facts in `evals/llm/s2_review_worksheet.md`. Contact values are omitted from the worksheet. Approve English/MSA cases and record qualified reviewers for each dialect in `evals/llm/s2_reviews.json`. Keep cases pending until reviewed; the dataset stays in draft status, and must not be made runnable by changing its status. The review ledger must match the exact dataset hash. Any dataset edit requires a new review. This step is offline and does not call Odoo or a model provider.
 
 ## 2. Prepare owner approvals
 
@@ -42,7 +42,7 @@ export S2_DISPOSABLE_INSTANCE=YES
 Seed only this disposable instance, with a unique run ID:
 
 ```sh
-uv run python scripts/s2_odoo_smoke.py seed --execute-live --run-id s2-smoke-001
+uv run --no-sync python -m scripts.s2_odoo_smoke seed --execute-live --run-id s2-smoke-001
 ```
 
 Inspect both `evals/llm/s2_odoo_inventory.md` and the inventory JSON. Only after verifying the exact 1-hour negative control, 11-hour eligible cart, USD product facts, and disabled reminder, set `approval.status` to `approved` and enter a reviewer ID. The inventory hash covers its contents but excludes the approval block. Never reuse this database for another experiment.
@@ -52,14 +52,14 @@ Inspect both `evals/llm/s2_odoo_inventory.md` and the inventory JSON. Only after
 Preflight checks the dataset review, selected cases, approvals, current facts, local environment, and output path; it does not call Odoo or a provider:
 
 ```sh
-uv run --group llm-eval python scripts/s2_llm_cli.py preflight \
+uv run --group llm-eval python -m scripts.s2_llm_cli preflight \
   --mode smoke --candidate gemini-3.8-flash-low
 ```
 
 The smoke command repeats preflight. It rechecks Odoo field metadata and reads both approved carts from the local Odoo API before creating a provider client, then evaluates the fixed English recovery and recent-cart control cases. Only the eligible recovery case can create the fixed internal activity, after deterministic scoring and a live eligibility re-check. The command removes only an activity created by this run, verifies removal, and publishes JSON and Markdown only after cleanup succeeds:
 
 ```sh
-uv run --group llm-eval python scripts/s2_llm_cli.py smoke \
+uv run --group llm-eval python -m scripts.s2_llm_cli smoke \
   --execute-live --candidate gemini-3.8-flash-low --run-id s2-smoke-001
 ```
 
@@ -70,14 +70,14 @@ Review the paired report in `evals/llm/results/smoke/`. To authorize the full co
 After the owner has reviewed the smoke report and its hash is recorded in the approval file, run preflight for all approved candidates:
 
 ```sh
-uv run --group llm-eval python scripts/s2_llm_cli.py preflight \
+uv run --group llm-eval python -m scripts.s2_llm_cli preflight \
   --mode batch --smoke-report evals/llm/results/smoke/s2-smoke-001-gemini-3.8-flash-low.json
 ```
 
 The full comparison defaults to all four approved configurations, runs sequentially, and checks the combined GPT-6 Luna reservation before any provider client is created. If running only a subset is explicitly approved, add `--candidates <candidate-id>` once per candidate to both commands. Any absent reviewer approval, active quota, token ceiling, valid rate, or budget causes a fail-closed preflight.
 
 ```sh
-uv run --group llm-eval python scripts/s2_llm_cli.py batch \
+uv run --group llm-eval python -m scripts.s2_llm_cli batch \
   --execute-live --run-id s2-batch-001 \
   --smoke-report evals/llm/results/smoke/s2-smoke-001-gemini-3.8-flash-low.json
 ```

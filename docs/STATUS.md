@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: review the S2 implementation PR for issue #46. Model selection remains unresolved until owner-reviewed evaluation reports exist; resolve the dialect reviewers, Odoo JSON-2 contract (F-028), provider limits, and token limits before live runs.
+Next action: owner reviews and approves the [human-readable S2 golden set](../evals/llm/s2_review_worksheet.md); qualified reviewers record each dialect. No live evaluation has run. Only after dataset approval and the Odoo/provider/token gates are complete may the bounded smoke run; stop for report review before any full Batch comparison.
 
 ## Phases
 

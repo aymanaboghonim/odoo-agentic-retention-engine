@@ -428,41 +428,113 @@ def render_review_worksheet(
         "",
         f"- Dataset version: `{dataset.version}`",
         f"- Dataset SHA-256: `{dataset.sha256}`",
+        f"- Inputs: `{len(dataset.cases)}`",
         "- Dataset status: draft; no case is runnable until its review is recorded "
         "in `s2_reviews.json`.",
-        "- Review all English/MSA meaning pairs; use a qualified reviewer for each dialect.",
-        "- Do not mark a case approved if its expected action, safety label, or "
-        "product/price facts are wrong.",
+        "- Review paired meaning, expected action, safety labels, tool/price checks, "
+        "and synthetic cart facts. Assign a qualified reviewer for each dialect.",
+        "- Expected labels cover deterministic action/tool/price checks, not one exact "
+        "message wording. Note language-quality or translation issues in Notes.",
+        "- Record each approval in `s2_reviews.json` with status `approved` and a "
+        "reviewer ID; leave cases pending when corrections are needed.",
+        "- Contact values are intentionally omitted from fixture summaries.",
         "",
-        "| Case ID | Pair | Language | Category | Expected action | Fixture | Input | "
-        "Status | Reviewer ID | Notes |",
-        "|---|---|---|---|---|---|---|---|---|---|",
     ]
-    for case in dataset.cases:
-        review_value = cases.get(case.case_id)
-        review = review_value if isinstance(review_value, dict) else {}
-        status = review.get("status", "pending")
-        reviewer_id = review.get("reviewer_id", "")
-        notes = review.get("notes", "")
-        escaped_prompt = case.prompt.replace("|", r"\|").replace("\n", " ")
-        escaped_notes = notes.replace("|", r"\|") if isinstance(notes, str) else ""
-        lines.append(
-            f"| `{case.case_id}` | `{case.pair_id}` | `{case.language}` | "
-            f"`{case.category}` | `{case.expected_action}` | `{case.fixture_id}` | "
-            f"{escaped_prompt} | {status} | {reviewer_id} | {escaped_notes} |"
-        )
-    lines.extend(["", "## Dialect reviewer assignment", ""])
-    lines.extend(
-        [
-            "| Dialect | Reviewer ID |",
-            "|---|---|",
-        ]
+
+    def fixture_summary(fixture: Record) -> str:
+        if fixture.get("exists") is False:
+            return "cart absent in synthetic fixture"
+
+        parts: list[str] = []
+        state = fixture.get("state")
+        if isinstance(state, str):
+            parts.append(f"state: {state}")
+        age_hours = fixture.get("age_hours")
+        if isinstance(age_hours, (int, float)) and not isinstance(age_hours, bool):
+            parts.append(f"age: {age_hours:g} hours")
+        currency = fixture.get("currency")
+        currency_text = currency if isinstance(currency, str) else "currency unknown"
+        subtotal = fixture.get("subtotal")
+        if isinstance(subtotal, (int, float)) and not isinstance(subtotal, bool):
+            parts.append(f"subtotal: {subtotal:.2f} {currency_text}")
+
+        items = fixture.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                product = _record(item, "worksheet fixture item")
+                name = product.get("name")
+                quantity = product.get("quantity")
+                unit_price = product.get("unit_price")
+                item_currency = product.get("currency", currency_text)
+                if (
+                    isinstance(name, str)
+                    and isinstance(quantity, int)
+                    and not isinstance(quantity, bool)
+                    and isinstance(unit_price, (int, float))
+                    and not isinstance(unit_price, bool)
+                    and isinstance(item_currency, str)
+                ):
+                    parts.append(f"item: {name} × {quantity} @ {unit_price:.2f} {item_currency}")
+                description = product.get("description")
+                if isinstance(description, str) and description:
+                    safe_description = " ".join(description.split()).replace("`", r"\`")
+                    parts.append(f"untrusted product description: `{safe_description}`")
+
+        if any(field in fixture for field in ("customer_name", "email", "phone")):
+            parts.append("synthetic contact data present; values omitted")
+        return "; ".join(parts) if parts else "no additional cart facts"
+
+    groups = (
+        ("English–MSA pairs", "english_msa"),
+        ("MSA–dialect pairs", "msa_dialect"),
+        ("Code-switch inputs", "code_switch"),
     )
+    for heading, pair_kind in groups:
+        lines.extend([f"## {heading}", ""])
+        for case in dataset.cases:
+            if case.pair_kind != pair_kind:
+                continue
+            review_value = cases.get(case.case_id)
+            review = review_value if isinstance(review_value, dict) else {}
+            status = review.get("status", "pending")
+            reviewer_id = review.get("reviewer_id", "")
+            notes = review.get("notes", "")
+            status_text = status if isinstance(status, str) else "invalid"
+            reviewer_text = reviewer_id if isinstance(reviewer_id, str) else ""
+            notes_text = " ".join(notes.split()) if isinstance(notes, str) else ""
+            fixture = dataset.fixtures[case.fixture_id]
+            dialect = f"; dialect: `{case.dialect}`" if case.dialect else ""
+            lines.extend(
+                [
+                    f"### Case `{case.case_id}`",
+                    "",
+                    f"- Pair: `{case.pair_id}` (`{case.pair_kind}`)",
+                    f"- Language: `{case.language}`{dialect}",
+                    f"- Scenario/category: `{case.scenario_id}` / `{case.category}`",
+                    f"- Risk label: `{case.risk_level}`",
+                    f"- Expected action: `{case.expected_action}`",
+                    f"- Cart tool required: `{'yes' if case.requires_cart_tool else 'no'}`",
+                    f"- Price check required: `{'yes' if case.check_cart_price else 'no'}`",
+                    f"- Fixture: `{case.fixture_id}` — {fixture_summary(fixture)}",
+                    f"- Review: `{status_text}`; reviewer: `{reviewer_text or 'unassigned'}`",
+                    f"- Notes: {notes_text or 'none'}",
+                    "",
+                    f"#### Customer input — {case.case_id}",
+                    "",
+                ]
+            )
+            lines.extend(f"> {line}" for line in case.prompt.splitlines())
+            lines.append("")
+
+    lines.extend(["## Qualified dialect reviewer assignments", ""])
     assignments = _record(reviews.get("reviewer_assignments"), "reviewer_assignments")
     for dialect in EXPECTED_DIALECTS:
         reviewer = assignments.get(dialect, "")
-        lines.append(f"| {dialect} | {reviewer} |")
-    lines.extend(["", ""])
+        reviewer_text = reviewer if isinstance(reviewer, str) and reviewer else "unassigned"
+        lines.append(f"- {dialect}: {reviewer_text}")
+    lines.append("")
     return "\n".join(lines)
 
 

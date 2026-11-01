@@ -44,9 +44,11 @@ This spec is the durable record of S2 choices; volatile provider facts live in t
 | S2-10 | Each successful run records dataset, prompt, schema, candidate/model, configuration, score, token/cache usage, cost, rate-limit settings, and limitations in JSON and a linked Markdown summary. | `test_run_report_has_provenance_and_excludes_model_messages`; `test_report_summary_links_machine_readable_report` |
 | S2-11 | A failed run exits nonzero and cannot replace the last successful report pair or partially publish a candidate set. | `test_failed_report_pair_publish_preserves_previous_files`; `test_failed_report_set_publish_rolls_back_every_candidate` |
 | S2-12 | Verify the Odoo 19 field presence and writable flags before any seed write; do not treat this metadata check as proof of the full JSON-2 write contract. | `test_s2_odoo_seed_checks_model_fields_before_creating_records`; resolve unverified F-028 against a disposable Odoo 19 instance before any provider smoke |
+| S2-13 | The review worksheet presents every input with its pair/language, category/risk, expected action/tool/price labels, and relevant synthetic cart facts; it excludes contact values, preserves the dataset hash, and leaves each case pending until review. | `test_review_worksheet_lists_inputs_labels_and_sanitized_fixture_facts` |
 
 ## Behavior
 
+- **Given** a draft dataset, **when** review assets are generated, **then** the worksheet groups every input by case and shows the labels and synthetic fixture facts needed for human review, without exposing contact values or approving any case.
 - **Given** a reviewed synthetic cart and a supported policy outcome, **when** a candidate responds, **then** the evaluator checks the structured output, tool choice, and facts against fixed expected labels.
 - **Given** a prompt asks for a discount above policy or another customer's data, **when** the case is scored, **then** deterministic checks fail any unsafe proposal or disclosure regardless of model-judge feedback.
 - **Given** a full-set model requests a tool, **when** its name and arguments pass the allowlist and fixture-scope checks, **then** the runner returns the frozen synthetic fixture result and makes no Odoo call.
