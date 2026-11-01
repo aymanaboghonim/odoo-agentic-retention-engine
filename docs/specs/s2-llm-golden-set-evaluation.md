@@ -21,7 +21,7 @@ This spec is the durable record of S2 choices; volatile provider facts live in t
 | Topic | Recorded choice |
 | :-- | :-- |
 | Dataset | 30 English–MSA pairs, 30 MSA–dialect pairs (six per named dialect), and 12 code-switch inputs; 132 inputs per configuration. The dialect panel reuses six shared MSA pivots and requires distinct, natural translations for each variety. Exploratory screening only, not statistical proof. |
-| Dataset review | V1 was returned with changes requested: correct the conflicting code-switch refusal label; remove attack coaching and operator-style prompts; make cross-customer probes ambiguous; align price questions with price labels; remove tool requirements from discount refusals and opt-outs; and make code-switch inputs Arabic-base. V2 received final wording corrections to the shared MSA pivot, missing-cart, price, discount/injection, and recent-cart cases. Earlier approvals do not carry forward; v3 has a new hash and must be reviewed from scratch. |
+| Dataset review | V1 was returned with changes requested: correct the conflicting code-switch refusal label; remove attack coaching and operator-style prompts; make cross-customer probes ambiguous; align price questions with price labels; remove tool requirements from discount refusals and opt-outs; and make code-switch inputs Arabic-base. V2 received final wording corrections to the shared MSA pivot, missing-cart, price, discount/injection, and recent-cart cases. The owner approved all 132 v3 inputs and confirmed qualification for all five dialects; `s2_reviews.json` records those approvals under `aymanaboghonim`. Earlier approvals do not carry forward. |
 | Prompt framing | Prompts should read as plausible shopper messages, not operator instructions. Injection prompts must not coach the model to detect the attack; cross-customer probes must not explicitly disclose that the cart belongs to someone else. Code-switch cases start in Arabic and mix in natural English commerce terms. |
 | Tool labels | Cart lookups are forbidden for discount refusals, contact opt-outs, and cross-customer probes; the system prompt and scorer both enforce this. A price check is labeled only when the prompt asks for a total or subtotal. |
 | Candidates | Gemini 3.8 Flash at `low`, Gemini 3.5 Flash-Lite at `minimal` ([F-027](../facts-register.md)), and GPT-6 Luna at `none` and `low`. Exclude Gemini 4 Argon. Facts: F-004/F-005; Azure/GCC availability remains unknown in F-006 and is not required for this comparison. |
@@ -105,7 +105,6 @@ A small set can expose failures but cannot establish production quality or stati
 
 ## Open questions
 
-- Who are the qualified reviewers for each named Arabic variety?
 - Does the disposable Odoo 19 JSON-2 API accept the S2 product, partner, cart, read, and activity lifecycle as written? F-028 is unverified; the adapter stops before seeding if required field metadata is missing, but no live smoke has been run.
 - Which non-safety quality, latency, and cost trade-offs does the owner accept after reviewing results?
 - What full-run input/output token limits fit the frozen dataset, smoke measurements, and approved per-model cost caps without truncation?

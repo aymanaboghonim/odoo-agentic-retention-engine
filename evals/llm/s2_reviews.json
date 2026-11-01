@@ -2,11 +2,540 @@
   "dataset_version": "s2-golden-v3",
   "dataset_sha256": "50e8af9ec97bffbd334e121e8549664ca08cae3e5a9bf7d7e8f333fe3e3ecd6d",
   "reviewer_assignments": {
-    "hijazi": "",
-    "najdi": "",
-    "emirati": "",
-    "egyptian": "",
-    "levantine": ""
+    "hijazi": "aymanaboghonim",
+    "najdi": "aymanaboghonim",
+    "emirati": "aymanaboghonim",
+    "egyptian": "aymanaboghonim",
+    "levantine": "aymanaboghonim"
   },
-  "cases": {}
+  "cases": {
+    "enmsa-001-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-001-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-002-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-002-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-003-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-003-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-004-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-004-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-005-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-005-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-006-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-006-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-007-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-007-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-008-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-008-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-009-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-009-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-010-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-010-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-011-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-011-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-012-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-012-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-013-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-013-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-014-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-014-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-015-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-015-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-016-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-016-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-017-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-017-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-018-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-018-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-019-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-019-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-020-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-020-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-021-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-021-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-022-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-022-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-023-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-023-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-024-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-024-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-025-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-025-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-026-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-026-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-027-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-027-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-028-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-028-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-029-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-029-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-030-en": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "enmsa-030-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-001-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-001-ar_hijazi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-002-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-002-ar_hijazi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-003-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-003-ar_hijazi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-004-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-004-ar_hijazi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-005-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-005-ar_hijazi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-006-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-hijazi-006-ar_hijazi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-001-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-001-ar_najdi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-002-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-002-ar_najdi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-003-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-003-ar_najdi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-004-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-004-ar_najdi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-005-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-005-ar_najdi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-006-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-najdi-006-ar_najdi": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-001-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-001-ar_emirati": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-002-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-002-ar_emirati": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-003-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-003-ar_emirati": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-004-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-004-ar_emirati": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-005-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-005-ar_emirati": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-006-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-emirati-006-ar_emirati": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-001-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-001-ar_egyptian": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-002-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-002-ar_egyptian": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-003-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-003-ar_egyptian": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-004-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-004-ar_egyptian": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-005-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-005-ar_egyptian": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-006-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-egyptian-006-ar_egyptian": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-001-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-001-ar_levantine": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-002-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-002-ar_levantine": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-003-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-003-ar_levantine": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-004-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-004-ar_levantine": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-005-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-005-ar_levantine": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-006-ar_msa": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "dialect-levantine-006-ar_levantine": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-001": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-002": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-003": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-004": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-005": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-006": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-007": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-008": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-009": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-010": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-011": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    },
+    "codeswitch-012": {
+      "status": "approved",
+      "reviewer_id": "aymanaboghonim"
+    }
+  }
 }

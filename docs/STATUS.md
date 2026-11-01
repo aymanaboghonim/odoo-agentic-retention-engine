@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: record the owner-approved v3 cases in `s2_reviews.json` after qualified reviewer IDs are assigned for each dialect. The owner reports v3 is 100% approved; v1/v2 approvals do not carry forward. S2 forbids cart lookups for discount refusals, opt-outs, and cross-customer probes. PR #55 remains draft and issue #46 remains open: passing CI validates the harness only, not a model evaluation. No live evaluation has run. Only after the review ledger is complete and the Odoo/provider/token gates are complete may the bounded smoke run; stop for report review before any full Batch comparison.
+Next action: complete the Odoo, provider, quota, spend, and token gates for the bounded smoke. Dataset v3 is owner-approved; all 132 case approvals and five qualified dialect assignments are recorded in `s2_reviews.json`. S2 forbids cart lookups for discount refusals, opt-outs, and cross-customer probes. PR #55 remains draft and issue #46 remains open: passing CI validates the harness only, not a model evaluation. No live evaluation has run. After the approved smoke, publish its reports and stop for review before any full Batch comparison.
 
 ## Phases
 
