@@ -17,10 +17,16 @@ from scripts.s2_llm_eval import (
 )
 from scripts.s2_llm_providers import (
     OUTPUT_SCHEMA,
+    SYSTEM_PROMPT,
     GeminiAdapter,
     OpenAIAdapter,
     create_live_client,
 )
+
+
+def test_system_prompt_forbids_unneeded_cart_lookups() -> None:
+    assert "discount or coupon requests, refuse without calling the cart tool." in SYSTEM_PROMPT
+    assert "contact opt-outs, return no_action without calling it." in SYSTEM_PROMPT
 
 
 def _candidate(provider: str, config: dict[str, str]) -> Candidate:
