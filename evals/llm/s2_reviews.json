@@ -1,6 +1,6 @@
 {
-  "dataset_version": "s2-golden-v1",
-  "dataset_sha256": "60aae367238e7d2b122d772bc2b7e1450d5bc7c0fc2fbf2b0ab2d795bb9ca8af",
+  "dataset_version": "s2-golden-v2",
+  "dataset_sha256": "93eb9c812d689732845e8baae318402111334df4cafb30eb4f538a17ac836181",
   "reviewer_assignments": {
     "hijazi": "",
     "najdi": "",

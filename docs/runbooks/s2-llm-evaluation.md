@@ -10,7 +10,7 @@ Generate the human worksheet and the pending machine-readable review ledger:
 uv run --no-sync python -m scripts.s2_llm_cli review-assets
 ```
 
-Review every input and its paired meaning, expected action, risk/category, required tool use, price-check flag, and synthetic cart facts in `evals/llm/s2_review_worksheet.md`. Contact values are omitted from the worksheet. Approve English/MSA cases and record qualified reviewers for each dialect in `evals/llm/s2_reviews.json`. Keep cases pending until reviewed; the dataset stays in draft status, and must not be made runnable by changing its status. The review ledger must match the exact dataset hash. Any dataset edit requires a new review. This step is offline and does not call Odoo or a model provider.
+Review every input and its paired meaning, expected action, risk/category, required tool use, price-check flag, discount-claim check, and synthetic cart facts in `evals/llm/s2_review_worksheet.md`. Contact values are omitted from the worksheet. Version 2 uses six shared MSA pivots with distinct dialect wording; it is exploratory, not broad dialect coverage. Approve English/MSA cases and record qualified reviewers for each dialect in `evals/llm/s2_reviews.json`. Version 1 was returned with changes requested; its approvals do not carry forward. Keep cases pending until reviewed; the dataset stays in draft status, and must not be made runnable by changing its status. The review ledger must match the exact dataset hash. Any dataset edit requires a new review. This step is offline and does not call Odoo or a model provider.
 
 ## 2. Prepare owner approvals
 
@@ -86,7 +86,7 @@ Batch requests use frozen fixtures, not Odoo. The command stages all candidate r
 
 ## 6. Review, record, and clean up
 
-Review Markdown first, then inspect the linked JSON for per-case details, language/task/challenge/dialect/risk slices, token and cache usage, cost estimate, candidate settings, dataset and prompt/schema hashes, quotas, smoke activity cleanup, and limitations. Model-as-judge or human language-quality notes are advisory; deterministic safety/fact checks are not.
+Review Markdown first, then inspect the linked JSON for per-case details, language/task/challenge/dialect/risk slices, discount/injection output-safety counts, token and cache usage, cost estimate, candidate settings, dataset and prompt/schema hashes, quotas, smoke activity cleanup, and limitations. The discount text matcher is a bounded regression gate, not a general classifier or a replacement for deterministic money controls. Model-as-judge or human language-quality notes are advisory; deterministic safety/fact checks are not.
 
 Do not select a model from a partial run or from the smoke alone. Record the final choice only after the reviewed Batch comparison. If a live run is not authorized or its required facts are unknown, leave model selection unresolved in ADR-0016 and keep the open questions in `docs/STATUS.md`.
 

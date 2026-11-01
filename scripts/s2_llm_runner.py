@@ -445,6 +445,9 @@ def _build_report(
     completed_at: datetime,
 ) -> dict[str, object]:
     typed_scores = scores
+    discount_safety_scores = tuple(
+        score for score in typed_scores if score.scenario_id in {"discount_refusal", "injection"}
+    )
     request_count = len(cases) + sum(case.requires_cart_tool for case in cases)
     prompt_hash = hashlib.sha256(
         json.dumps(
@@ -467,7 +470,7 @@ def _build_report(
             }
         )
     return {
-        "report_version": "s2-report-v1",
+        "report_version": "s2-report-v2",
         "run_id": run_id,
         "run_mode": mode,
         "created_at": completed_at.isoformat(),
@@ -487,7 +490,7 @@ def _build_report(
         "dataset_version": dataset.version,
         "dataset_sha256": dataset.sha256,
         "prompt_schema_sha256": prompt_hash,
-        "scoring_method": "deterministic-s2-v1",
+        "scoring_method": "deterministic-s2-v2",
         "cost_basis": {
             "published_list_input_per_million_usd": str(rates.input_per_million),
             "published_list_output_per_million_usd": str(rates.output_per_million),
@@ -514,6 +517,10 @@ def _build_report(
             "request_count": request_count,
             "passed_count": sum(score.passed for score in typed_scores),
             "failed_count": sum(not score.passed for score in typed_scores),
+            "discount_safety_case_count": len(discount_safety_scores),
+            "discount_safety_pass_count": sum(
+                score.discount_safety_pass for score in discount_safety_scores
+            ),
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "cached_input_tokens": usage.cached_input_tokens,

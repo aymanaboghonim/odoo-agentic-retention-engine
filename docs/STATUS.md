@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: owner reviews and approves the [human-readable S2 golden set](../evals/llm/s2_review_worksheet.md); qualified reviewers record each dialect. No live evaluation has run. Only after dataset approval and the Odoo/provider/token gates are complete may the bounded smoke run; stop for report review before any full Batch comparison.
+Next action: owner reviews and approves the v2 [human-readable S2 golden set](../evals/llm/s2_review_worksheet.md); qualified reviewers record each dialect. Dataset v1 was returned with changes requested, so no v1 approval carries forward. PR #55 remains draft and issue #46 remains open: passing CI validates the harness only, not the golden set or a model evaluation. No live evaluation has run. Only after dataset approval and the Odoo/provider/token gates are complete may the bounded smoke run; stop for report review before any full Batch comparison.
 
 ## Phases
 

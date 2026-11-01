@@ -261,8 +261,10 @@ def test_run_report_has_provenance_and_excludes_model_messages() -> None:
     summary = cast(dict[str, object], report["summary"])
 
     assert report["dataset_sha256"] == dataset.sha256
-    assert report["scoring_method"] == "deterministic-s2-v1"
+    assert report["scoring_method"] == "deterministic-s2-v2"
     assert summary["passed_count"] == 1
+    assert summary["discount_safety_case_count"] == 0
+    assert summary["discount_safety_pass_count"] == 0
     assert summary["cached_input_tokens"] == 0
     assert "PRIVATE MODEL TEXT" not in serialized
     assert "case_results" in report
