@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: complete and merge #51's project-wide preflight, progress, and human-review-report governance before starting S2.
+Next action: review the S2 implementation PR for issue #46. Model selection remains unresolved until owner-reviewed evaluation reports exist; resolve the dialect reviewers, Odoo JSON-2 contract (F-028), provider limits, and token limits before live runs.
 
 ## Phases
 
@@ -21,8 +21,8 @@ Next action: complete and merge #51's project-wide preflight, progress, and huma
 - [x] **Phase 0c: Blueprint extraction complete; `blueprint-draft.md` removed in issue #31**
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [x] S1 Odoo (#43): Odoo 19.0, demo data has aged abandoned carts so no seed needed, reminder is opt-in, about 360 MiB idle ([ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md)); startup/probe progress follow-up #53
-  - [ ] #51 Project-wide preflight, progress, failure/output, and human-review-report standards ([spec](specs/project-wide-run-governance.md); must finish before S2). S3 remains sequential for isolated per-query ranking/latency only; throughput is not measured.
-  - [ ] S2 LLM evaluation on golden set
+  - [x] #51 Project-wide preflight, progress, failure/output, and human-review-report standards ([spec](specs/project-wide-run-governance.md); PR #54 merged). S3 remains sequential for isolated per-query ranking/latency only; throughput is not measured.
+  - [ ] #46 S2 bilingual LLM golden-set evaluation (in progress; see [spec](specs/s2-llm-golden-set-evaluation.md) and proposed [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md))
   - [x] S3 Retrieval (#47): benchmark and decision complete; PostgreSQL FTS + pgvector with 80:20 SQL-CTE fusion is recorded in ADR-0015; PR #52 merged
   - [ ] S4 Telegram bot and Mailpit
 - [ ] **Phase 2: POC walking skeleton** (detailed issues written just in time)
@@ -51,7 +51,7 @@ Section numbers below referred to the removed draft.
 - [x] #35 Refine the diagrams: LLM provider, human approval, workflow-to-adapters path, and worker-owned side effects ([ADR-0012](adr/0012-worker-owned-agent-execution.md))
 - [x] 4.2 and 4.3 Data connections and three data channels (decided items only; ports and auth deferred): [data-connections.md](architecture/data-connections.md)
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
-- [x] 6 ADR-0001 to 0004 captured; ADR-0003 remains proposed until S2 (changes from draft include the separate AI database and batch processing)
+- [x] 6 ADR-0001 to 0004 captured; ADR-0003 remains proposed until S2 records the model outcome in ADR-0016 (changes from draft include the separate AI database and batch processing)
 - [x] 7.1 and 7.2 Data protection and AI threat model (legal details are open questions): [data-protection-threat-model.md](specs/data-protection-threat-model.md)
 - [x] 8.1 Evals, release gates, rollback criteria (numeric thresholds are open questions): [evals-release-gates.md](specs/evals-release-gates.md)
 - [x] 8.2 Capacity and cost estimate (POC host needs S1 measurement; production and variable costs remain open): [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md)
@@ -70,6 +70,7 @@ Section numbers below referred to the removed draft.
 - [x] Language policy: ADR-0008
 - [x] Process rules, traceability, risk-based testing: process.md
 - [x] Volatile facts to verify: facts-register.md
+- [x] S2 owner choices and assumptions: [S2 spec](specs/s2-llm-golden-set-evaluation.md); model outcome remains proposed in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md)
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
 - [x] Odoo abandoned-cart reminder is recorded as an unverified baseline assumption (F-003); verify in S1.
 - [x] C4 tool choice: Mermaid, ADR-0010; diagram syntax changed to flowcharts, ADR-0011
@@ -78,7 +79,7 @@ Section numbers below referred to the removed draft.
 
 | # | Question | Resolution / status |
 | :-- | :-- | :-- |
-| Q2 | Final LLM model | S2, then update ADR-0003 |
+| Q2 | Final LLM model/configuration | Complete the reviewed S2 comparison, then finalize [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) and ADR-0003 |
 | Q3 | Final retrieval store | Resolved 2026-10-31: PostgreSQL FTS + pgvector with SQL-CTE fusion, 80:20 dense:lexical RRF, and disjunctive lexical candidates. See [ADR-0015](adr/0015-postgresql-retrieval-store.md); PR #52 merged. Revisit at POC exit before MVP design is locked. |
 | Q4 | Odoo version (17 or newer) | Done. Resolved 2026-10-29: 19.0, [ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md). 19.0 support/EOL dates unverified. |
 | Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 (diagram syntax: flowcharts, ADR-0011) |
@@ -91,3 +92,7 @@ Section numbers below referred to the removed draft.
 | Q12 | Applicable data protection laws, residency region, retention period, deletion process, chat authentication | Open. Needs legal review before real customer data; see [data-protection-threat-model.md](specs/data-protection-threat-model.md) |
 | Q13 | Numeric release gates and rollback triggers, fallback definition, who re-enables the agent | Open. Decide after spikes S2 and S3; see [evals-release-gates.md](specs/evals-release-gates.md) |
 | Q14 | Current POC host plan, capacity, production topology and recurring costs | Open. S1 measured Odoo + PostgreSQL only (about 360 MiB idle, [F-014](facts-register.md)). Full stack in Phase 2; model and retrieval after S2/S3; see [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md) |
+| Q15 | Qualified reviewers for the five named Arabic dialects | Open. Record reviewer approval per dialect in the S2 dataset review worksheet before those cases are runnable |
+| Q16 | Active provider RPM/TPM for smoke and Batch queue limits | Open. Verify from the provider project dashboards and record source/date before any live request or Batch submission |
+| Q17 | Full-run input/output token limits | Open by design. Derive from the frozen dataset and smoke usage, then get owner approval before the full run; do not truncate prompts or outputs |
+| Q18 | Odoo 19 JSON-2 field and write contract for the S2 smoke | Open. The read-only `fields_get` preflight is implemented but has not been run against the disposable instance; confirm the fields and create/read/activity lifecycle before any provider smoke, then update F-028 |
