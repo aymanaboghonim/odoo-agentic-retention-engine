@@ -25,7 +25,7 @@ services:
       USER: odoo
       PASSWORD: ${ODOO_DB_PASSWORD:?Set ODOO_DB_PASSWORD in .env}
     ports:
-      - "127.0.0.1:8069:8069"
+      - "127.0.0.1:${ODOO_HOST_PORT:-8069}:8069"
     volumes:
       - odoo-data:/var/lib/odoo
     command: ["odoo", "--database=odoo", "--init=website_sale", "--with-demo"]

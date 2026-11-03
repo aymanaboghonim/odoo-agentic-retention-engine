@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: complete and merge #51's project-wide preflight, progress, and human-review-report governance before starting S2.
+Next action: owner reviews and squash-merges PR #55 (closes #46). S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2). Then S4 (#44).
 
 ## Phases
 
@@ -21,8 +21,8 @@ Next action: complete and merge #51's project-wide preflight, progress, and huma
 - [x] **Phase 0c: Blueprint extraction complete; `blueprint-draft.md` removed in issue #31**
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [x] S1 Odoo (#43): Odoo 19.0, demo data has aged abandoned carts so no seed needed, reminder is opt-in, about 360 MiB idle ([ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md)); startup/probe progress follow-up #53
-  - [ ] #51 Project-wide preflight, progress, failure/output, and human-review-report standards ([spec](specs/project-wide-run-governance.md); must finish before S2). S3 remains sequential for isolated per-query ranking/latency only; throughput is not measured.
-  - [ ] S2 LLM evaluation on golden set
+  - [x] #51 Project-wide preflight, progress, failure/output, and human-review-report standards ([spec](specs/project-wide-run-governance.md); PR #54 merged). S3 remains sequential for isolated per-query ranking/latency only; throughput is not measured.
+  - [x] #46 S2 bilingual LLM golden-set evaluation (PR #55; Luna `low` + `tool-clarity` prompt chosen for the POC; production financial gate tracked in #56, POC-2; see [evaluation spec](specs/s2-llm-golden-set-evaluation.md), [remediation spec](specs/s2-prompt-and-output-safety-remediation.md), and accepted [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md))
   - [x] S3 Retrieval (#47): benchmark and decision complete; PostgreSQL FTS + pgvector with 80:20 SQL-CTE fusion is recorded in ADR-0015; PR #52 merged
   - [ ] S4 Telegram bot and Mailpit
 - [ ] **Phase 2: POC walking skeleton** (detailed issues written just in time)
@@ -51,7 +51,7 @@ Section numbers below referred to the removed draft.
 - [x] #35 Refine the diagrams: LLM provider, human approval, workflow-to-adapters path, and worker-owned side effects ([ADR-0012](adr/0012-worker-owned-agent-execution.md))
 - [x] 4.2 and 4.3 Data connections and three data channels (decided items only; ports and auth deferred): [data-connections.md](architecture/data-connections.md)
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
-- [x] 6 ADR-0001 to 0004 captured; ADR-0003 remains proposed until S2 (changes from draft include the separate AI database and batch processing)
+- [x] 6 ADR-0001 to 0004 captured; ADR-0003 remains proposed until S2 records the model outcome in ADR-0016 (changes from draft include the separate AI database and batch processing)
 - [x] 7.1 and 7.2 Data protection and AI threat model (legal details are open questions): [data-protection-threat-model.md](specs/data-protection-threat-model.md)
 - [x] 8.1 Evals, release gates, rollback criteria (numeric thresholds are open questions): [evals-release-gates.md](specs/evals-release-gates.md)
 - [x] 8.2 Capacity and cost estimate (POC host needs S1 measurement; production and variable costs remain open): [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md)
@@ -70,6 +70,7 @@ Section numbers below referred to the removed draft.
 - [x] Language policy: ADR-0008
 - [x] Process rules, traceability, risk-based testing: process.md
 - [x] Volatile facts to verify: facts-register.md
+- [x] S2 owner choices and assumptions: [S2 spec](specs/s2-llm-golden-set-evaluation.md); model outcome remains proposed in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md)
 - [x] Acknowledgement of Eng. Sameh Amin: ACKNOWLEDGEMENTS.md and vision
 - [x] Odoo abandoned-cart reminder is recorded as an unverified baseline assumption (F-003); verify in S1.
 - [x] C4 tool choice: Mermaid, ADR-0010; diagram syntax changed to flowcharts, ADR-0011
@@ -78,7 +79,7 @@ Section numbers below referred to the removed draft.
 
 | # | Question | Resolution / status |
 | :-- | :-- | :-- |
-| Q2 | Final LLM model | S2, then update ADR-0003 |
+| Q2 | Final LLM model/configuration | Resolved for the POC 2026-11-03: GPT-6 Luna `low` with the `tool-clarity` prompt, [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md). No production-readiness claim; production choice, thresholds (Q13) and the financial gate (#56) stay open. |
 | Q3 | Final retrieval store | Resolved 2026-10-31: PostgreSQL FTS + pgvector with SQL-CTE fusion, 80:20 dense:lexical RRF, and disjunctive lexical candidates. See [ADR-0015](adr/0015-postgresql-retrieval-store.md); PR #52 merged. Revisit at POC exit before MVP design is locked. |
 | Q4 | Odoo version (17 or newer) | Done. Resolved 2026-10-29: 19.0, [ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md). 19.0 support/EOL dates unverified. |
 | Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 (diagram syntax: flowcharts, ADR-0011) |
@@ -91,3 +92,9 @@ Section numbers below referred to the removed draft.
 | Q12 | Applicable data protection laws, residency region, retention period, deletion process, chat authentication | Open. Needs legal review before real customer data; see [data-protection-threat-model.md](specs/data-protection-threat-model.md) |
 | Q13 | Numeric release gates and rollback triggers, fallback definition, who re-enables the agent | Open. Decide after spikes S2 and S3; see [evals-release-gates.md](specs/evals-release-gates.md) |
 | Q14 | Current POC host plan, capacity, production topology and recurring costs | Open. S1 measured Odoo + PostgreSQL only (about 360 MiB idle, [F-014](facts-register.md)). Full stack in Phase 2; model and retrieval after S2/S3; see [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md) |
+| Q15 | Qualified reviewers for the five named Arabic dialects | Open. Record reviewer approval per dialect in the S2 dataset review worksheet before those cases are runnable |
+| Q16 | Active provider RPM/TPM for smoke and full synchronous runs | Owner reconfirmed unchanged on 2026-11-03: Gemini Tier 1, 1,000 RPM / 2,000,000 TPM for both candidates; OpenAI Build, 5,000 RPM / 2,000,000 TPM for both Luna configurations. These active account/project limits remain owner-reported, not independently verified. [F-037](facts-register.md) records official tier-specific Gemini Batch quotas and Luna limits; it does not verify active Gemini project tiers. The official Luna page lists no Free-tier rate row, so Free-tier support remains unknown. |
+| Q17 | Full-run input/output token limits and spend ceilings | Owner confirmed hard per-request ceilings of 4,000 input and 8,192 output tokens for all four candidates on 2026-11-02. The full-run caps are $5 for Gemini 3.8 Flash, $2.428160 for Gemini 3.5 Flash-Lite, and $2 combined for GPT-6 Luna. The owner approved raising Flash-Lite from $2.00 to $2.428160 to preserve 8,192 output tokens; this matches the current worst-case reservation. |
+| Q18 | Odoo 19 JSON-2 field and write contract for the S2 smoke | Verified for the approved disposable instance: `fields_get`, synthetic cart seeding, exact fixture prices, read-back, creation of the eligible-cart activity, no activity for the recent-cart control, and successful cleanup are recorded in F-028/F-031 and the smoke report. This does not authorize writes to other databases. |
+| Q19 | Provider input-count and usage accounting | Gemini's countTokens call uses the full configured request before generation; OpenAI's Responses input-token endpoint is also used before every generation request. The Gemini usage parser derives omitted components only when the total equation uniquely determines them; it fails closed on ambiguous or inconsistent totals. CI covers these cases. The revised smoke returned consistent Gemini usage: 3,366 input, 386 output including 255 reasoning tokens, and 0 tool-use prompt tokens. Billing/quota treatment for count-only requests remains unknown; see F-030, F-034, and F-038. |
+| Q20 | Runtime cost monitoring and provider reconciliation | The owner requires automatic cost estimation and monitoring. Research is recorded in F-032/F-033/F-035/F-036 and the S2 runbook: provider response usage supports per-call estimates, while provider-side USD reports are aggregate. The existing Langfuse + OpenTelemetry/Grafana target is suitable for estimates and alerts, but S2 does not implement it. Exact instrumentation, alert thresholds, and reconciliation cadence remain open; this does not change smoke cost reporting or select a model. |

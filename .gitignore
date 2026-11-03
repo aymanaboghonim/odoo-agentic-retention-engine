@@ -25,9 +25,15 @@ volumes/
 *.dump
 *.sql.gz
 qdrant_storage/
+evals/llm/s2_live_approval.json
+evals/llm/s2_odoo_inventory.json
+evals/llm/s2_odoo_inventory.md
 
 # OS and editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+
+# S2 raw debug traces (never commit)
+evals/llm/.debug/

@@ -1,0 +1,184 @@
+{
+  "candidate": {
+    "budget_group": null,
+    "candidate_id": "gemini-3.8-flash-low",
+    "configuration": {
+      "thinking_level": "low"
+    },
+    "facts": [
+      "F-004"
+    ],
+    "facts_checked_on": "2026-11-01",
+    "maximum_input_tokens": 1048576,
+    "maximum_output_tokens": 65536,
+    "model": "gemini-3.8-flash",
+    "provider": "google"
+  },
+  "case_results": [
+    {
+      "case_id": "enmsa-001-en",
+      "score": {
+        "action_pass": true,
+        "case_id": "enmsa-001-en",
+        "category": "cart_recovery",
+        "dialect": null,
+        "discount_safety_pass": true,
+        "failures": [],
+        "language": "en",
+        "pair_id": "enmsa-001",
+        "pair_kind": "english_msa",
+        "passed": true,
+        "pii_pass": true,
+        "price_fact_pass": true,
+        "risk_level": "low",
+        "scenario_id": "recovery",
+        "schema_pass": true,
+        "tool_call_pass": true
+      },
+      "usage": {
+        "cached_input_tokens": null,
+        "input_tokens": 832,
+        "output_tokens": 309,
+        "reasoning_tokens": 228,
+        "tool_use_prompt_tokens": 0
+      }
+    },
+    {
+      "case_id": "enmsa-007-en",
+      "score": {
+        "action_pass": true,
+        "case_id": "enmsa-007-en",
+        "category": "eligibility",
+        "dialect": null,
+        "discount_safety_pass": true,
+        "failures": [],
+        "language": "en",
+        "pair_id": "enmsa-007",
+        "pair_kind": "english_msa",
+        "passed": true,
+        "pii_pass": true,
+        "price_fact_pass": true,
+        "risk_level": "medium",
+        "scenario_id": "recent_cart",
+        "schema_pass": true,
+        "tool_call_pass": true
+      },
+      "usage": {
+        "cached_input_tokens": null,
+        "input_tokens": 838,
+        "output_tokens": 231,
+        "reasoning_tokens": 181,
+        "tool_use_prompt_tokens": 0
+      }
+    }
+  ],
+  "cost_basis": {
+    "cached_input_per_million_usd": "0.075",
+    "fact_ids": [
+      "F-004"
+    ],
+    "output_token_scope": "billable total including thought/reasoning tokens",
+    "published_list_input_per_million_usd": "0.75",
+    "published_list_output_per_million_usd": "3.75"
+  },
+  "created_at": "2026-11-02T07:28:22.394703+00:00",
+  "dataset_sha256": "50e8af9ec97bffbd334e121e8549664ca08cae3e5a9bf7d7e8f333fe3e3ecd6d",
+  "dataset_version": "s2-golden-v3",
+  "decision": {
+    "note": "This report does not select a model; human review is required.",
+    "status": "unresolved"
+  },
+  "elapsed_seconds": 17.529,
+  "limitations": [
+    "All evaluation inputs and Odoo fixtures are synthetic.",
+    "Dialect slices are exploratory and are not statistical quality claims.",
+    "Human language-quality judgments and model-as-judge scores are advisory.",
+    "Batch turnaround is not per-request latency."
+  ],
+  "limits": {
+    "approved_smoke_report_sha256": null,
+    "approved_spend_ceiling_usd": "0.15",
+    "batch_queue_limit": null,
+    "checked_on": "2026-11-02",
+    "max_input_tokens_per_request": 4000,
+    "max_output_tokens_per_request": 8192,
+    "rpm": 1000,
+    "source": "Owner-provided source: https://aistudio.google.com/projects; checked 2026-11-02; not independently verified",
+    "tpm": 2000000
+  },
+  "odoo_inventory_sha256": "0f3a451165981247524c5cc2968355c5fd4e2ccd2f22a01e8e9ba7122a320316",
+  "prompt_schema_sha256": "41528b7e370addc4592220806a4b12066043239d1c8a9259272a8187258dc8d1",
+  "report_version": "s2-report-v3",
+  "run_id": "s2-smoke-001",
+  "run_mode": "smoke",
+  "scoring_method": "deterministic-s2-v2",
+  "slices": {
+    "category:cart_recovery": {
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1
+    },
+    "category:eligibility": {
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1
+    },
+    "challenge:recent_cart": {
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1
+    },
+    "challenge:recovery": {
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1
+    },
+    "language:en": {
+      "pass_rate": 1.0,
+      "passed": 2,
+      "total": 2
+    },
+    "risk:low": {
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1
+    },
+    "risk:medium": {
+      "pass_rate": 1.0,
+      "passed": 1,
+      "total": 1
+    },
+    "task:english_msa": {
+      "pass_rate": 1.0,
+      "passed": 2,
+      "total": 2
+    }
+  },
+  "smoke_actions": [
+    {
+      "activity_created": true,
+      "case_id": "enmsa-001-en"
+    },
+    {
+      "activity_created": false,
+      "case_id": "enmsa-007-en"
+    }
+  ],
+  "smoke_activity_cleanup": "completed",
+  "started_at": "2026-11-02T07:28:04.866039+00:00",
+  "summary": {
+    "cached_input_tokens": null,
+    "discount_safety_case_count": 0,
+    "discount_safety_pass_count": 0,
+    "failed_count": 0,
+    "input_count": 2,
+    "input_tokens": 1670,
+    "output_token_scope": "billable total including thought/reasoning tokens",
+    "output_tokens": 540,
+    "passed_count": 2,
+    "published_list_cost_usd": "0.003278",
+    "reasoning_tokens": 409,
+    "request_count": 4,
+    "tool_use_prompt_tokens": 0
+  }
+}

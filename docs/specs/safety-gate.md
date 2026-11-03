@@ -43,6 +43,10 @@ The named tests are implementation acceptance tests; they do not exist yet and m
 - Concurrent approvals could exceed the daily budget unless budget reservation and enforcement are atomic.
 - Ambiguous discount or margin calculations could produce different outcomes at the thresholds. Their bases, currency rounding, and margin definition must be settled before implementation.
 
+## Implementation status
+
+Not implemented. S2 (#46) covers only a bounded discount text matcher in the evaluator and a failed-score block on the smoke-only internal activity write; it is not this gate. The production gate, coupon and message-dispatch enforcement, and the tests named above are tracked in #56 (POC-2).
+
 ## Open questions
 
 - What amount is the percentage discount calculated against (for example, eligible line total or cart subtotal)?
