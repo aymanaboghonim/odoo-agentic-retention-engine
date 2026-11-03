@@ -1,7 +1,7 @@
 # Spec: Financial safety gate
 
 - Issue: #23
-- ADRs: ADR-0002 (policy module boundary), ADR-0003 (discount-cap evaluation; proposed).
+- ADRs: ADR-0002 (policy module boundary), ADR-0003 (discount-cap evaluation; accepted), ADR-0016 (S2 outcome).
 - Status: draft
 
 ## Purpose

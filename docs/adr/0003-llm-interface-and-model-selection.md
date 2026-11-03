@@ -1,6 +1,6 @@
 # ADR-0003: One LLM interface; model chosen by evaluation
 
-- Status: proposed (interface boundary kept; S2 model outcome is in [ADR-0016](0016-s2-llm-evaluation-and-model-selection.md))
+- Status: accepted (2026-11-03; interface boundary and evaluation-based selection only; the POC model outcome is in [ADR-0016](0016-s2-llm-evaluation-and-model-selection.md))
 - Date: 2026-10-24
 
 ## Context
@@ -24,3 +24,9 @@ We need provider freedom and data sovereignty options (Azure OpenAI for GCC). Th
 
 - Eval work is needed before the final choice.
 - Switching models is a config change plus a re-run of the golden set.
+
+## Outcome (S2, issue #46)
+
+- The `LLMClient` port exists in the S2 harness ([`scripts/s2_llm_providers.py`](../../scripts/s2_llm_providers.py)). The S2 evaluation compared Gemini and OpenAI candidates. A production adapter in `src/engine/` does not exist yet.
+- The golden set grew from about 30 to 132 cases. The model choice and its limits are in ADR-0016; this ADR does not repeat them.
+- Not settled by this acceptance: the Azure OpenAI adapter and GCC availability (F-006 is unknown), PII masking (not implemented), and production readiness. Those stay open in [STATUS](../STATUS.md).
