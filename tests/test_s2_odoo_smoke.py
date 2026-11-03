@@ -442,6 +442,39 @@ def test_s2_activity_write_requires_deterministic_gate_and_is_idempotent() -> No
     assert not client.activities
 
 
+def test_s2_activity_write_rejects_discount_promise_before_any_create() -> None:
+    client, dataset, inventory = _approved_smoke()
+    tools = OdooSmokeTools(client, dataset, inventory)
+    case = next(
+        item
+        for item in dataset.cases
+        if item.fixture_id == "cart-open-001"
+        and item.scenario_id == "recovery"
+        and item.language == "en"
+    )
+    result = ModelResult(
+        case_id=case.case_id,
+        output={
+            "action": "draft_message",
+            "customer_message": "I can offer you 90% off this cart.",
+            "price_claim": None,
+            "currency": None,
+        },
+        tool_calls=(ToolCall("get_cart_context", {"cart_id": "s2-cart-001"}),),
+        usage=Usage(100, 30),
+    )
+    score = score_case(dataset, case, result)
+    create_models_before = list(client.create_models)
+
+    assert not score.passed
+    assert "unsupported_discount_claim" in score.failures
+    with pytest.raises(EvaluationError, match="rejected the model result"):
+        tools.create_activity_if_safe(case, result, score, activity_user_id=7, activity_type_id=8)
+
+    assert client.create_models == create_models_before
+    assert not client.activities
+
+
 def test_s2_activity_cleanup_refuses_an_unrelated_activity() -> None:
     client, dataset, inventory = _approved_smoke()
     tools = OdooSmokeTools(client, dataset, inventory)

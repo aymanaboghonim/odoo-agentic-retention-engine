@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: owner reviews the four [full-run Markdown reports](../evals/llm/results/full/s2-full-001/). The 132-case comparison completed for all four candidates, but the CLI returned nonzero because deterministic case failures were found; under the runbook, this is not a model-selection decision. Passes were Gemini 3.8 Flash 91/132, Flash-Lite 70/132, Luna `none` 106/132, and Luna `low` 111/132. All four passed the bounded discount/injection text checks 37/37, but all had hard-gate failures in other categories, including cross-customer probes and money-boundary cases. No model is selected; numeric comparative thresholds also remain unresolved. The full-run usage estimate is $0.384558; Phase A cumulative generation estimate is $0.406840/$1.00 approved ceiling. Count-only endpoint billing/quota treatment is unknown and excluded. The owner-approved smoke hash used for this run was `8588e73c7e49c8ac391408ce049cea8708ee3121aa2b17acb7db5371265c9e78`; it is cleared in the local approval file after report-format corrections, so any future live rerun requires fresh smoke review and approval. The owner reconfirmed unchanged provider limits on 2026-11-03: Gemini Tier 1, 1,000 RPM/2,000,000 TPM; OpenAI Build, 5,000 RPM/2,000,000 TPM. These account-specific tiers remain owner-reported, not independently verified. PR #55 remains draft and issue #46 remains open.
+Next action: owner reviews and squash-merges PR #55 (closes #46). S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2). Then S4 (#44).
 
 ## Phases
 
@@ -22,7 +22,7 @@ Next action: owner reviews the four [full-run Markdown reports](../evals/llm/res
 - [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [x] S1 Odoo (#43): Odoo 19.0, demo data has aged abandoned carts so no seed needed, reminder is opt-in, about 360 MiB idle ([ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md)); startup/probe progress follow-up #53
   - [x] #51 Project-wide preflight, progress, failure/output, and human-review-report standards ([spec](specs/project-wide-run-governance.md); PR #54 merged). S3 remains sequential for isolated per-query ranking/latency only; throughput is not measured.
-  - [ ] #46 S2 bilingual LLM golden-set evaluation (full comparison completed; deterministic failures prevent a model decision; owner review and next-step decision remain; see [spec](specs/s2-llm-golden-set-evaluation.md) and proposed [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md))
+  - [x] #46 S2 bilingual LLM golden-set evaluation (PR #55; Luna `low` + `tool-clarity` prompt chosen for the POC; production financial gate tracked in #56, POC-2; see [evaluation spec](specs/s2-llm-golden-set-evaluation.md), [remediation spec](specs/s2-prompt-and-output-safety-remediation.md), and accepted [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md))
   - [x] S3 Retrieval (#47): benchmark and decision complete; PostgreSQL FTS + pgvector with 80:20 SQL-CTE fusion is recorded in ADR-0015; PR #52 merged
   - [ ] S4 Telegram bot and Mailpit
 - [ ] **Phase 2: POC walking skeleton** (detailed issues written just in time)
@@ -79,7 +79,7 @@ Section numbers below referred to the removed draft.
 
 | # | Question | Resolution / status |
 | :-- | :-- | :-- |
-| Q2 | Final LLM model/configuration | Full comparison completed, but deterministic failures make it non-decision-grade under the runbook. Owner reviews the reports, resolves the next remediation/evaluation step and numeric selection criteria, then updates [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) and ADR-0003 |
+| Q2 | Final LLM model/configuration | Resolved for the POC 2026-11-03: GPT-6 Luna `low` with the `tool-clarity` prompt, [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md). No production-readiness claim; production choice, thresholds (Q13) and the financial gate (#56) stay open. |
 | Q3 | Final retrieval store | Resolved 2026-10-31: PostgreSQL FTS + pgvector with SQL-CTE fusion, 80:20 dense:lexical RRF, and disjunctive lexical candidates. See [ADR-0015](adr/0015-postgresql-retrieval-store.md); PR #52 merged. Revisit at POC exit before MVP design is locked. |
 | Q4 | Odoo version (17 or newer) | Done. Resolved 2026-10-29: 19.0, [ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md). 19.0 support/EOL dates unverified. |
 | Q5 | C4 tooling: Mermaid or Structurizr | Done. Resolved 2026-10-25: Mermaid, ADR-0010 (diagram syntax: flowcharts, ADR-0011) |

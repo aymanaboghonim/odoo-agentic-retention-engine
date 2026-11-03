@@ -29,7 +29,12 @@ from scripts.s2_llm_eval import (
     review_failures,
     score_case,
 )
-from scripts.s2_llm_prompts import PROMPT_VERSION, prompt_fingerprint
+from scripts.s2_llm_prompts import (
+    DEFAULT_PROMPT_VARIANT,
+    PromptVariant,
+    prompt_fingerprint,
+    prompt_version,
+)
 from scripts.s2_llm_providers import LLMClient
 
 FACTS_CHECKED_ON = "2026-11-01"
@@ -295,6 +300,7 @@ def run_evaluation(
     smoke_action: Callable[[EvaluationCase, ModelResult, CaseScore], tuple[int, bool] | None]
     | None = None,
     budget_remaining_usd: Decimal | None = None,
+    prompt_variant: PromptVariant = DEFAULT_PROMPT_VARIANT,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, object]:
     if mode not in {"smoke", "full"}:
@@ -415,6 +421,7 @@ def run_evaluation(
         run_id,
         started_at,
         completed_at,
+        prompt_variant,
     )
     report["smoke_actions"] = smoke_actions
     return report
@@ -601,13 +608,12 @@ def _build_report(
     run_id: str,
     started_at: datetime,
     completed_at: datetime,
+    prompt_variant: PromptVariant,
 ) -> dict[str, object]:
     typed_scores = scores
-    discount_safety_scores = tuple(
-        score for score in typed_scores if score.scenario_id in {"discount_refusal", "injection"}
-    )
+    discount_safety_scores = typed_scores
     request_count = len(cases) + sum(case.requires_cart_tool for case in cases)
-    prompt_hash = prompt_fingerprint(candidate.provider)
+    prompt_hash = prompt_fingerprint(candidate.provider, prompt_variant)
     per_case: list[dict[str, object]] = []
     for result, score in zip(results, typed_scores, strict=True):
         per_case.append(
@@ -618,7 +624,7 @@ def _build_report(
             }
         )
     return {
-        "report_version": "s2-report-v3",
+        "report_version": "s2-report-v4",
         "run_id": run_id,
         "run_mode": mode,
         "created_at": completed_at.isoformat(),
@@ -637,9 +643,10 @@ def _build_report(
         },
         "dataset_version": dataset.version,
         "dataset_sha256": dataset.sha256,
-        "prompt_version": PROMPT_VERSION,
+        "prompt_version": prompt_version(prompt_variant),
+        "prompt_variant": prompt_variant,
         "prompt_schema_sha256": prompt_hash,
-        "scoring_method": "deterministic-s2-v2",
+        "scoring_method": "deterministic-s2-v3",
         "cost_basis": {
             "published_list_input_per_million_usd": str(rates.input_per_million),
             "published_list_output_per_million_usd": str(rates.output_per_million),
@@ -671,6 +678,9 @@ def _build_report(
             "discount_safety_pass_count": sum(
                 score.discount_safety_pass for score in discount_safety_scores
             ),
+            "discount_safety_scope": (
+                "all customer-facing outputs; no_action with null text is allowed"
+            ),
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "output_token_scope": "billable total including thought/reasoning tokens",
@@ -691,6 +701,8 @@ def _build_report(
             "Human language-quality judgments and model-as-judge scores are advisory.",
             "Latency is per synchronous request under parallel load, not a production figure.",
             "The discount text matcher is a bounded regression gate, not a general classifier.",
+            "Model response text is not retained; aggregate scores do not "
+            "establish message quality.",
             "Count-only input-token endpoint billing and quota treatment are unknown; they are "
             "excluded from the generation-token cost estimate.",
         ],

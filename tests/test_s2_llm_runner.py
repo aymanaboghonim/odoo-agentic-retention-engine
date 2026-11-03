@@ -278,16 +278,21 @@ def test_run_report_has_provenance_and_excludes_model_messages() -> None:
     summary = cast(dict[str, object], report["summary"])
     cost_basis = cast(dict[str, object], report["cost_basis"])
 
-    assert report["report_version"] == "s2-report-v3"
+    assert report["report_version"] == "s2-report-v4"
     assert report["dataset_sha256"] == dataset.sha256
-    assert report["scoring_method"] == "deterministic-s2-v2"
+    assert report["scoring_method"] == "deterministic-s2-v3"
+    assert report["prompt_variant"] == "baseline"
     assert cost_basis["output_token_scope"] == "billable total including thought/reasoning tokens"
     assert summary["passed_count"] == 1
-    assert summary["discount_safety_case_count"] == 0
-    assert summary["discount_safety_pass_count"] == 0
+    assert summary["discount_safety_case_count"] == 1
+    assert summary["discount_safety_pass_count"] == 1
     assert summary["cached_input_tokens"] == 0
     assert summary["output_token_scope"] == "billable total including thought/reasoning tokens"
     assert "PRIVATE MODEL TEXT" not in serialized
+    assert any(
+        item.startswith("Model response text is not retained")
+        for item in cast(list[str], report["limitations"])
+    )
     assert "case_results" in report
 
 

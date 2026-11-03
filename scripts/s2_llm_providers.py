@@ -22,10 +22,12 @@ from scripts.s2_llm_eval import (
     mask_sensitive_data,
 )
 from scripts.s2_llm_prompts import (
+    DEFAULT_PROMPT_VARIANT,
     OUTPUT_SCHEMA,
     TOOL_DESCRIPTION,
     TOOL_NAME,
     TOOL_PARAMETERS,
+    PromptVariant,
     system_prompt,
 )
 
@@ -46,6 +48,7 @@ class GeminiAdapter:
         max_input_tokens: int | None = None,
         api_key: str | None = None,
         count_tokens_transport: Callable[[str, dict[str, object]], int] | None = None,
+        prompt_variant: PromptVariant = DEFAULT_PROMPT_VARIANT,
         poll_seconds: int = 30,
         timeout_seconds: int = 86_400,
     ) -> None:
@@ -59,6 +62,7 @@ class GeminiAdapter:
         self.max_input_tokens = max_input_tokens
         self.api_key = api_key
         self.count_tokens_transport = count_tokens_transport
+        self.prompt_variant = prompt_variant
         self.poll_seconds = poll_seconds
         self.timeout_seconds = timeout_seconds
 
@@ -103,7 +107,7 @@ class GeminiAdapter:
 
     def _generation_config(self, *, allow_tool_calls: bool = True) -> dict[str, object]:
         config: dict[str, object] = {
-            "system_instruction": system_prompt("google"),
+            "system_instruction": system_prompt("google", self.prompt_variant),
             "response_mime_type": "application/json",
             "response_json_schema": OUTPUT_SCHEMA,
             "thinking_config": {"thinking_level": self.candidate.configuration["thinking_level"]},
@@ -185,6 +189,7 @@ class OpenAIAdapter:
         *,
         max_input_tokens: int | None = None,
         max_output_tokens: int | None = None,
+        prompt_variant: PromptVariant = DEFAULT_PROMPT_VARIANT,
         poll_seconds: int = 30,
         timeout_seconds: int = 86_400,
     ) -> None:
@@ -193,6 +198,7 @@ class OpenAIAdapter:
         self.client = client
         self.candidate = candidate
         self.max_input_tokens = max_input_tokens
+        self.prompt_variant = prompt_variant
         self.max_output_tokens = max_output_tokens
         self.poll_seconds = poll_seconds
         self.timeout_seconds = timeout_seconds
@@ -264,7 +270,7 @@ class OpenAIAdapter:
     ) -> dict[str, object]:
         body: dict[str, object] = {
             "model": self.candidate.model,
-            "instructions": system_prompt("openai"),
+            "instructions": system_prompt("openai", self.prompt_variant),
             "input": input_items,
             "text": {
                 "format": {
@@ -436,6 +442,7 @@ def create_live_client(
     *,
     max_input_tokens: int | None = None,
     max_output_tokens: int | None = None,
+    prompt_variant: PromptVariant = DEFAULT_PROMPT_VARIANT,
 ) -> LLMClient:
     if candidate.provider == "google":
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -453,6 +460,7 @@ def create_live_client(
             max_input_tokens=max_input_tokens,
             max_output_tokens=max_output_tokens,
             api_key=api_key,
+            prompt_variant=prompt_variant,
         )
     if candidate.provider == "openai":
         api_key = os.environ.get("OPENAI_API_KEY")
@@ -466,6 +474,7 @@ def create_live_client(
             candidate,
             max_input_tokens=max_input_tokens,
             max_output_tokens=max_output_tokens,
+            prompt_variant=prompt_variant,
         )
     raise EvaluationError(f"Unsupported provider {candidate.provider!r}")
 

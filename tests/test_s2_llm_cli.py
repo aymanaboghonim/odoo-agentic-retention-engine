@@ -57,6 +57,7 @@ def test_full_requires_exact_owner_reviewed_smoke_report_hash(tmp_path: Path) ->
                 "run_mode": "smoke",
                 "dataset_version": dataset.version,
                 "dataset_sha256": dataset.sha256,
+                "prompt_variant": "baseline",
                 "candidate": {"candidate_id": SUPPORTED_CANDIDATES[0].candidate_id},
             }
         ),
@@ -64,11 +65,22 @@ def test_full_requires_exact_owner_reviewed_smoke_report_hash(tmp_path: Path) ->
     )
     digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
 
-    assert _verify_smoke_report(report_path, digest, "owner-reviewer", dataset) == digest
+    assert (
+        _verify_smoke_report(
+            report_path,
+            digest,
+            "owner-reviewer",
+            dataset,
+            "baseline",
+        )
+        == digest
+    )
     with pytest.raises(EvaluationError, match="owner-approved SHA-256"):
-        _verify_smoke_report(report_path, "0" * 64, "owner-reviewer", dataset)
+        _verify_smoke_report(report_path, "0" * 64, "owner-reviewer", dataset, "baseline")
     with pytest.raises(EvaluationError, match="smoke_report_reviewer_id"):
-        _verify_smoke_report(report_path, digest, "", dataset)
+        _verify_smoke_report(report_path, digest, "", dataset, "baseline")
+    with pytest.raises(EvaluationError, match="prompt variant"):
+        _verify_smoke_report(report_path, digest, "owner-reviewer", dataset, "tool-clarity")
 
 
 def test_report_paths_are_unique_and_preflighted(tmp_path: Path) -> None:

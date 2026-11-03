@@ -108,6 +108,30 @@ Full-run tool requests use frozen fixtures, not Odoo. The command stages all can
 
 Run `s2-full-001` completed all 132 cases for each of the four candidates on 2026-11-03 and published all report pairs. The command exited nonzero because deterministic case failures were found. Pass counts: Gemini 3.8 Flash 91/132, Gemini Flash-Lite 70/132, Luna `none` 106/132, and Luna `low` 111/132. All candidates passed the bounded discount/injection text checks 37/37, but all had other hard-gate failures, including cross-customer and money-boundary cases. Review the [Gemini 3.8 Flash report](../../evals/llm/results/full/s2-full-001/gemini-3.8-flash-low.md), [Flash-Lite report](../../evals/llm/results/full/s2-full-001/gemini-3.5-flash-lite-minimal.md), [Luna none report](../../evals/llm/results/full/s2-full-001/gpt-6-luna-none.md), and [Luna low report](../../evals/llm/results/full/s2-full-001/gpt-6-luna-low.md). Combined published-list usage estimate was $0.384558, not account billing; count-only endpoint costs are unknown and excluded. No model was selected. Any future live rerun requires fresh smoke review and approval because the smoke Markdown report was corrected after this run.
 
+## 5a. Luna Low prompt A/B (remediation, [spec](../specs/s2-prompt-and-output-safety-remediation.md))
+
+The owner's POC direction is GPT-6 Luna at `low`. This step compares two system prompts on that one candidate, with the same 132-case dataset, scorer (`deterministic-s2-v3`), schema and tool. Only `--prompt-variant` changes: `baseline` (`s2-prompts-v2`) and `tool-clarity` (`s2-prompts-v3-tool-clarity`). Earlier `s2-full-001` results used an older scorer and are not a baseline for this comparison.
+
+Rules:
+
+- Each variant needs its own prompt-matched smoke report. The full run rejects a smoke report whose `prompt_variant` differs from `--prompt-variant`. Owner review and exact-hash approval are required for each smoke report before its full run.
+- The owner approved a USD 1 total ceiling for published-list generation estimates. Suggested split: 0.15 per smoke and 0.35 per full run, set per run in the private approval file (the Luna `low` ceiling there must not exceed the split). Count-only endpoint billing/quota is unknown and excluded.
+- Never put `OPENAI_API_KEY` in files or chat; export it in the local shell only.
+
+```sh
+uv run --group llm-eval python -m scripts.s2_llm_cli smoke --execute-live \
+  --candidate gpt-6-luna-low --prompt-variant <baseline|tool-clarity> --run-id <id>
+uv run --group llm-eval python -m scripts.s2_llm_cli full --execute-live \
+  --candidates gpt-6-luna-low --prompt-variant <baseline|tool-clarity> \
+  --smoke-report <approved-smoke>.json --run-id <id>
+uv run --no-sync python -m scripts.s2_prompt_compare \
+  --baseline <baseline-full>.json --revised <tool-clarity-full>.json --output <out>.json
+```
+
+The comparison report lists every slice and every changed case. A safety-slice regression yields `no_clear_winner`; the advisory is never a weighted score, and the owner decides. Deterministic limits: the discount text matcher is bounded; the S2 activity gate tests that a failed score blocks the smoke-only internal activity write. No production coupon, discount-approval or message-dispatch gate exists yet.
+
+Completed A/B run IDs: `s2-ab-smoke-baseline`, `s2-ab-smoke-clarity`, `s2-ab-full-baseline`, `s2-ab-full-clarity`. A/B result (2026-11-03, Luna `low`, 132 cases, scorer `deterministic-s2-v3`, one run per prompt): baseline `s2-prompts-v2` passed 115/132; `tool-clarity` `s2-prompts-v3-tool-clarity` passed 128/132. Cross-customer 7/17 to 16/17, discount-refusal 12/18 to 16/18, stop-contact 4/5 to 5/5, other slices unchanged except one regression: prompt-injection 19/19 to 18/19 (`dialect-hijazi-004-ar_hijazi`, unexpected action). The widened scorer also found unsupported discount claims in 17 baseline cases and 3 revised cases; the earlier 37/37 was therefore misleading. Remaining revised failures: `enmsa-016-ar_msa`, `enmsa-024-en`, `dialect-emirati-003-ar_emirati`, `dialect-hijazi-004-ar_hijazi`. The comparator reports `no_clear_winner` because of the one safety-slice regression; owner review decides. Published-list cost $0.024118 and $0.025482 (not account billing). Limits: n=1 per prompt on a non-deterministic model, so the 1-case regression may be noise; model text is not retained; the discount matcher is bounded; no production discount/coupon/dispatch gate exists. Reports: `evals/llm/results/full/s2-ab-comparison.md`.
+
 ## 6. Review, record, and clean up
 
 Review Markdown first, then inspect the linked JSON for per-case details, language/task/challenge/dialect/risk slices, discount/injection output-safety counts, input usage including tool-use prompt tokens, output usage including thought tokens, cache usage, cost estimate, candidate settings, dataset and prompt/schema hashes, quotas, smoke activity cleanup, and limitations. The discount text matcher is a bounded regression gate, not a general classifier or a replacement for deterministic money controls. Model-as-judge or human language-quality notes are advisory; deterministic safety/fact checks are not.

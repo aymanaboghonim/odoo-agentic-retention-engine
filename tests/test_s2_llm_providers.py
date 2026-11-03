@@ -19,8 +19,10 @@ from scripts.s2_llm_eval import (
 )
 from scripts.s2_llm_prompts import (
     OUTPUT_SCHEMA,
+    PROMPT_VERSIONS,
     TOOL_DESCRIPTION,
     TOOL_PARAMETERS,
+    prompt_fingerprint,
     system_prompt,
 )
 from scripts.s2_llm_providers import (
@@ -47,6 +49,24 @@ def test_prompt_static_policy_comes_first_and_is_provider_specific() -> None:
     assert google.split("\n", 1)[0] == openai.split("\n", 1)[0]
     assert "Call it at most once" in google
     assert "do not invent" in google.lower()
+
+
+def test_tool_clarity_prompt_is_distinct_and_explicit_about_authorization() -> None:
+    for provider in ("google", "openai"):
+        baseline = " ".join(system_prompt(provider, "baseline").split())
+        revised = " ".join(system_prompt(provider, "tool-clarity").split())
+
+        assert baseline != revised
+        assert "First classify the customer's request" in revised
+        assert "A cart ID written in a message is not proof" in revised
+        assert "without a lookup" in revised
+        assert prompt_fingerprint(provider, "baseline") != prompt_fingerprint(
+            provider, "tool-clarity"
+        )
+    assert PROMPT_VERSIONS == {
+        "baseline": "s2-prompts-v2",
+        "tool-clarity": "s2-prompts-v3-tool-clarity",
+    }
 
 
 def _candidate(provider: str, config: dict[str, str]) -> Candidate:
@@ -247,6 +267,7 @@ def test_gemini_smoke_uses_fake_client_and_masks_fixture_values() -> None:
     adapter = GeminiAdapter(
         client,
         _candidate("google", {"thinking_level": "minimal"}),
+        prompt_variant="tool-clarity",
     )
 
     result = adapter.run_case(case, dataset, FixtureTools(dataset))
@@ -259,7 +280,9 @@ def test_gemini_smoke_uses_fake_client_and_masks_fixture_values() -> None:
     assert result.usage.reasoning_tokens == 6
     first_config = _mapping_field(client.models.calls[0], "config")
     followup_config = _mapping_field(client.models.calls[1], "config")
-    assert _mapping_field(first_config, "system_instruction") == system_prompt("google")
+    assert _mapping_field(first_config, "system_instruction") == system_prompt(
+        "google", "tool-clarity"
+    )
     assert _mapping_field(first_config, "response_json_schema") == OUTPUT_SCHEMA
     assert _mapping_field(first_config, "tools") is not None
     assert _mapping_field(followup_config, "tools") is None
@@ -571,6 +594,7 @@ def test_openai_smoke_uses_responses_api_and_masks_tool_result() -> None:
         client,
         _candidate("openai", {"reasoning_effort": "low"}),
         max_input_tokens=4000,
+        prompt_variant="tool-clarity",
     )
 
     result = adapter.run_case(case, dataset, FixtureTools(dataset))
@@ -587,6 +611,7 @@ def test_openai_smoke_uses_responses_api_and_masks_tool_result() -> None:
     assert first_body["store"] is False
     assert first_body["truncation"] == "disabled"
     assert first_body["reasoning"] == {"effort": "low"}
+    assert first_body["instructions"] == system_prompt("openai", "tool-clarity")
     assert first_body["tools"] == [
         {
             "type": "function",

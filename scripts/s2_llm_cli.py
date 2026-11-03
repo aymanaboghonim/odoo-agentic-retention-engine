@@ -23,6 +23,7 @@ from scripts.s2_llm_eval import (
     publish_report_pair,
     publish_report_set,
 )
+from scripts.s2_llm_prompts import PromptVariant
 from scripts.s2_llm_providers import create_live_client
 from scripts.s2_llm_runner import (
     SUPPORTED_CANDIDATES,
@@ -248,6 +249,7 @@ def _verify_smoke_report(
     approved_hash: str | None,
     reviewer_id: object,
     dataset: GoldenDataset,
+    prompt_variant: PromptVariant,
 ) -> str:
     if approved_hash is None or not SHA256_PATTERN.fullmatch(approved_hash):
         raise EvaluationError("S2 live approval has no valid approved smoke report SHA-256")
@@ -270,6 +272,8 @@ def _verify_smoke_report(
         or report.get("dataset_sha256") != dataset.sha256
     ):
         raise EvaluationError("Smoke report does not match the current S2 dataset")
+    if report.get("prompt_variant") != prompt_variant:
+        raise EvaluationError("Smoke report does not match the requested prompt variant")
     candidate = _object(report.get("candidate"), "S2 smoke report candidate")
     candidate_id = candidate.get("candidate_id")
     if not isinstance(candidate_id, str):
@@ -296,6 +300,7 @@ def _prepare_full(args: argparse.Namespace) -> FullInputs:
         approved_hash if isinstance(approved_hash, str) else None,
         document.get("smoke_report_reviewer_id"),
         dataset,
+        args.prompt_variant,
     )
     approvals = {
         candidate.candidate_id: _approval_for(document, candidate.candidate_id)
@@ -381,6 +386,7 @@ def _run_smoke(args: argparse.Namespace) -> int:
             else None
         ),
         max_output_tokens=prepared.approval.max_output_tokens_per_request,
+        prompt_variant=args.prompt_variant,
     )
     created_activities: list[tuple[int, str]] = []
 
@@ -416,6 +422,7 @@ def _run_smoke(args: argparse.Namespace) -> int:
             run_id=args.run_id,
             tools=tools,
             smoke_action=gated_activity,
+            prompt_variant=args.prompt_variant,
         )
     finally:
         for activity_id, cart_id in reversed(created_activities):
@@ -452,6 +459,7 @@ def _run_full(args: argparse.Namespace) -> int:
             max_output_tokens=prepared.approvals[
                 candidate.candidate_id
             ].max_output_tokens_per_request,
+            prompt_variant=args.prompt_variant,
         )
         for candidate in prepared.candidates
     }
@@ -470,6 +478,7 @@ def _run_full(args: argparse.Namespace) -> int:
             approval=approval,
             run_id=args.run_id,
             budget_remaining_usd=remaining,
+            prompt_variant=args.prompt_variant,
         )
         if group:
             report_summary = _object(report.get("summary"), "S2 full report summary")
@@ -502,6 +511,14 @@ def _preflight(args: argparse.Namespace) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Review and run the S2 LLM evaluation.")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    def prompt_variant(value: str) -> PromptVariant:
+        if value == "baseline":
+            return "baseline"
+        if value == "tool-clarity":
+            return "tool-clarity"
+        raise argparse.ArgumentTypeError(f"Unsupported prompt variant {value!r}")
+
     review = commands.add_parser("review-assets")
     review.add_argument("--worksheet", type=Path, default=DEFAULT_WORKSHEET_PATH)
     review.add_argument("--review-ledger", type=Path, default=DEFAULT_REVIEW_PATH)
@@ -514,11 +531,13 @@ def _parser() -> argparse.ArgumentParser:
     preflight.add_argument("--smoke-report", type=Path)
     preflight.add_argument("--candidate")
     preflight.add_argument("--candidates", action="append", dest="candidate_ids")
+    preflight.add_argument("--prompt-variant", type=prompt_variant, default="baseline")
 
     smoke = commands.add_parser("smoke")
     smoke.add_argument("--execute-live", action="store_true")
     smoke.add_argument("--candidate", required=True)
     smoke.add_argument("--run-id", required=True)
+    smoke.add_argument("--prompt-variant", type=prompt_variant, default="baseline")
     smoke.add_argument("--approval", type=Path, default=DEFAULT_APPROVAL_PATH)
     smoke.add_argument("--review-ledger", type=Path, default=DEFAULT_REVIEW_PATH)
     smoke.add_argument("--inventory-json", type=Path, default=DEFAULT_INVENTORY_PATH)
@@ -531,6 +550,7 @@ def _parser() -> argparse.ArgumentParser:
     full.add_argument("--review-ledger", type=Path, default=DEFAULT_REVIEW_PATH)
     full.add_argument("--smoke-report", type=Path, required=True)
     full.add_argument("--candidates", action="append", dest="candidate")
+    full.add_argument("--prompt-variant", type=prompt_variant, default="baseline")
     full.add_argument("--output-dir", type=Path, default=DEFAULT_RESULTS_PATH / "full")
     return parser
 

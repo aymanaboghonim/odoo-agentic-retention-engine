@@ -1,6 +1,6 @@
 # ADR-0003: One LLM interface; model chosen by evaluation
 
-- Status: proposed (final after spike S2)
+- Status: proposed (interface boundary kept; S2 model outcome is in [ADR-0016](0016-s2-llm-evaluation-and-model-selection.md))
 - Date: 2026-10-24
 
 ## Context
