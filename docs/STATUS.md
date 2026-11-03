@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: owner reviews and squash-merges the #53 PR (S1 preflight and progress), then Phase 1 closes and POC-2 planning starts (open follow-up: #56). S4 (#44, PR #57) merged on 2026-11-03 after its live Telegram check passed with one fixed synthetic message to a dedicated test chat. PR #55 (closes #46) merged on 2026-11-03. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
+Next action: plan Phase 2 (POC walking skeleton) just in time, starting with #56 (production financial gate and agent-output rejection, POC-2). Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
 
 ## Phases
 
@@ -19,12 +19,12 @@ Next action: owner reviews and squash-merges the #53 PR (S1 preflight and progre
   - [x] #11 Rename repo to `odoo-agentic-retention-engine` (done 2026-10-25; ruleset and board checked after rename; PR #20, merged)
   - [x] #21 ADR-0010 C4 diagram tooling: Mermaid (PR #22, merged)
 - [x] **Phase 0c: Blueprint extraction complete; `blueprint-draft.md` removed in issue #31**
-- [ ] **Phase 1: Spikes** (each ends with an ADR and updated facts)
+- [x] **Phase 1: Spikes** (each ends with an ADR and updated facts)
   - [x] S1 Odoo (#43): Odoo 19.0, demo data has aged abandoned carts so no seed needed, reminder is opt-in, about 360 MiB idle ([ADR-0014](adr/0014-odoo-19-baseline-and-seeding.md)); preflight, stage progress, and `--wait-ready` for the probe/seed added in #53 ([spec](specs/s1-odoo-preflight-progress.md)); verified with hermetic tests only, not against a running Odoo
   - [x] #51 Project-wide preflight, progress, failure/output, and human-review-report standards ([spec](specs/project-wide-run-governance.md); PR #54 merged). S3 remains sequential for isolated per-query ranking/latency only; throughput is not measured.
   - [x] #46 S2 bilingual LLM golden-set evaluation (PR #55; Luna `low` + `tool-clarity` prompt chosen for the POC; production financial gate tracked in #56, POC-2; see [evaluation spec](specs/s2-llm-golden-set-evaluation.md), [remediation spec](specs/s2-prompt-and-output-safety-remediation.md), and accepted [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md))
   - [x] S3 Retrieval (#47): benchmark and decision complete; PostgreSQL FTS + pgvector with 80:20 SQL-CTE fusion is recorded in ADR-0015; PR #52 merged
-  - [x] S4 Telegram bot and Mailpit (local Mailpit smoke and required dedicated-chat Telegram check passed; PR #57 open)
+  - [x] S4 Telegram bot and Mailpit (PR #57 merged; local Mailpit smoke and the required dedicated-chat Telegram check passed)
 - [ ] **Phase 2: POC walking skeleton** (detailed issues written just in time)
 - [ ] **Phase 3: POC exit review, MVP plan**
 
@@ -51,7 +51,7 @@ Section numbers below referred to the removed draft.
 - [x] #35 Refine the diagrams: LLM provider, human approval, workflow-to-adapters path, and worker-owned side effects ([ADR-0012](adr/0012-worker-owned-agent-execution.md))
 - [x] 4.2 and 4.3 Data connections and three data channels (decided items only; ports and auth deferred): [data-connections.md](architecture/data-connections.md)
 - [x] 5 Agent state machine and HITL flow: [agent-state-machine.md](specs/agent-state-machine.md)
-- [x] 6 ADR-0001 to 0004 captured; ADR-0003 remains proposed until S2 records the model outcome in ADR-0016 (changes from draft include the separate AI database and batch processing)
+- [x] 6 ADR-0001 to 0004 captured; ADR-0003 accepted 2026-11-03 for the interface boundary and evaluation-based selection, with the S2 model outcome in ADR-0016 (changes from draft include the separate AI database and batch processing)
 - [x] 7.1 and 7.2 Data protection and AI threat model (legal details are open questions): [data-protection-threat-model.md](specs/data-protection-threat-model.md)
 - [x] 8.1 Evals, release gates, rollback criteria (numeric thresholds are open questions): [evals-release-gates.md](specs/evals-release-gates.md)
 - [x] 8.2 Capacity and cost estimate (POC host needs S1 measurement; production and variable costs remain open): [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md)
