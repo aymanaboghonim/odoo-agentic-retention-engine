@@ -63,6 +63,6 @@ The checked-in dataset has owner approval and must keep `review_status: "approve
 - `make setup` uses `uv sync --locked`, which checks the lockfile and emits package progress; its existing tool-version and Docker checks are the fast preflight. No extra progress framework is needed.
 - `make ci` reports each pre-commit check and traceability result, so it already gives per-check progress and a final status.
 - `make benchmark-s3` is the first full application of the project-wide preflight, smoke, progress, failure, and report rules in this runbook.
-- The S1 Odoo Compose startup and `scripts/spike_s1_odoo.py` probe/seed do not yet show stage progress. Track that out-of-scope gap in [issue #53](https://github.com/aymanaboghonim/odoo-agentic-retention-engine/issues/53).
+- `scripts/spike_s1_odoo.py` probe/seed has its own preflight and stage progress; see the [S1 runbook](s1-odoo-local.md) (issue #53).
 
 Do not treat the provisional 90% Recall@5 figure as a pass/fail condition. If the small corpus cannot support a reliable gate or store choice, record the limitation and keep the decision open.

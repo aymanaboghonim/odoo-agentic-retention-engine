@@ -46,7 +46,7 @@ Implement the first complete example for the S3 benchmark. Inventory existing co
 - `make setup` performs locked dependency synchronization after checking the required tool versions and Docker; it uses the package manager's own output.
 - `make ci` reports each pre-commit check and traceability result, so no additional heartbeat system is needed.
 - `make benchmark-s3` is the first implementation of this standard and is covered by the S3 runbook.
-- S1 Odoo Compose startup and `scripts/spike_s1_odoo.py` probe/seed lack stage progress. This out-of-scope gap is tracked in #53.
+- `scripts/spike_s1_odoo.py` probe/seed now has a preflight, stage progress, and bounded `--wait-ready`, covered by the [S1 preflight spec](s1-odoo-preflight-progress.md) (#53). The Odoo Compose startup itself still uses Docker's output; the script waits for readiness but does not start containers.
 
 ## Open questions
 

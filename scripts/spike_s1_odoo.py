@@ -4,10 +4,14 @@ import argparse
 import json
 import os
 import sys
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from ipaddress import ip_address
-from typing import TypeAlias
+from typing import TextIO, TypeAlias
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -18,6 +22,15 @@ Record: TypeAlias = dict[str, JsonValue]
 
 class OdooApiError(RuntimeError):
     pass
+
+
+class PreflightError(RuntimeError):
+    pass
+
+
+HEARTBEAT_SECONDS = 30.0
+READY_POLL_SECONDS = 5.0
+READY_CHECK_TIMEOUT_SECONDS = 5.0
 
 
 def _json_value(value: object) -> JsonValue:
@@ -139,7 +152,15 @@ def _age_hours(date_value: JsonValue | None) -> float | None:
     return (datetime.now(timezone.utc) - order_date).total_seconds() / 3600
 
 
-def inspect_odoo(client: OdooClient) -> tuple[list[Record], list[Record]]:
+def inspect_odoo(
+    client: OdooClient, on_step: Callable[[int, int], None] | None = None
+) -> tuple[list[Record], list[Record]]:
+    total_steps = 5
+
+    def step(completed: int) -> None:
+        if on_step:
+            on_step(completed, total_steps)
+
     websites = client.search_read(
         "website",
         [],
@@ -153,20 +174,25 @@ def inspect_odoo(client: OdooClient) -> tuple[list[Record], list[Record]]:
         ],
         limit=20,
     )
+    step(1)
     carts = client.search_read(
         "sale.order",
         [["website_id", "!=", False], ["state", "=", "draft"]],
         ["id", "date_order", "website_id", "is_abandoned_cart", "cart_recovery_email_sent"],
         limit=200,
     )
+    step(2)
     crons = client.search_read(
         "ir.cron",
         [["name", "ilike", "abandoned cart"]],
         ["id", "name", "active", "interval_number", "interval_type"],
         limit=10,
     )
+    step(3)
     product_count = client.search_count("product.template", [])
+    step(4)
     customer_count = client.search_count("res.partner", [["customer_rank", ">", 0]])
+    step(5)
 
     print(f"Products: {product_count}")
     print(f"Customer partners: {customer_count}")
@@ -281,26 +307,159 @@ def seed_aged_cart(client: OdooClient, websites: list[dict[str, JsonValue]]) -> 
     return order_id
 
 
-def main() -> int:
+class Progress:
+    def __init__(
+        self,
+        stream: TextIO | None = None,
+        heartbeat_seconds: float = HEARTBEAT_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._stream = stream
+        self._heartbeat_seconds = heartbeat_seconds
+        self._clock = clock
+        self.failed_stage: str | None = None
+
+    def emit(self, stage: str, status: str, started: float, extra: str = "") -> None:
+        elapsed = int(self._clock() - started)
+        suffix = f" {extra}" if extra else ""
+        print(
+            f"progress stage={stage} status={status}{suffix} elapsed_seconds={elapsed}",
+            file=self._stream or sys.stderr,
+            flush=True,
+        )
+
+    @contextmanager
+    def stage(self, name: str) -> Iterator[Callable[[int, int], None]]:
+        started = self._clock()
+        stop = threading.Event()
+        self.emit(name, "started", started)
+
+        def beat() -> None:
+            while not stop.wait(self._heartbeat_seconds):
+                self.emit(name, "heartbeat", started)
+
+        def step(completed: int, total: int) -> None:
+            self.emit(name, "progress", started, f"completed={completed} total={total}")
+
+        thread = threading.Thread(target=beat, daemon=True)
+        thread.start()
+        try:
+            yield step
+        except BaseException:
+            stop.set()
+            thread.join()
+            if self.failed_stage is None:
+                self.failed_stage = name
+            self.emit(name, "failed", started)
+            raise
+        stop.set()
+        thread.join()
+        self.emit(name, "completed", started)
+
+
+def build_client(env: Mapping[str, str]) -> OdooClient:
+    return OdooClient(
+        base_url=env.get("ODOO_URL", "http://localhost:8069"),
+        database=env.get("ODOO_DB_NAME", "odoo"),
+        api_key=env.get("ODOO_API_KEY", ""),
+    )
+
+
+def check_login_page(base_url: str, timeout: float = READY_CHECK_TIMEOUT_SECONDS) -> None:
+    request = Request(
+        f"{base_url}/web/login", headers={"User-Agent": "odoo-agentic-retention-engine-s1"}
+    )
+    try:
+        with urlopen(request, timeout=timeout):
+            return
+    except HTTPError as error:
+        raise PreflightError(f"Odoo login page returned HTTP {error.code}") from error
+    except OSError as error:
+        raise PreflightError(
+            f"Odoo did not answer at {base_url}; is the local stack running? ({error})"
+        ) from error
+
+
+def wait_until_ready(
+    base_url: str,
+    wait_seconds: float,
+    check: Callable[[str], None] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> None:
+    check = check or check_login_page
+    deadline = clock() + wait_seconds
+    while True:
+        try:
+            check(base_url)
+            return
+        except PreflightError as error:
+            if clock() >= deadline:
+                bound = f" within {wait_seconds:g} seconds" if wait_seconds > 0 else ""
+                raise PreflightError(f"Odoo was not ready{bound}: {error}") from error
+            sleep(READY_POLL_SECONDS)
+
+
+def run_preflight(client: OdooClient, wait_seconds: float, progress: Progress) -> None:
+    with progress.stage("preflight-readiness"):
+        wait_until_ready(client.base_url, wait_seconds)
+    with progress.stage("preflight-api"):
+        client.search_count("website", [])
+
+
+PREFLIGHT_LIMITS = (
+    "Preflight passed: configuration is valid, the login page answers, and the API key "
+    "can read the named database once. It does not verify that module installation is "
+    "complete, that demo data exists, that a reminder is enabled, or that the seed will "
+    "succeed. The probe and seed write no files."
+)
+
+
+def main(
+    argv: list[str] | None = None,
+    env: Mapping[str, str] | None = None,
+    progress: Progress | None = None,
+) -> int:
     parser = argparse.ArgumentParser(description="Inspect the isolated local Odoo S1 baseline.")
     parser.add_argument(
         "--seed-aged-cart",
         action="store_true",
         help="Create or re-age the deterministic synthetic cart through the local Odoo API.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Check configuration, readiness, and API access, then stop without probing.",
+    )
+    parser.add_argument(
+        "--wait-ready",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="Wait up to this long for Odoo to answer before failing (default: 0).",
+    )
+    args = parser.parse_args(argv)
+    if args.wait_ready < 0:
+        parser.error("--wait-ready must not be negative")
+    if args.preflight_only and args.seed_aged_cart:
+        parser.error("--preflight-only cannot be combined with --seed-aged-cart")
 
+    progress = progress or Progress()
     try:
-        client = OdooClient(
-            base_url=os.environ.get("ODOO_URL", "http://localhost:8069"),
-            database=os.environ.get("ODOO_DB_NAME", "odoo"),
-            api_key=os.environ.get("ODOO_API_KEY", ""),
-        )
-        websites, _ = inspect_odoo(client)
+        with progress.stage("preflight-configuration"):
+            client = build_client(os.environ if env is None else env)
+        run_preflight(client, args.wait_ready, progress)
+        if args.preflight_only:
+            print(PREFLIGHT_LIMITS)
+            return 0
+        with progress.stage("probe") as step:
+            websites, _ = inspect_odoo(client, step)
         if args.seed_aged_cart:
-            seed_aged_cart(client, websites)
-    except (OdooApiError, ValueError) as error:
-        print(f"S1 Odoo probe failed: {error}", file=sys.stderr)
+            with progress.stage("seed"):
+                seed_aged_cart(client, websites)
+    except (OdooApiError, PreflightError, ValueError) as error:
+        stage = progress.failed_stage or "unknown"
+        print(f"S1 Odoo check failed at stage {stage}: {error}", file=sys.stderr)
         return 1
     return 0
 
