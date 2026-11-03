@@ -9,7 +9,23 @@ Issue: #26. This page lists only connections that accepted ADRs already decide. 
 | Engine | Odoo database | Read abandoned carts and customer history | Read-only database role. Never writes. | [ADR-0001](../adr/0001-odoo-system-of-record-and-ai-database.md) |
 | Worker | Odoo API | Change state: coupon, campaign, cart | Only path that changes Odoo. Odoo applies business rules and taxes. | [ADR-0001](../adr/0001-odoo-system-of-record-and-ai-database.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md) |
 | Engine | AI database | Features, audit log, idempotency keys, checkpoints, approvals, vector chunks | Separate Postgres container with its own database and role | [ADR-0001](../adr/0001-odoo-system-of-record-and-ai-database.md) |
-| API and worker | Messaging channels | API accepts inbound events; worker sends approved messages | Through `ChannelPort` (Telegram first) and `EmailPort` (Mailpit in the POC). Only the worker dispatches messages. | [ADR-0013](../adr/0013-poc-channels-and-whatsapp-verification.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md) |
+| API and worker | Messaging channels | API accepts inbound events; worker sends approved messages | Through `ChannelPort` (Telegram first) and `EmailPort` (Mailpit in the POC). Only the worker dispatches messages. Local S4 transports are in [ADR-0017](../adr/0017-s4-local-channel-transport.md). | [ADR-0013](../adr/0013-poc-channels-and-whatsapp-verification.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md), [ADR-0017](../adr/0017-s4-local-channel-transport.md) |
+
+### Local POC channel transports
+
+- Telegram uses the HTTPS Bot API. Local inbound updates use `getUpdates`
+  polling; the adapter rejects a configured webhook rather than changing it.
+  The bot token is embedded in the API URL and must not appear in logs or
+  errors. Normalized inbound events are handed to the API ingress boundary.
+  Only the worker-owned dispatch path sends Telegram messages. See
+  [F-039](../facts-register.md#f-039) and [ADR-0017](../adr/0017-s4-local-channel-transport.md).
+- Local email uses SMTP to Mailpit at `127.0.0.1:1025`; the Mailpit UI/API is
+  `http://127.0.0.1:8025`. Mailpit's defaults do not use SMTP encryption,
+  SMTP authentication, or UI/API authentication. Both ports are bound to
+  loopback and carry synthetic test data only. The pinned image and API
+  contract are recorded in [F-040](../facts-register.md#f-040).
+- These values and transports apply only to local POC verification. Production
+  transport, authentication, and network topology remain undecided.
 | Engine | LLM provider | Model calls | Through one `LLMClient` port. Only synthetic data is sent to cloud; PII is masked first. | [ADR-0003](../adr/0003-llm-interface-and-model-selection.md) |
 | Engine | Retrieval store | Search product and policy text | Through a `Retriever` port. The store is a derived index, never the source of truth. | [ADR-0006](../adr/0006-retrieval-store-benchmark.md) |
 | Engine | Observability services | Traces, metrics, LLM traces | Only synthetic data | [ADR-0007](../adr/0007-free-tier-observability.md) |
@@ -49,7 +65,7 @@ These checks do not exist yet. They are recorded so the matching implementation 
 
 ## Not decided yet
 
-- Ports, protocols and authentication for each connection (the original draft lists examples, but they are unverified).
+- Production ports, protocols, authentication and network layout remain undecided. Local POC channel transport is recorded in [ADR-0017](../adr/0017-s4-local-channel-transport.md).
 - Network layout, gateway, and what is public or private.
 - Odoo version is 19.0 and the API type is JSON-2 with a bearer API key, local only so far ([F-001](../facts-register.md), [ADR-0014](../adr/0014-odoo-19-baseline-and-seeding.md)). Ports, network layout and the read-only database role for non-local use are still open (Q11).
 - Final LLM provider and model (spike S2) and retrieval store (spike S3).
