@@ -1,0 +1,83 @@
+{
+  "approval_gates": {
+    "input_tokens_per_request": null,
+    "usd_smoke_spend_ceiling": null
+  },
+  "candidate": {
+    "configuration": {
+      "thinking_level": "low"
+    },
+    "id": "gemini-3.8-flash-low",
+    "model": "gemini-3.8-flash",
+    "provider": "google"
+  },
+  "created_on": "2026-11-02",
+  "dataset": {
+    "sha256": "50e8af9ec97bffbd334e121e8549664ca08cae3e5a9bf7d7e8f333fe3e3ecd6d",
+    "version": "s2-golden-v3"
+  },
+  "generation_calls": 0,
+  "inventory": {
+    "manifest_sha256": "0f3a451165981247524c5cc2968355c5fd4e2ccd2f22a01e8e9ba7122a320316",
+    "version": "s2-odoo-inventory-v1"
+  },
+  "limitations": [
+    "This is a count-only preflight, not a model smoke or evaluation; no output was generated and no scoring was run.",
+    "Canonical follow-up counts include the reviewed synthetic tool result and a representative function call, but cannot include provider-generated model content or thought signatures. Runtime countTokens checks the actual follow-up before any generation request.",
+    "The per-request input ceiling and USD smoke spend ceiling are not approved; generation is blocked until both are recorded.",
+    "CountTokens pricing and quota treatment remain unknown and are not included in the generation-token estimates.",
+    "Published-list cost estimates assume no cache discount and use F-004 rates valid through 2026-12-31."
+  ],
+  "method": {
+    "count_endpoint": "Gemini Developer API models.countTokens",
+    "request_shape": "generateContentRequest including model, contents, systemInstruction, tools, toolConfig, and generationConfig",
+    "sdk_note": "google-genai 2.34.0 Developer API CountTokensConfig rejects system_instruction, tools, and generation_config; the S2 client uses the documented REST request shape.",
+    "scoring_method": "not applicable"
+  },
+  "request_attempts": {
+    "count_tokens_http_400_invalid_argument": 4,
+    "count_tokens_successful": 5,
+    "generation": 0,
+    "note": "The successful count total includes one repeated initial-case verification. Four earlier count-only requests were rejected while correcting the REST request shape."
+  },
+  "requests": [
+    {
+      "case_id": "enmsa-001-en",
+      "fixture_id": "cart-open-001",
+      "input_tokens": 271,
+      "turn": "initial"
+    },
+    {
+      "case_id": "enmsa-001-en",
+      "fixture_id": "cart-open-001",
+      "input_tokens": 406,
+      "turn": "canonical_followup"
+    },
+    {
+      "case_id": "enmsa-007-en",
+      "fixture_id": "cart-recent-004",
+      "input_tokens": 269,
+      "turn": "initial"
+    },
+    {
+      "case_id": "enmsa-007-en",
+      "fixture_id": "cart-recent-004",
+      "input_tokens": 399,
+      "turn": "canonical_followup"
+    }
+  ],
+  "run_id": "s2-smoke-001",
+  "run_mode": "count-only-smoke-preflight",
+  "status": "counted_no_generation",
+  "summary": {
+    "canonical_four_request_input_tokens": 1345,
+    "canonical_input_cost_estimate_usd": "0.00100875",
+    "canonical_input_plus_output_cap_estimate_usd": "0.12388875",
+    "generation_requests_at_most": 4,
+    "max_input_tokens_per_request_according_to_f004": 1048576,
+    "max_output_tokens_per_request": 8192,
+    "maximum_output_tokens_total": 32768,
+    "output_cap_cost_estimate_usd": "0.12288000",
+    "published_list_generation_cost_if_each_request_used_full_f004_input_limit_usd": "3.26860800"
+  }
+}
