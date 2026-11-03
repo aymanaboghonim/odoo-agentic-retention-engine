@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: owner reviews and squash-merges PR #55 (closes #46). S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2). Then S4 (#44).
+Next action: owner reviews and squash-merges the S4 PR #57. Its required live Telegram check passed on 2026-11-03: the dedicated test bot accepted one fixed synthetic diagnostic (message ID 5); no customer content was sent. PR #55 (closes #46) merged on 2026-11-03. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
 
 ## Phases
 
@@ -24,7 +24,7 @@ Next action: owner reviews and squash-merges PR #55 (closes #46). S2 outcome in 
   - [x] #51 Project-wide preflight, progress, failure/output, and human-review-report standards ([spec](specs/project-wide-run-governance.md); PR #54 merged). S3 remains sequential for isolated per-query ranking/latency only; throughput is not measured.
   - [x] #46 S2 bilingual LLM golden-set evaluation (PR #55; Luna `low` + `tool-clarity` prompt chosen for the POC; production financial gate tracked in #56, POC-2; see [evaluation spec](specs/s2-llm-golden-set-evaluation.md), [remediation spec](specs/s2-prompt-and-output-safety-remediation.md), and accepted [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md))
   - [x] S3 Retrieval (#47): benchmark and decision complete; PostgreSQL FTS + pgvector with 80:20 SQL-CTE fusion is recorded in ADR-0015; PR #52 merged
-  - [ ] S4 Telegram bot and Mailpit
+  - [x] S4 Telegram bot and Mailpit (local Mailpit smoke and required dedicated-chat Telegram check passed; PR #57 open)
 - [ ] **Phase 2: POC walking skeleton** (detailed issues written just in time)
 - [ ] **Phase 3: POC exit review, MVP plan**
 
@@ -88,7 +88,7 @@ Section numbers below referred to the removed draft.
 | Q8 | ~~Discount thresholds~~ Resolved 2026-10-24: tier approach accepted (see checklist item 1.2). Defaults still to be validated in S1. | Done; validate defaults in S1 |
 | Q9 | Should we adopt any skill, agent, instruction, hook or workflow from `github/awesome-copilot`? | Done. Resolved 2026-10-24: no bulk adoption. Consider individual items only for a concrete need, after reviewing content, scripts, permissions and license. |
 | Q10 | Planning hierarchy for POC/MVP: phases, parent issues, child tasks, user stories | Done. Resolved 2026-10-25: milestone per phase; parent issue only when an outcome spans multiple issues; keep spec, spike, bug and task types; use user-story format only for user-facing behavior. |
-| Q11 | Ports, protocols, authentication and network layout for each connection | Open. Decide with the first relevant adapter issue; then update [data-connections.md](architecture/data-connections.md) |
+| Q11 | Ports, protocols, authentication and network layout for each connection | Partially resolved 2026-11-03 for local POC channels in [ADR-0017](adr/0017-s4-local-channel-transport.md) and [data-connections.md](architecture/data-connections.md). Production topology, transport and authentication remain open. |
 | Q12 | Applicable data protection laws, residency region, retention period, deletion process, chat authentication | Open. Needs legal review before real customer data; see [data-protection-threat-model.md](specs/data-protection-threat-model.md) |
 | Q13 | Numeric release gates and rollback triggers, fallback definition, who re-enables the agent | Open. Decide after spikes S2 and S3; see [evals-release-gates.md](specs/evals-release-gates.md) |
 | Q14 | Current POC host plan, capacity, production topology and recurring costs | Open. S1 measured Odoo + PostgreSQL only (about 360 MiB idle, [F-014](facts-register.md)). Full stack in Phase 2; model and retrieval after S2/S3; see [capacity-cost-estimate.md](architecture/capacity-cost-estimate.md) |
