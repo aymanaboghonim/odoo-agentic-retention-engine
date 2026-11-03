@@ -28,6 +28,7 @@ from scripts.s2_llm_runner import (
     SUPPORTED_CANDIDATES,
     Candidate,
     LiveApproval,
+    ProviderErrors,
     candidate_by_id,
     candidate_set_preflight_failures,
     live_preflight_failures,
@@ -64,7 +65,7 @@ class SmokeInputs:
 
 
 @dataclass(frozen=True)
-class BatchInputs:
+class FullInputs:
     dataset: GoldenDataset
     reviews: dict[str, object]
     candidates: tuple[Candidate, ...]
@@ -155,7 +156,6 @@ def _approval_for(
         ),
         rpm=_optional_int(settings.get("rpm")),
         tpm=_optional_int(settings.get("tpm")),
-        batch_queue_limit=_optional_int(settings.get("batch_queue_limit")),
         limits_source=source if isinstance(source, str) else "",
         limits_checked_on=checked_on if isinstance(checked_on, str) else "",
         max_input_tokens_per_request=_required_int(settings.get("max_input_tokens_per_request")),
@@ -252,7 +252,7 @@ def _verify_smoke_report(
     if approved_hash is None or not SHA256_PATTERN.fullmatch(approved_hash):
         raise EvaluationError("S2 live approval has no valid approved smoke report SHA-256")
     if path is None:
-        raise EvaluationError("Batch preflight requires --smoke-report")
+        raise EvaluationError("Full-run preflight requires --smoke-report")
     if not isinstance(reviewer_id, str) or not reviewer_id.strip():
         raise EvaluationError("S2 live approval needs a smoke_report_reviewer_id")
     try:
@@ -285,7 +285,7 @@ def _selected_candidates(ids: list[str] | None) -> tuple[Candidate, ...]:
     return tuple(candidate_by_id(candidate_id) for candidate_id in selected_ids)
 
 
-def _prepare_batch(args: argparse.Namespace) -> BatchInputs:
+def _prepare_full(args: argparse.Namespace) -> FullInputs:
     dataset = load_dataset()
     reviews = load_reviews(dataset, args.review_ledger)
     document = _load_approval(args.approval)
@@ -307,11 +307,11 @@ def _prepare_batch(args: argparse.Namespace) -> BatchInputs:
         candidates,
         dataset.cases,
         approvals,
-        mode="batch",
+        mode="full",
     )
     if failures:
-        raise EvaluationError(f"Live Batch preflight failed: {'; '.join(failures)}")
-    return BatchInputs(dataset, reviews, candidates, approvals)
+        raise EvaluationError(f"Live Full-run preflight failed: {'; '.join(failures)}")
+    return FullInputs(dataset, reviews, candidates, approvals)
 
 
 def _verify_odoo_activity_resources(
@@ -375,6 +375,11 @@ def _run_smoke(args: argparse.Namespace) -> int:
     )
     live_client = create_live_client(
         prepared.candidate,
+        max_input_tokens=(
+            prepared.approval.max_input_tokens_per_request
+            if prepared.candidate.provider == "google"
+            else None
+        ),
         max_output_tokens=prepared.approval.max_output_tokens_per_request,
     )
     created_activities: list[tuple[int, str]] = []
@@ -426,12 +431,12 @@ def _run_smoke(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_batch(args: argparse.Namespace) -> int:
+def _run_full(args: argparse.Namespace) -> int:
     if not args.execute_live:
-        raise EvaluationError("Pass --execute-live to make the explicitly approved Batch run")
+        raise EvaluationError("Pass --execute-live to make the explicitly approved full run")
     if not RUN_ID_PATTERN.fullmatch(args.run_id):
         raise EvaluationError("run_id must use lowercase letters, digits, and hyphens")
-    prepared = _prepare_batch(args)
+    prepared = _prepare_full(args)
     output_dir = args.output_dir / args.run_id
     json_paths = _prepare_report_paths(
         output_dir,
@@ -441,34 +446,46 @@ def _run_batch(args: argparse.Namespace) -> int:
     clients = {
         candidate.candidate_id: create_live_client(
             candidate,
+            max_input_tokens=prepared.approvals[
+                candidate.candidate_id
+            ].max_input_tokens_per_request,
             max_output_tokens=prepared.approvals[
                 candidate.candidate_id
             ].max_output_tokens_per_request,
         )
         for candidate in prepared.candidates
     }
+    group_spent: dict[str, Decimal] = {}
     for candidate, json_path in zip(prepared.candidates, json_paths, strict=True):
         approval = prepared.approvals[candidate.candidate_id]
+        group = candidate.budget_group
+        remaining = candidate.cost_cap_usd - group_spent.get(group, Decimal(0)) if group else None
         report = run_evaluation(
             prepared.dataset,
             candidate,
             clients[candidate.candidate_id],
             prepared.dataset.cases,
             reviews=prepared.reviews,
-            mode="batch",
+            mode="full",
             approval=approval,
             run_id=args.run_id,
+            budget_remaining_usd=remaining,
         )
+        if group:
+            report_summary = _object(report.get("summary"), "S2 full report summary")
+            group_spent[group] = group_spent.get(group, Decimal(0)) + Decimal(
+                str(report_summary["published_list_cost_usd"])
+            )
         reports.append((report, json_path))
     published = publish_report_set(reports)
     failed = False
     for (json_path, markdown_path), (report, _) in zip(published, reports, strict=True):
-        summary = _object(report.get("summary"), "S2 Batch report summary")
+        summary = _object(report.get("summary"), "S2 full report summary")
         if summary.get("failed_count") != 0:
             failed = True
         print(f"Published {json_path} and {markdown_path}")
     if failed:
-        print("Batch comparison completed with deterministic case failures.", file=sys.stderr)
+        print("Full comparison completed with deterministic case failures.", file=sys.stderr)
         return 2
     return 0
 
@@ -477,8 +494,8 @@ def _preflight(args: argparse.Namespace) -> int:
     if args.mode == "smoke":
         _prepare_smoke(args)
     else:
-        _prepare_batch(args)
-    print("Preflight passed. No provider request, Batch submission, or Odoo API call was made.")
+        _prepare_full(args)
+    print("Preflight passed. No provider request or Odoo API call was made.")
     return 0
 
 
@@ -490,7 +507,7 @@ def _parser() -> argparse.ArgumentParser:
     review.add_argument("--review-ledger", type=Path, default=DEFAULT_REVIEW_PATH)
 
     preflight = commands.add_parser("preflight")
-    preflight.add_argument("--mode", choices=("smoke", "batch"), required=True)
+    preflight.add_argument("--mode", choices=("smoke", "full"), required=True)
     preflight.add_argument("--approval", type=Path, default=DEFAULT_APPROVAL_PATH)
     preflight.add_argument("--review-ledger", type=Path, default=DEFAULT_REVIEW_PATH)
     preflight.add_argument("--inventory-json", type=Path, default=DEFAULT_INVENTORY_PATH)
@@ -507,14 +524,14 @@ def _parser() -> argparse.ArgumentParser:
     smoke.add_argument("--inventory-json", type=Path, default=DEFAULT_INVENTORY_PATH)
     smoke.add_argument("--output-dir", type=Path, default=DEFAULT_RESULTS_PATH / "smoke")
 
-    batch = commands.add_parser("batch")
-    batch.add_argument("--execute-live", action="store_true")
-    batch.add_argument("--run-id", required=True)
-    batch.add_argument("--approval", type=Path, default=DEFAULT_APPROVAL_PATH)
-    batch.add_argument("--review-ledger", type=Path, default=DEFAULT_REVIEW_PATH)
-    batch.add_argument("--smoke-report", type=Path, required=True)
-    batch.add_argument("--candidates", action="append", dest="candidate")
-    batch.add_argument("--output-dir", type=Path, default=DEFAULT_RESULTS_PATH / "batch")
+    full = commands.add_parser("full")
+    full.add_argument("--execute-live", action="store_true")
+    full.add_argument("--run-id", required=True)
+    full.add_argument("--approval", type=Path, default=DEFAULT_APPROVAL_PATH)
+    full.add_argument("--review-ledger", type=Path, default=DEFAULT_REVIEW_PATH)
+    full.add_argument("--smoke-report", type=Path, required=True)
+    full.add_argument("--candidates", action="append", dest="candidate")
+    full.add_argument("--output-dir", type=Path, default=DEFAULT_RESULTS_PATH / "full")
     return parser
 
 
@@ -535,8 +552,8 @@ def main() -> int:
             return _preflight(args)
         if args.command == "smoke":
             return _run_smoke(args)
-        if args.command == "batch":
-            return _run_batch(args)
+        if args.command == "full":
+            return _run_full(args)
     except ImportError:
         print(
             "S2 live provider SDK is unavailable; install the locked optional group "
@@ -544,6 +561,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    except ProviderErrors as error:
+        print(f"S2 evaluation incomplete: {error}", file=sys.stderr)
+        return 3
     except (EvaluationError, OdooApiError, OSError, ValueError) as error:
         print(f"S2 evaluation failed: {error}", file=sys.stderr)
         return 1

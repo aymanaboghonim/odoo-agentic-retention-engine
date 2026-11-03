@@ -102,18 +102,30 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class Usage:
+    """Provider usage; output_tokens is the billable total, including reasoning."""
+
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int | None = None
     reasoning_tokens: int | None = None
+    tool_use_prompt_tokens: int | None = None
 
     def __post_init__(self) -> None:
         values = (self.input_tokens, self.output_tokens)
-        optional_values = (self.cached_input_tokens, self.reasoning_tokens)
+        optional_values = (
+            self.cached_input_tokens,
+            self.reasoning_tokens,
+            self.tool_use_prompt_tokens,
+        )
         if min(values) < 0 or any(value is not None and value < 0 for value in optional_values):
             raise ValueError("Token usage values cannot be negative")
         if self.cached_input_tokens is not None and self.cached_input_tokens > self.input_tokens:
             raise ValueError("Cached input tokens cannot exceed total input tokens")
+        if (
+            self.tool_use_prompt_tokens is not None
+            and self.tool_use_prompt_tokens > self.input_tokens
+        ):
+            raise ValueError("Tool-use prompt tokens cannot exceed total input tokens")
 
 
 @dataclass(frozen=True)
@@ -162,7 +174,6 @@ class Candidate:
     facts: tuple[str, ...]
     token_rates: TokenRates
     cost_cap_usd: Decimal
-    batch_token_rates: TokenRates | None = None
     max_input_tokens: int | None = None
     max_output_tokens: int | None = None
     budget_group: str | None = None
@@ -855,7 +866,19 @@ def render_markdown_report(report: dict[str, object], json_name: str) -> str:
     decision = (
         _record(decision_value, "report decision") if isinstance(decision_value, dict) else {}
     )
+    limitations_value = report.get("limitations")
+    if not isinstance(limitations_value, list) or not all(
+        isinstance(limitation, str) for limitation in limitations_value
+    ):
+        raise EvaluationError("Report limitations must be a list of strings")
     configuration = json.dumps(candidate.get("configuration"), ensure_ascii=False, sort_keys=True)
+    safety_count = summary.get("discount_safety_case_count")
+    safety_pass_count = summary.get("discount_safety_pass_count")
+    safety_summary = (
+        "not applicable (0 cases in this run)"
+        if safety_count == 0
+        else f"{safety_pass_count}/{safety_count}"
+    )
     lines = [
         "# S2 LLM evaluation report",
         "",
@@ -871,17 +894,16 @@ def render_markdown_report(report: dict[str, object], json_name: str) -> str:
         f"- Inputs: {summary.get('input_count')}",
         f"- Passed: {summary.get('passed_count')}",
         f"- Hard-gate failures: {summary.get('failed_count')}",
-        f"- Discount/injection output-safety checks: "
-        f"{summary.get('discount_safety_pass_count', 'unknown')}/"
-        f"{summary.get('discount_safety_case_count', 'unknown')}",
+        f"- Discount/injection output-safety checks: {safety_summary}",
         f"- Tokens: input {summary.get('input_tokens', 'unknown')}, "
-        f"output {summary.get('output_tokens', 'unknown')}, "
+        f"tool-use prompt input {summary.get('tool_use_prompt_tokens', 'unknown')}, "
+        f"output including reasoning {summary.get('output_tokens', 'unknown')}, "
         f"cached input {summary.get('cached_input_tokens', 'unknown')}, "
-        f"reasoning {summary.get('reasoning_tokens', 'unknown')}",
+        f"reasoning (included in output) {summary.get('reasoning_tokens', 'unknown')}",
         f"- Published-list cost estimate: ${summary.get('published_list_cost_usd')}",
         f"- Provider limits: RPM {limits.get('rpm', 'unknown')}, "
         f"TPM {limits.get('tpm', 'unknown')}, "
-        f"Batch queue {limits.get('batch_queue_limit', 'unknown')}; "
+        f"concurrency {limits.get('concurrency', 'unknown')}; "
         f"source `{limits.get('source', 'unknown')}`, "
         f"checked `{limits.get('checked_on', 'unknown')}`",
         f"- Approved spend ceiling: ${limits.get('approved_spend_ceiling_usd', 'unknown')}",
@@ -889,7 +911,7 @@ def render_markdown_report(report: dict[str, object], json_name: str) -> str:
         "## Slices",
         "",
         "| Slice | Passed | Total | Pass rate |",
-        "|---|---:|---:|---:|",
+        "| --- | ---: | ---: | ---: |",
     ]
     slices = _record(report.get("slices"), "report slices")
     for name, value in sorted(slices.items()):
@@ -909,7 +931,7 @@ def render_markdown_report(report: dict[str, object], json_name: str) -> str:
                 f"- Cleanup: `{report.get('smoke_activity_cleanup', 'unknown')}`",
                 "",
                 "| Case | Internal activity created |",
-                "|---|---|",
+                "| --- | --- |",
             ]
         )
         for item in smoke_actions:
@@ -927,10 +949,7 @@ def render_markdown_report(report: dict[str, object], json_name: str) -> str:
             "",
             "## Limitations",
             "",
-            "- All inputs and fixtures are synthetic.",
-            "- Advisory language-quality judgments are not safety gates.",
-            "- This report does not establish production latency, availability, "
-            "or account billing.",
+            *(f"- {limitation}" for limitation in limitations_value),
             "",
             f"Machine-readable report: [{json_name}]({json_name})",
             "",

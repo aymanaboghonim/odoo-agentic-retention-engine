@@ -368,15 +368,26 @@ def test_slice_report_keeps_language_and_category_distinct() -> None:
     assert total("risk:high") > 0
 
 
-def test_cost_calculation_uses_usage_and_verified_rate_inputs() -> None:
-    usage = Usage(input_tokens=1_000_000, output_tokens=100_000, cached_input_tokens=200_000)
+def test_cost_calculation_includes_thought_tokens_in_billable_output() -> None:
+    usage = Usage(
+        input_tokens=1_000_000,
+        output_tokens=140_000,
+        cached_input_tokens=200_000,
+        reasoning_tokens=40_000,
+        tool_use_prompt_tokens=100_000,
+    )
     rates = TokenRates(
         input_per_million=Decimal("0.50"),
         output_per_million=Decimal("2.00"),
         cached_input_per_million=Decimal("0.10"),
     )
 
-    assert calculate_cost(usage, rates) == Decimal("0.62")
+    assert calculate_cost(usage, rates) == Decimal("0.70")
+
+
+def test_usage_rejects_tool_use_prompt_larger_than_total_input() -> None:
+    with pytest.raises(ValueError, match="Tool-use prompt tokens"):
+        Usage(input_tokens=2, output_tokens=1, tool_use_prompt_tokens=3)
 
 
 def test_report_summary_links_machine_readable_report() -> None:
@@ -402,6 +413,7 @@ def test_report_summary_links_machine_readable_report() -> None:
         "smoke_actions": [{"case_id": "s2-test-case", "activity_created": True}],
         "odoo_inventory_sha256": "inventory-hash",
         "smoke_activity_cleanup": "completed",
+        "limitations": ["Count-only endpoint billing and quota treatment are unknown."],
     }
 
     markdown = render_markdown_report(report, "s2-test.json")
@@ -412,6 +424,34 @@ def test_report_summary_links_machine_readable_report() -> None:
     assert "Smoke-only Odoo activity gate" in markdown
     assert "Discount/injection output-safety checks: 1/2" in markdown
     assert "`inventory-hash`" in markdown
+    assert "- Count-only endpoint billing and quota treatment are unknown." in markdown
+
+
+def test_report_marks_empty_discount_safety_slice_not_applicable() -> None:
+    report: dict[str, object] = {
+        "run_id": "s2-test",
+        "run_mode": "smoke",
+        "candidate": {"configuration": {}},
+        "summary": {
+            "input_count": 2,
+            "passed_count": 2,
+            "failed_count": 0,
+            "discount_safety_case_count": 0,
+            "discount_safety_pass_count": 0,
+            "published_list_cost_usd": "0.001",
+        },
+        "limits": {},
+        "slices": {},
+        "decision": {"status": "unresolved", "note": "human review"},
+        "limitations": ["No applicable discount/injection cases in this run."],
+    }
+
+    markdown = render_markdown_report(report, "s2-test.json")
+
+    assert (
+        "Discount/injection output-safety checks: not applicable (0 cases in this run)" in markdown
+    )
+    assert "- No applicable discount/injection cases in this run." in markdown
 
 
 def test_failed_report_pair_publish_preserves_previous_files(tmp_path, monkeypatch) -> None:
@@ -436,6 +476,7 @@ def test_failed_report_pair_publish_preserves_previous_files(tmp_path, monkeypat
             "published_list_cost_usd": "0",
         },
         "slices": {},
+        "limitations": [],
     }
     original_replace = evaluation.os.replace
     replace_count = 0
@@ -477,6 +518,7 @@ def test_failed_report_set_publish_rolls_back_every_candidate(tmp_path, monkeypa
             "published_list_cost_usd": "0",
         },
         "slices": {},
+        "limitations": [],
     }
     original_replace = evaluation.os.replace
     failed = False

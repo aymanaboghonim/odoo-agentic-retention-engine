@@ -77,34 +77,6 @@ REQUIRED_ODOO_FIELDS = {
         "date_deadline",
     ),
 }
-WRITE_ODOO_FIELDS = {
-    "product.product": (
-        "name",
-        "default_code",
-        "description_sale",
-        "list_price",
-        "sale_ok",
-        "type",
-    ),
-    "res.partner": ("name", "email", "property_product_pricelist"),
-    "sale.order": (
-        "partner_id",
-        "website_id",
-        "pricelist_id",
-        "client_order_ref",
-        "date_order",
-        "order_line",
-    ),
-    "mail.activity": (
-        "activity_type_id",
-        "res_model_id",
-        "res_id",
-        "user_id",
-        "summary",
-        "note",
-        "date_deadline",
-    ),
-}
 
 
 def _record(value: object, context: str) -> Record:
@@ -177,16 +149,12 @@ def validate_odoo_schema(client: OdooClient) -> None:
         value = client.call(
             model,
             "fields_get",
-            {"allfields": list(required_fields), "attributes": ["type", "readonly"]},
+            {"allfields": list(required_fields), "attributes": ["type"]},
         )
         fields = _record(value, f"{model} field metadata")
         missing = sorted(set(required_fields) - set(fields))
         if missing:
             raise OdooApiError(f"Odoo {model} is missing required S2 fields: {', '.join(missing)}")
-        for field in WRITE_ODOO_FIELDS.get(model, ()):
-            metadata = _record(fields.get(field), f"{model}.{field} metadata")
-            if metadata.get("readonly") is not False:
-                raise OdooApiError(f"Odoo field {model}.{field} is not writable by the S2 API")
 
 
 def seed_smoke_inventory(
@@ -255,6 +223,7 @@ def seed_smoke_inventory(
 
     product_values: list[dict[str, object]] = []
     product_by_fixture: dict[str, dict[str, object]] = {}
+    product_price_by_fixture: dict[str, int | float] = {}
     for fixture_id, cart in SMOKE_CARTS.items():
         fixture = dataset.fixtures.get(fixture_id)
         if fixture is None or fixture.get("cart_id") != cart.get("cart_id"):
@@ -293,6 +262,7 @@ def seed_smoke_inventory(
         }
         product_values.append(product_value)
         product_by_fixture[fixture_id] = product_value
+        product_price_by_fixture[fixture_id] = unit_price
     product_codes = [value["default_code"] for value in product_values]
     existing_products = client.search_read(
         "product.product",
@@ -339,13 +309,16 @@ def seed_smoke_inventory(
 
     now = datetime.now(timezone.utc)
     order_values: list[dict[str, object]] = []
-    for index, (_, cart_manifest) in enumerate(SMOKE_CARTS.items()):
+    for index, (fixture_id, cart_manifest) in enumerate(SMOKE_CARTS.items()):
         age_value = cart_manifest.get("age_hours")
         cart_ref = cart_manifest.get("cart_id")
+        unit_price = product_price_by_fixture.get(fixture_id)
         if not isinstance(age_value, int) or isinstance(age_value, bool):
             raise EvaluationError("S2 cart manifest contains an invalid age")
         if not isinstance(cart_ref, str):
             raise EvaluationError("S2 cart manifest contains an invalid cart ID")
+        if isinstance(unit_price, bool) or not isinstance(unit_price, (int, float)):
+            raise EvaluationError(f"S2 smoke fixture {fixture_id} has an invalid unit price")
         order_date = (now - timedelta(hours=age_value)).replace(tzinfo=None)
         order_values.append(
             {
@@ -361,6 +334,7 @@ def seed_smoke_inventory(
                         {
                             "product_id": product_ids[index],
                             "product_uom_qty": 1.0,
+                            "price_unit": unit_price,
                         },
                     ]
                 ],
@@ -610,7 +584,6 @@ class OdooSmokeTools:
         for line in lines:
             product_value = line.get("product_id")
             product_id = _many2one_id(product_value, "sale order product")
-            product_name = _many2one_name(product_value, "sale order product")
             product_rows = self.client.search_read(
                 "product.product",
                 cast(list[JsonValue], [["id", "=", product_id]]),
@@ -620,10 +593,11 @@ class OdooSmokeTools:
             if len(product_rows) != 1:
                 raise OdooApiError(f"Odoo product facts are missing for {cart_id}")
             product = product_rows[0]
+            product_name = product.get("name")
             product_code = product.get("default_code")
             product_description = product.get("description_sale")
             if (
-                product.get("name") != product_name
+                not isinstance(product_name, str)
                 or not isinstance(product_code, str)
                 or not isinstance(product_description, str)
             ):
@@ -826,6 +800,18 @@ def _age_hours(value: JsonValue | None) -> float:
 def write_inventory_pair(
     inventory: dict[str, object], json_path: Path, markdown_path: Path
 ) -> tuple[Path, Path]:
+    approval = inventory.get("approval")
+    if not isinstance(approval, dict):
+        raise EvaluationError("Cannot render an Odoo inventory without an approval record")
+    if approval.get("status") == "approved":
+        validate_inventory_approval(inventory)
+        approval_summary = "approved"
+        approval_note = "The owner approved this exact inventory."
+    elif approval.get("status") == "pending":
+        approval_summary = "pending owner inspection"
+        approval_note = "Approve only after inspection; record reviewer_id."
+    else:
+        raise EvaluationError("Cannot render an Odoo inventory with an invalid approval status")
     json_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     json_content = json.dumps(inventory, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -838,7 +824,7 @@ def write_inventory_pair(
         f"- Threshold: {inventory.get('threshold_hours')} hours (S2-only; source F-003)",
         f"- Inventory SHA-256: `{inventory.get('manifest_sha256')}`",
         "- Reminder email: disabled",
-        "- Approval: pending owner inspection",
+        f"- Approval: {approval_summary}",
         "",
         "| Cart ID | Fixture | Age at seed | Eligible | Product | Price | Currency |",
         "|---|---|---:|---|---|---:|---|",
@@ -852,13 +838,7 @@ def write_inventory_pair(
             f"{cart.get('age_hours_at_seed')}h | {cart.get('eligible_at_seed')} | "
             f"{cart.get('product_name')} | {cart.get('unit_price')} | {cart.get('currency')} |"
         )
-    lines.extend(
-        [
-            "",
-            "Set approval.status to `approved` and enter a reviewer_id only after inspection.",
-            "",
-        ]
-    )
+    lines.extend(["", approval_note, ""])
     markdown_content = "\n".join(lines)
     _publish_text_pair(
         json_path,

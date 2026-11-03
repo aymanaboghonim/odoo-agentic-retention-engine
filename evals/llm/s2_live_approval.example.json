@@ -12,41 +12,37 @@
       "spend_ceiling_usd": "5.00",
       "rpm": null,
       "tpm": null,
-      "batch_queue_limit": null,
       "limits_source": "",
       "limits_checked_on": "",
       "max_input_tokens_per_request": null,
-      "max_output_tokens_per_request": null
+      "max_output_tokens_per_request": 8192
     },
     "gemini-3.5-flash-lite-minimal": {
-      "spend_ceiling_usd": "2.00",
+      "spend_ceiling_usd": "2.428160",
       "rpm": null,
       "tpm": null,
-      "batch_queue_limit": null,
       "limits_source": "",
       "limits_checked_on": "",
       "max_input_tokens_per_request": null,
-      "max_output_tokens_per_request": null
+      "max_output_tokens_per_request": 8192
     },
     "gpt-6-luna-none": {
       "spend_ceiling_usd": "2.00",
       "rpm": null,
       "tpm": null,
-      "batch_queue_limit": null,
       "limits_source": "",
       "limits_checked_on": "",
       "max_input_tokens_per_request": null,
-      "max_output_tokens_per_request": null
+      "max_output_tokens_per_request": 8192
     },
     "gpt-6-luna-low": {
       "spend_ceiling_usd": "2.00",
       "rpm": null,
       "tpm": null,
-      "batch_queue_limit": null,
       "limits_source": "",
       "limits_checked_on": "",
       "max_input_tokens_per_request": null,
-      "max_output_tokens_per_request": null
+      "max_output_tokens_per_request": 8192
     }
   }
 }

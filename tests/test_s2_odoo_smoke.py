@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -19,6 +21,8 @@ from scripts.s2_odoo_smoke import (
     OdooSmokeTools,
     seed_smoke_inventory,
     validate_inventory_approval,
+    validate_odoo_schema,
+    write_inventory_pair,
 )
 from scripts.spike_s1_odoo import JsonValue, OdooApiError, OdooClient, Record
 
@@ -45,6 +49,7 @@ class FakeOdooClient(OdooClient):
         self.next_activity_id = 501
         self.create_models: list[str] = []
         self.missing_fields: dict[str, set[str]] = {}
+        self.readonly_fields = {"sale.order": {"website_id"}}
 
     def call(self, model: str, method: str, params: dict[str, object]) -> JsonValue:
         if method == "fields_get":
@@ -53,7 +58,10 @@ class FakeOdooClient(OdooClient):
                 raise AssertionError("fields_get expects allfields")
             missing = self.missing_fields.get(model, set())
             return {
-                field: {"type": "char", "readonly": False}
+                field: {
+                    "type": "char",
+                    "readonly": field in self.readonly_fields.get(model, set()),
+                }
                 for field in raw_fields
                 if isinstance(field, str) and field not in missing
             }
@@ -171,7 +179,20 @@ class FakeOdooClient(OdooClient):
             product_id = 101 + index
             product = self.products[product_id]
             product_name = product["name"]
-            unit_price = product["list_price"]
+            order_line_commands = value.get("order_line")
+            if not isinstance(order_line_commands, list) or len(order_line_commands) != 1:
+                raise AssertionError("each smoke order must have one order-line command")
+            order_line_command = order_line_commands[0]
+            if (
+                not isinstance(order_line_command, list)
+                or len(order_line_command) != 3
+                or not isinstance(order_line_command[2], dict)
+            ):
+                raise AssertionError("order-line command must contain line values")
+            order_line_values = cast(dict[str, object], order_line_command[2])
+            if order_line_values.get("product_id") != product_id:
+                raise AssertionError("order-line product does not match the seed product")
+            unit_price = order_line_values.get("price_unit")
             date_order = value["date_order"]
             if not isinstance(date_order, str):
                 raise AssertionError("date_order must be a string")
@@ -268,6 +289,7 @@ def test_s2_odoo_fixture_is_api_seeded_and_isolated() -> None:
         False,
     ]
     assert client.create_models == ["product.product", "res.partner", "sale.order"]
+    assert [line["price_unit"] for line in client.lines] == [80.0, 12.0]
     assert inventory["threshold_hours"] == 10
     assert inventory["reminder_enabled"] is False
     assert inventory["approval"] == {"status": "pending", "reviewer_id": ""}
@@ -297,6 +319,21 @@ def test_s2_odoo_seed_checks_model_fields_before_creating_records() -> None:
     assert not client.create_models
 
 
+def test_s2_odoo_schema_does_not_treat_readonly_metadata_as_write_permission() -> None:
+    client = FakeOdooClient()
+    metadata = client.call(
+        "sale.order",
+        "fields_get",
+        {"allfields": ["website_id"], "attributes": ["type", "readonly"]},
+    )
+
+    assert isinstance(metadata, dict)
+    field_metadata = metadata["website_id"]
+    assert isinstance(field_metadata, dict)
+    assert field_metadata["readonly"] is True
+    validate_odoo_schema(client)
+
+
 def test_s2_odoo_inventory_requires_unchanged_reviewed_labels() -> None:
     client = FakeOdooClient()
     pending = seed_smoke_inventory(client, load_dataset(), "smoke-test")
@@ -309,6 +346,23 @@ def test_s2_odoo_inventory_requires_unchanged_reviewed_labels() -> None:
     inventory["threshold_hours"] = 12
     with pytest.raises(EvaluationError, match="hash does not match"):
         validate_inventory_approval(inventory)
+
+
+def test_s2_odoo_inventory_markdown_reflects_approval(tmp_path: Path) -> None:
+    _, _, inventory = _approved_smoke()
+    json_path = tmp_path / "inventory.json"
+    markdown_path = tmp_path / "inventory.md"
+
+    write_inventory_pair(inventory, json_path, markdown_path)
+
+    saved_inventory = json.loads(json_path.read_text(encoding="utf-8"))
+    assert saved_inventory["approval"] == {
+        "status": "approved",
+        "reviewer_id": "owner-test",
+    }
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert "- Approval: approved" in markdown
+    assert "pending owner inspection" not in markdown
 
 
 def test_s2_odoo_smoke_reads_live_cart_facts_matching_fixture() -> None:
@@ -325,6 +379,21 @@ def test_s2_odoo_smoke_reads_live_cart_facts_matching_fixture() -> None:
     assert context["state"] == "abandoned"
     assert context["subtotal"] == 80.0
     assert context["currency"] == "USD"
+    assert context["items"] == dataset.fixtures["cart-open-001"]["items"]
+
+
+def test_s2_odoo_smoke_uses_product_record_name_not_many2one_display_name() -> None:
+    client, dataset, inventory = _approved_smoke()
+    client.lines[0]["product_id"] = [101, "[s2-prod-lamp] Saffron Desk Lamp"]
+    tools = OdooSmokeTools(client, dataset, inventory)
+    case = next(
+        item
+        for item in dataset.cases
+        if item.fixture_id == "cart-open-001" and item.requires_cart_tool and item.language == "en"
+    )
+
+    context = tools.get_cart_context(case, "s2-cart-001")
+
     assert context["items"] == dataset.fixtures["cart-open-001"]["items"]
 
 

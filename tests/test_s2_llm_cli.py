@@ -45,10 +45,10 @@ def test_approval_template_is_fail_closed_and_uses_recorded_caps() -> None:
     assert approval.rpm is None
     assert approval.tpm is None
     assert approval.max_input_tokens_per_request == 0
-    assert approval.max_output_tokens_per_request == 0
+    assert approval.max_output_tokens_per_request == 8192
 
 
-def test_batch_requires_exact_owner_reviewed_smoke_report_hash(tmp_path: Path) -> None:
+def test_full_requires_exact_owner_reviewed_smoke_report_hash(tmp_path: Path) -> None:
     dataset = load_dataset()
     report_path = tmp_path / "smoke.json"
     report_path.write_text(

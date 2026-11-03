@@ -1,5 +1,5 @@
 import json
-from collections.abc import Sequence
+import threading
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -14,14 +14,20 @@ from scripts.s2_llm_eval import (
     GoldenDataset,
     ModelResult,
     Record,
+    TokenRates,
     ToolCall,
     Usage,
+    calculate_cost,
     initial_review_ledger,
     load_dataset,
 )
 from scripts.s2_llm_runner import (
+    FULL_CONCURRENCY,
     SUPPORTED_CANDIDATES,
+    CostCapExceeded,
+    CostGuard,
     LiveApproval,
+    ProviderErrors,
     candidate_by_id,
     candidate_set_preflight_failures,
     live_preflight_failures,
@@ -59,15 +65,14 @@ def _approval(
         owner_approved=True,
         approved_candidate_ids=(candidate_id,),
         spend_ceiling_usd=spend_ceiling_usd,
-        rpm=10 if mode == "smoke" else None,
-        tpm=20_000 if mode == "smoke" else None,
-        batch_queue_limit=100 if mode == "batch" else None,
+        rpm=10 if mode == "smoke" else 500,
+        tpm=20_000 if mode == "smoke" else 1_000_000,
         limits_source="provider dashboard checked for test",
         limits_checked_on="2026-11-01",
         max_input_tokens_per_request=max_input_tokens,
         max_output_tokens_per_request=max_output_tokens,
         odoo_inventory_approved=(mode == "smoke"),
-        smoke_report_sha256=("a" * 64) if mode == "batch" else None,
+        smoke_report_sha256=("a" * 64) if mode == "full" else None,
     )
 
 
@@ -116,7 +121,6 @@ def test_live_preflight_requires_owner_inventory_limits_and_credentials() -> Non
         spend_ceiling_usd=Decimal("5"),
         rpm=None,
         tpm=None,
-        batch_queue_limit=None,
         limits_source="",
         limits_checked_on="",
         max_input_tokens_per_request=4096,
@@ -141,21 +145,45 @@ def test_live_preflight_requires_owner_inventory_limits_and_credentials() -> Non
     assert any("GEMINI_API_KEY" in failure for failure in failures)
 
 
-def test_preflight_reserves_without_cached_input_savings() -> None:
+def test_preflight_reserves_output_cap_including_thinking_without_cache_savings() -> None:
     dataset = load_dataset()
     candidate = candidate_by_id("gemini-3.8-flash-low")
     cases = (dataset.cases[0],)
-    approval = _approval(candidate.candidate_id, max_input_tokens=4096, max_output_tokens=1024)
+    approval = _approval(candidate.candidate_id, max_input_tokens=4096, max_output_tokens=8192)
 
     reserved = reserved_cost_usd(candidate, cases, approval, mode="smoke")
     expected = (
-        Decimal(2 * 4096) * Decimal("0.75") + Decimal(2 * 1024) * Decimal("3.75")
+        Decimal(2 * 4096) * Decimal("0.75") + Decimal(2 * 8192) * Decimal("3.75")
     ) / Decimal(1_000_000)
 
     assert reserved == expected
 
 
-def test_candidate_set_preflight_enforces_combined_gpt_budget() -> None:
+def test_full_reservation_covers_only_the_parallel_in_flight_window() -> None:
+    dataset = load_dataset()
+    candidate = candidate_by_id("gemini-3.5-flash-lite-minimal")
+    approval = _approval(
+        candidate.candidate_id,
+        mode="full",
+        spend_ceiling_usd=Decimal("2.428160"),
+        max_input_tokens=4000,
+        max_output_tokens=8192,
+    )
+
+    reserved = reserved_cost_usd(candidate, dataset.cases, approval, mode="full")
+    window = 2 * FULL_CONCURRENCY
+    expected = calculate_cost(
+        Usage(window * 4000, window * 8192),
+        TokenRates(
+            candidate.token_rates.input_per_million, candidate.token_rates.output_per_million
+        ),
+    )
+
+    assert reserved == expected
+    assert reserved <= approval.spend_ceiling_usd <= candidate.cost_cap_usd
+
+
+def test_candidate_set_preflight_treats_gpt_candidates_as_sequential_shared_budget() -> None:
     dataset = load_dataset()
     reviews = _approved_reviews(dataset)
     candidates = (
@@ -166,10 +194,10 @@ def test_candidate_set_preflight_enforces_combined_gpt_budget() -> None:
     approvals = {
         candidate.candidate_id: _approval(
             candidate.candidate_id,
-            mode="batch",
+            mode="full",
             spend_ceiling_usd=Decimal("2"),
-            max_input_tokens=922_000,
-            max_output_tokens=128_000,
+            max_input_tokens=4000,
+            max_output_tokens=8192,
         )
         for candidate in candidates
     }
@@ -180,19 +208,19 @@ def test_candidate_set_preflight_enforces_combined_gpt_budget() -> None:
         candidates,
         cases,
         approvals,
-        mode="batch",
+        mode="full",
         environment={"OPENAI_API_KEY": "synthetic-test-key"},
         as_of=date(2026, 11, 1),
     )
 
-    assert any("Combined reservation" in failure for failure in failures)
+    assert not any("Maximum sequential reservation" in failure for failure in failures)
 
 
 def test_full_preflight_rejects_expired_gemini_rates() -> None:
     dataset = load_dataset()
     candidate = candidate_by_id("gemini-3.8-flash-low")
     cases = (dataset.cases[0],)
-    approval = _approval(candidate.candidate_id, mode="batch")
+    approval = _approval(candidate.candidate_id, mode="full")
 
     failures = live_preflight_failures(
         dataset,
@@ -200,7 +228,7 @@ def test_full_preflight_rejects_expired_gemini_rates() -> None:
         candidate,
         cases,
         approval,
-        mode="batch",
+        mode="full",
         environment={"GEMINI_API_KEY": "synthetic-test-key"},
         as_of=date(2027, 1, 1),
     )
@@ -227,17 +255,6 @@ class FakeClient:
         }
         return ModelResult(case.case_id, output, calls, Usage(120, 35, 0, 5))
 
-    def run_batch(
-        self,
-        cases: Sequence[EvaluationCase],
-        dataset: GoldenDataset,
-        tools: CartContextTools,
-        *,
-        run_id: str,
-    ) -> tuple[ModelResult, ...]:
-        del run_id
-        return tuple(self.run_case(case, dataset, tools) for case in cases)
-
 
 def test_run_report_has_provenance_and_excludes_model_messages() -> None:
     dataset = load_dataset()
@@ -259,13 +276,17 @@ def test_run_report_has_provenance_and_excludes_model_messages() -> None:
     )
     serialized = json.dumps(report, ensure_ascii=False)
     summary = cast(dict[str, object], report["summary"])
+    cost_basis = cast(dict[str, object], report["cost_basis"])
 
+    assert report["report_version"] == "s2-report-v3"
     assert report["dataset_sha256"] == dataset.sha256
     assert report["scoring_method"] == "deterministic-s2-v2"
+    assert cost_basis["output_token_scope"] == "billable total including thought/reasoning tokens"
     assert summary["passed_count"] == 1
     assert summary["discount_safety_case_count"] == 0
     assert summary["discount_safety_pass_count"] == 0
     assert summary["cached_input_tokens"] == 0
+    assert summary["output_token_scope"] == "billable total including thought/reasoning tokens"
     assert "PRIVATE MODEL TEXT" not in serialized
     assert "case_results" in report
 
@@ -315,3 +336,109 @@ def test_review_asset_generation_preserves_existing_ledger(tmp_path: Path) -> No
     assert write_review_assets(dataset, worksheet, ledger) == (worksheet, ledger)
     assert ledger_path.read_text(encoding="utf-8") == edited_ledger
     assert worksheet_path.is_file()
+
+
+def _full_run(
+    client: object, cases: tuple[EvaluationCase, ...], **overrides: object
+) -> dict[str, object]:
+    dataset = load_dataset()
+    candidate = candidate_by_id("gemini-3.8-flash-low")
+    approval = _approval(
+        candidate.candidate_id,
+        mode="full",
+        max_input_tokens=1000,
+        max_output_tokens=1000,
+    )
+    return run_evaluation(
+        dataset,
+        candidate,
+        cast(FakeClient, client),
+        cases,
+        reviews=_approved_reviews(dataset),
+        mode="full",
+        approval=approval,
+        run_id="test-full",
+        tools=FixtureTools(dataset),
+        environment={"GEMINI_API_KEY": "synthetic-test-key"},
+        sleep=lambda _: None,
+        **cast(dict[str, object], overrides),  # type: ignore[arg-type]
+    )
+
+
+def test_full_run_is_parallel_and_keeps_case_order() -> None:
+    dataset = load_dataset()
+    cases = dataset.cases[:40]
+    lock = threading.Lock()
+    state = {"active": 0, "peak": 0}
+
+    class Slow(FakeClient):
+        def run_case(
+            self, case: EvaluationCase, dataset: GoldenDataset, tools: CartContextTools
+        ) -> ModelResult:
+            with lock:
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+            threading.Event().wait(0.01)
+            with lock:
+                state["active"] -= 1
+            return super().run_case(case, dataset, tools)
+
+    report = _full_run(Slow(), cases)
+    ids = [row["case_id"] for row in cast(list[dict[str, object]], report["case_results"])]
+
+    assert ids == [case.case_id for case in cases]
+    assert 1 < state["peak"] <= FULL_CONCURRENCY
+
+
+def test_full_run_retries_rate_limits_then_succeeds() -> None:
+    dataset = load_dataset()
+    case = dataset.cases[0]
+    attempts = {"count": 0}
+
+    class RateLimited(FakeClient):
+        def run_case(
+            self, case: EvaluationCase, dataset: GoldenDataset, tools: CartContextTools
+        ) -> ModelResult:
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                error = RuntimeError("rate limited")
+                error.status_code = 429  # type: ignore[attr-defined]
+                raise error
+            return super().run_case(case, dataset, tools)
+
+    report = _full_run(RateLimited(), (case,))
+
+    assert attempts["count"] == 3
+    assert cast(dict[str, object], report["summary"])["input_count"] == 1
+
+
+def test_full_run_provider_error_is_explicit_and_publishes_no_report() -> None:
+    case = load_dataset().cases[0]
+
+    class Broken(FakeClient):
+        def run_case(
+            self, case: EvaluationCase, dataset: GoldenDataset, tools: CartContextTools
+        ) -> ModelResult:
+            raise RuntimeError("boom")
+
+    try:
+        _full_run(Broken(), (case,))
+    except ProviderErrors as error:
+        assert "incomplete" in str(error)
+    else:
+        raise AssertionError("provider error must fail the run")
+
+
+def test_cost_guard_refuses_work_that_could_exceed_the_cap() -> None:
+    rates = TokenRates(Decimal(1), Decimal(1))
+    guard = CostGuard(Decimal("0.003"), Decimal("0.002"), rates)
+    guard.reserve()
+    try:
+        guard.reserve()
+    except CostCapExceeded:
+        pass
+    else:
+        raise AssertionError("second in-flight reservation must exceed the cap")
+    guard.settle(Usage(1000, 0))
+    guard.reserve()
+    assert guard.spent == Decimal("0.001")

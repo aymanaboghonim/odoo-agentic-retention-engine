@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
+import random
+import threading
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Callable, cast
+from typing import Callable
 
 from scripts.s2_llm_eval import (
     Candidate,
@@ -26,14 +29,14 @@ from scripts.s2_llm_eval import (
     review_failures,
     score_case,
 )
-from scripts.s2_llm_providers import (
-    OUTPUT_SCHEMA,
-    SYSTEM_PROMPT,
-    TOOL_PARAMETERS,
-    LLMClient,
-)
+from scripts.s2_llm_prompts import PROMPT_VERSION, prompt_fingerprint
+from scripts.s2_llm_providers import LLMClient
 
 FACTS_CHECKED_ON = "2026-11-01"
+FULL_CONCURRENCY = 16
+RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+MAX_PROVIDER_ATTEMPTS = 3
+PROVIDER_ERROR_PREFIX = "provider_error:"
 GPT_LUNA_GROUP_CAP_USD = Decimal("2.00")
 SUPPORTED_CANDIDATES = (
     Candidate(
@@ -43,7 +46,6 @@ SUPPORTED_CANDIDATES = (
         configuration={"thinking_level": "low"},
         facts=("F-004",),
         token_rates=TokenRates(Decimal("0.75"), Decimal("3.75"), Decimal("0.075")),
-        batch_token_rates=TokenRates(Decimal("0.375"), Decimal("1.875"), Decimal("0.0375")),
         cost_cap_usd=Decimal("5.00"),
         max_input_tokens=1_048_576,
         max_output_tokens=65_536,
@@ -57,8 +59,7 @@ SUPPORTED_CANDIDATES = (
         configuration={"thinking_level": "minimal"},
         facts=("F-004", "F-027"),
         token_rates=TokenRates(Decimal("0.30"), Decimal("2.50")),
-        batch_token_rates=TokenRates(Decimal("0.15"), Decimal("1.25")),
-        cost_cap_usd=Decimal("2.00"),
+        cost_cap_usd=Decimal("2.428160"),
         max_input_tokens=1_048_576,
         max_output_tokens=65_536,
         facts_checked_on=FACTS_CHECKED_ON,
@@ -71,7 +72,6 @@ SUPPORTED_CANDIDATES = (
         configuration={"reasoning_effort": "none"},
         facts=("F-005",),
         token_rates=TokenRates(Decimal("0.10"), Decimal("0.50"), Decimal("0.01")),
-        batch_token_rates=TokenRates(Decimal("0.05"), Decimal("0.25"), Decimal("0.005")),
         cost_cap_usd=GPT_LUNA_GROUP_CAP_USD,
         max_input_tokens=922_000,
         max_output_tokens=128_000,
@@ -85,7 +85,6 @@ SUPPORTED_CANDIDATES = (
         configuration={"reasoning_effort": "low"},
         facts=("F-005",),
         token_rates=TokenRates(Decimal("0.10"), Decimal("0.50"), Decimal("0.01")),
-        batch_token_rates=TokenRates(Decimal("0.05"), Decimal("0.25"), Decimal("0.005")),
         cost_cap_usd=GPT_LUNA_GROUP_CAP_USD,
         max_input_tokens=922_000,
         max_output_tokens=128_000,
@@ -102,7 +101,6 @@ class LiveApproval:
     spend_ceiling_usd: Decimal
     rpm: int | None
     tpm: int | None
-    batch_queue_limit: int | None
     limits_source: str
     limits_checked_on: str
     max_input_tokens_per_request: int
@@ -131,7 +129,7 @@ def live_preflight_failures(
 ) -> list[str]:
     failures: list[str] = []
     now = as_of or date.today()
-    if mode not in {"smoke", "batch"}:
+    if mode not in {"smoke", "full"}:
         return [f"Unsupported live run mode {mode!r}"]
     if not cases:
         failures.append("No evaluation cases were selected")
@@ -150,18 +148,18 @@ def live_preflight_failures(
         failures.append(f"Set {expected_key} before a live run")
     if mode == "smoke" and not approval.odoo_inventory_approved:
         failures.append("Owner approval of the seeded Odoo inventory is required")
-    if mode == "smoke" and (
-        approval.rpm is None or approval.tpm is None or approval.rpm < 1 or approval.tpm < 1
-    ):
-        failures.append("Active positive RPM and TPM limits are required for smoke")
-    if mode == "batch" and (approval.batch_queue_limit is None or approval.batch_queue_limit < 1):
-        failures.append("An active positive Batch queue limit is required")
-    if mode == "batch" and (
+    if approval.rpm is None or approval.tpm is None or approval.rpm < 1 or approval.tpm < 1:
+        failures.append("Active positive RPM and TPM limits are required")
+    elif mode == "full" and approval.rpm < 4 * FULL_CONCURRENCY:
+        failures.append(
+            "RPM limit is below the worst-case generation and input-count request burst"
+        )
+    if mode == "full" and (
         approval.smoke_report_sha256 is None
         or len(approval.smoke_report_sha256) != 64
         or any(character not in "0123456789abcdef" for character in approval.smoke_report_sha256)
     ):
-        failures.append("An owner-approved smoke report SHA-256 is required for Batch")
+        failures.append("An owner-approved smoke report SHA-256 is required for the full run")
     if not approval.limits_source.strip():
         failures.append("A source for the active provider limits is required")
     try:
@@ -213,8 +211,12 @@ def reserved_cost_usd(
     *,
     mode: str,
 ) -> Decimal:
-    rates = _rates_for_mode(candidate, mode)
-    request_count = len(cases) + sum(case.requires_cart_tool for case in cases)
+    rates = candidate.token_rates
+    if mode == "full":
+        # The cost guard caps spend at run time; the preflight only needs the in-flight window.
+        request_count = 2 * min(len(cases), FULL_CONCURRENCY)
+    else:
+        request_count = len(cases) + sum(case.requires_cart_tool for case in cases)
     maximum_usage = Usage(
         input_tokens=request_count * approval.max_input_tokens_per_request,
         output_tokens=request_count * approval.max_output_tokens_per_request,
@@ -263,14 +265,15 @@ def candidate_set_preflight_failures(
         )
         if candidate.budget_group is not None:
             group = candidate.budget_group
-            grouped_reservations[group] = grouped_reservations.get(group, Decimal(0)) + (
-                reserved_cost_usd(candidate, cases, approval, mode=mode)
+            grouped_reservations[group] = max(
+                grouped_reservations.get(group, Decimal(0)),
+                reserved_cost_usd(candidate, cases, approval, mode=mode),
             )
             grouped_caps[group] = candidate.cost_cap_usd
     for group, reserved in grouped_reservations.items():
         if reserved > grouped_caps[group]:
             failures.append(
-                f"Combined reservation for {group} ${reserved:.6f} exceeds "
+                f"Maximum sequential reservation for {group} ${reserved:.6f} exceeds "
                 f"the shared cap ${grouped_caps[group]:.2f}"
             )
     return failures
@@ -291,8 +294,10 @@ def run_evaluation(
     environment: dict[str, str] | None = None,
     smoke_action: Callable[[EvaluationCase, ModelResult, CaseScore], tuple[int, bool] | None]
     | None = None,
+    budget_remaining_usd: Decimal | None = None,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, object]:
-    if mode not in {"smoke", "batch"}:
+    if mode not in {"smoke", "full"}:
         raise EvaluationError(f"Unsupported run mode {mode!r}")
     failures = live_preflight_failures(
         dataset,
@@ -328,17 +333,15 @@ def run_evaluation(
             results_list.append(result)
         results = tuple(results_list)
     else:
-        batch_results = progress_reporter.run_stage(
-            "batch_evaluation",
-            len(cases),
-            lambda: client.run_batch(cases, dataset, FixtureTools(dataset), run_id=run_id),
+        results = _run_cases_parallel(
+            dataset,
+            candidate,
+            client,
+            cases,
+            approval,
+            budget_remaining_usd=budget_remaining_usd,
+            sleep=sleep,
         )
-        if not isinstance(batch_results, tuple):
-            raise EvaluationError("Batch client returned an invalid result collection")
-        batch_items = cast(tuple[object, ...], batch_results)
-        if not all(isinstance(result, ModelResult) for result in batch_items):
-            raise EvaluationError("Batch client returned an invalid result collection")
-        results = cast(tuple[ModelResult, ...], batch_items)
     completed_at = datetime.now(timezone.utc)
     if tuple(result.case_id for result in results) != tuple(case.case_id for case in cases):
         raise EvaluationError("Provider results do not match the requested case order")
@@ -377,8 +380,19 @@ def run_evaluation(
                 }
             )
     usage = _total_usage(results)
-    rates = _rates_for_mode(candidate, mode)
+    rates = candidate.token_rates
     cost = calculate_cost(usage, rates)
+    errored = [
+        result.case_id
+        for result in results
+        if (result.parse_error or "").startswith(PROVIDER_ERROR_PREFIX)
+    ]
+    if errored:
+        raise ProviderErrors(
+            f"{len(errored)} of {len(results)} cases ended in a provider error "
+            f"(spent ${cost:.6f}); the run is incomplete and no report is published: "
+            f"{', '.join(errored[:5])}"
+        )
     if cost > approval.spend_ceiling_usd:
         raise EvaluationError(
             f"Observed cost ${cost:.6f} exceeds approved ceiling ${approval.spend_ceiling_usd:.2f}"
@@ -406,25 +420,169 @@ def run_evaluation(
     return report
 
 
-def _rates_for_mode(candidate: Candidate, mode: str) -> TokenRates:
-    if mode == "batch":
-        if candidate.batch_token_rates is None:
-            raise EvaluationError(f"{candidate.candidate_id} has no verified Batch rates")
-        return candidate.batch_token_rates
-    return candidate.token_rates
+class CostCapExceeded(EvaluationError):
+    pass
+
+
+class ProviderErrors(EvaluationError):
+    pass
+
+
+class CostGuard:
+    """Run-time spend limit: spent + in-flight worst case never exceeds the cap."""
+
+    def __init__(self, cap: Decimal, per_case_worst: Decimal, rates: TokenRates) -> None:
+        self._cap = cap
+        self._worst = per_case_worst
+        self._rates = rates
+        self._spent = Decimal(0)
+        self._reserved = Decimal(0)
+        self._lock = threading.Lock()
+
+    @property
+    def spent(self) -> Decimal:
+        with self._lock:
+            return self._spent
+
+    def reserve(self) -> None:
+        with self._lock:
+            if self._spent + self._reserved + self._worst > self._cap:
+                raise CostCapExceeded(
+                    f"Spend ${self._spent:.6f} plus in-flight reservation would exceed "
+                    f"the cap ${self._cap:.6f}"
+                )
+            self._reserved += self._worst
+
+    def settle(self, usage: Usage) -> None:
+        with self._lock:
+            self._reserved -= self._worst
+            self._spent += calculate_cost(usage, self._rates)
+
+
+def _status_code(error: BaseException) -> int | None:
+    for name in ("status_code", "code"):
+        value = getattr(error, name, None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
+
+
+def _provider_error_result(case: EvaluationCase, reason: str) -> ModelResult:
+    return ModelResult(
+        case_id=case.case_id,
+        output={},
+        tool_calls=(),
+        usage=Usage(input_tokens=0, output_tokens=0),
+        parse_error=f"{PROVIDER_ERROR_PREFIX}{reason}",
+    )
+
+
+def _run_one_case(
+    dataset: GoldenDataset,
+    client: LLMClient,
+    case: EvaluationCase,
+    guard: CostGuard,
+    sleep: Callable[[float], None],
+) -> ModelResult:
+    guard.reserve()
+    result: ModelResult | None = None
+    try:
+        for attempt in range(1, MAX_PROVIDER_ATTEMPTS + 1):
+            try:
+                result = client.run_case(case, dataset, FixtureTools(dataset))
+                break
+            except Exception as error:  # noqa: BLE001 - provider SDKs raise many types
+                retryable = _status_code(error) in RETRY_STATUS_CODES
+                if retryable and attempt < MAX_PROVIDER_ATTEMPTS:
+                    sleep(min(8.0, 0.5 * 2**attempt) + random.uniform(0, 0.5))
+                    continue
+                result = _provider_error_result(
+                    case, f"{type(error).__name__} status={_status_code(error)}"
+                )
+                break
+    finally:
+        guard.settle(result.usage if result is not None else Usage(0, 0))
+    if result is None:
+        raise EvaluationError(f"No result produced for {case.case_id}")
+    return result
+
+
+def _run_cases_parallel(
+    dataset: GoldenDataset,
+    candidate: Candidate,
+    client: LLMClient,
+    cases: tuple[EvaluationCase, ...],
+    approval: LiveApproval,
+    *,
+    budget_remaining_usd: Decimal | None,
+    sleep: Callable[[float], None],
+    heartbeat_seconds: float = 15.0,
+) -> tuple[ModelResult, ...]:
+    cap = min(approval.spend_ceiling_usd, candidate.cost_cap_usd)
+    if budget_remaining_usd is not None:
+        cap = min(cap, budget_remaining_usd)
+    request_worst = calculate_cost(
+        Usage(
+            input_tokens=approval.max_input_tokens_per_request,
+            output_tokens=approval.max_output_tokens_per_request,
+        ),
+        TokenRates(
+            candidate.token_rates.input_per_million, candidate.token_rates.output_per_million
+        ),
+    )
+    guard = CostGuard(cap, 2 * request_worst, candidate.token_rates)
+    total = len(cases)
+    started = time.monotonic()
+    print(
+        f"progress stage=full_{candidate.candidate_id} status=started completed=0 "
+        f"total={total} concurrency={FULL_CONCURRENCY}",
+        flush=True,
+    )
+    executor = ThreadPoolExecutor(max_workers=FULL_CONCURRENCY)
+    try:
+        futures = [
+            executor.submit(_run_one_case, dataset, client, case, guard, sleep) for case in cases
+        ]
+        pending = set(futures)
+        while pending:
+            done, pending = wait(pending, timeout=heartbeat_seconds, return_when=FIRST_COMPLETED)
+            for future in done:
+                future.result()
+            print(
+                f"progress stage=full_{candidate.candidate_id} status=running "
+                f"completed={total - len(pending)} total={total} "
+                f"elapsed_seconds={int(time.monotonic() - started)} spent_usd={guard.spent:.6f}",
+                flush=True,
+            )
+    except BaseException:
+        executor.shutdown(wait=True, cancel_futures=True)
+        print(f"progress stage=full_{candidate.candidate_id} status=failed", flush=True)
+        raise
+    executor.shutdown(wait=True)
+    print(
+        f"progress stage=full_{candidate.candidate_id} status=completed completed={total} "
+        f"total={total} elapsed_seconds={int(time.monotonic() - started)}",
+        flush=True,
+    )
+    return tuple(future.result() for future in futures)
 
 
 def _total_usage(results: tuple[ModelResult, ...]) -> Usage:
     cached_values = [result.usage.cached_input_tokens for result in results]
     reasoning_values = [result.usage.reasoning_tokens for result in results]
+    tool_use_values = [result.usage.tool_use_prompt_tokens for result in results]
     cached = sum(value for value in cached_values if value is not None)
     reasoning = sum(value for value in reasoning_values if value is not None)
+    tool_use_prompt = sum(value for value in tool_use_values if value is not None)
     return Usage(
         input_tokens=sum(result.usage.input_tokens for result in results),
         output_tokens=sum(result.usage.output_tokens for result in results),
         cached_input_tokens=cached if all(value is not None for value in cached_values) else None,
         reasoning_tokens=(
             reasoning if all(value is not None for value in reasoning_values) else None
+        ),
+        tool_use_prompt_tokens=(
+            tool_use_prompt if all(value is not None for value in tool_use_values) else None
         ),
     )
 
@@ -449,17 +607,7 @@ def _build_report(
         score for score in typed_scores if score.scenario_id in {"discount_refusal", "injection"}
     )
     request_count = len(cases) + sum(case.requires_cart_tool for case in cases)
-    prompt_hash = hashlib.sha256(
-        json.dumps(
-            {
-                "system_prompt": SYSTEM_PROMPT,
-                "tool_schema": TOOL_PARAMETERS,
-                "output_schema": OUTPUT_SCHEMA,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
+    prompt_hash = prompt_fingerprint(candidate.provider)
     per_case: list[dict[str, object]] = []
     for result, score in zip(results, typed_scores, strict=True):
         per_case.append(
@@ -470,7 +618,7 @@ def _build_report(
             }
         )
     return {
-        "report_version": "s2-report-v2",
+        "report_version": "s2-report-v3",
         "run_id": run_id,
         "run_mode": mode,
         "created_at": completed_at.isoformat(),
@@ -489,11 +637,13 @@ def _build_report(
         },
         "dataset_version": dataset.version,
         "dataset_sha256": dataset.sha256,
+        "prompt_version": PROMPT_VERSION,
         "prompt_schema_sha256": prompt_hash,
         "scoring_method": "deterministic-s2-v2",
         "cost_basis": {
             "published_list_input_per_million_usd": str(rates.input_per_million),
             "published_list_output_per_million_usd": str(rates.output_per_million),
+            "output_token_scope": "billable total including thought/reasoning tokens",
             "cached_input_per_million_usd": (
                 str(rates.cached_input_per_million)
                 if rates.cached_input_per_million is not None
@@ -504,7 +654,7 @@ def _build_report(
         "limits": {
             "rpm": approval.rpm,
             "tpm": approval.tpm,
-            "batch_queue_limit": approval.batch_queue_limit,
+            "concurrency": FULL_CONCURRENCY if mode == "full" else 1,
             "source": approval.limits_source,
             "checked_on": approval.limits_checked_on,
             "max_input_tokens_per_request": approval.max_input_tokens_per_request,
@@ -523,8 +673,10 @@ def _build_report(
             ),
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
+            "output_token_scope": "billable total including thought/reasoning tokens",
             "cached_input_tokens": usage.cached_input_tokens,
             "reasoning_tokens": usage.reasoning_tokens,
+            "tool_use_prompt_tokens": usage.tool_use_prompt_tokens,
             "published_list_cost_usd": f"{cost:.6f}",
         },
         "slices": aggregate_slices(typed_scores),
@@ -537,7 +689,10 @@ def _build_report(
             "All evaluation inputs and Odoo fixtures are synthetic.",
             "Dialect slices are exploratory and are not statistical quality claims.",
             "Human language-quality judgments and model-as-judge scores are advisory.",
-            "Batch turnaround is not per-request latency.",
+            "Latency is per synchronous request under parallel load, not a production figure.",
+            "The discount text matcher is a bounded regression gate, not a general classifier.",
+            "Count-only input-token endpoint billing and quota treatment are unknown; they are "
+            "excluded from the generation-token cost estimate.",
         ],
     }
 
