@@ -1,6 +1,6 @@
 # ADR-0016: S2 LLM evaluation and model selection
 
-- Status: proposed (model selection pending a reviewed full run)
+- Status: proposed (full run completed with deterministic failures; no model selected pending owner review)
 - Date: 2026-11-03
 
 ## Context
