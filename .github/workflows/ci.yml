@@ -15,7 +15,23 @@ jobs:
     name: Local-parity checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      engine-db:
+        image: pgvector/pgvector:0.8.7-pg15@sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c
+        env:
+          POSTGRES_DB: engine
+          POSTGRES_USER: engine
+          POSTGRES_PASSWORD: ci-only-throwaway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U engine -d engine"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     env:
+      TEST_DATABASE_URL: postgresql://engine:ci-only-throwaway@127.0.0.1:5432/engine
+      REQUIRE_DB_TESTS: "1"
       CI_PULL_REQUEST: ${{ github.event_name == 'pull_request' && '1' || '0' }}
       GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
       BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
