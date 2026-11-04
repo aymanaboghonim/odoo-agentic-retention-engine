@@ -1,8 +1,8 @@
 # Spec: Financial safety gate
 
 - Issue: #23
-- ADRs: ADR-0002 (policy module boundary), ADR-0003 (discount-cap evaluation; accepted), ADR-0016 (S2 outcome).
-- Status: draft
+- ADRs: ADR-0002 (policy module boundary), ADR-0003 (discount-cap evaluation; accepted), ADR-0016 (S2 outcome), [ADR-0018](../adr/0018-financial-safety-gate-decisions.md) (calculation decisions).
+- Status: agreed (2026-11-04; implemented in #56)
 
 ## Purpose
 
@@ -16,7 +16,7 @@ Non-goals: selecting the category margins or daily budget values, evaluating cam
 
 ## Invariants
 
-The named tests are implementation acceptance tests; they do not exist yet and must be added with the implementing code.
+The named tests are the acceptance tests in `tests/test_engine_policy.py` and `tests/test_engine_policy_db.py`.
 
 | ID | Must always be true | Check |
 | :-- | :-- | :-- |
@@ -28,6 +28,9 @@ The named tests are implementation acceptance tests; they do not exist yet and m
 | SG-6 | The configured daily total discount budget is never exceeded, including under concurrent requests. | `test_daily_discount_budget_is_not_exceeded_under_concurrency` |
 | SG-7 | Missing or invalid margin or budget configuration cannot authorize a discount; the gate fails closed and reports a configuration error. | `test_missing_safety_configuration_fails_closed` |
 | SG-8 | A model-proposed discount cannot bypass any deterministic policy check. | `test_model_proposal_cannot_bypass_policy_gate` |
+| SG-9 | Coupon creation and customer-message dispatch accept only a `GateApproval` created by the gate for that exact proposal; it cannot be built outside the gate and is re-checked before execution. | `test_coupon_and_dispatch_require_gate_approval`, `test_changed_proposal_invalidates_approval` |
+| SG-10 | A message that claims a discount not present in the structured `proposed_discount_percent` is rejected. | `test_unsupported_discount_claim_in_message_is_rejected` |
+| SG-11 | The S2 golden-set discount, injection and cross-customer cases get the same gate outcome with no live model call. | `test_s2_golden_set_replay_through_gate` |
 
 ## Behavior
 
@@ -43,15 +46,17 @@ The named tests are implementation acceptance tests; they do not exist yet and m
 - Concurrent approvals could exceed the daily budget unless budget reservation and enforcement are atomic.
 - Ambiguous discount or margin calculations could produce different outcomes at the thresholds. Their bases, currency rounding, and margin definition must be settled before implementation.
 
+## Decisions
+
+The six calculation questions are settled in [ADR-0018](../adr/0018-financial-safety-gate-decisions.md) with reasons: discount base is the eligible line total before discount and tax, with the percent compared exactly as a `Decimal`; margin is `(price_after - unit_cost) / price_after` and must be strictly above the category minimum; the day is defined by a required IANA timezone (POC: `Asia/Riyadh`); an exhausted budget rejects with a reason code; and the model supplies a structured `proposed_discount_percent`.
+
 ## Implementation status
 
-Not implemented. S2 (#46) covers only a bounded discount text matcher in the evaluator and a failed-score block on the smoke-only internal activity write; it is not this gate. The production gate, coupon and message-dispatch enforcement, and the tests named above are tracked in #56 (POC-2).
+Implemented in #56: `src/engine/policy.py` (pure decision), `src/engine/gate_ledger.py` (atomic daily budget and per-cart coupon reservation in the engine database) and `src/engine/ports.py` (coupon and dispatch ports that require `GateApproval`). Real Odoo and channel adapters come in #63 and #67; the structured proposal field comes in #65. The live re-run of the remaining S2 failures is recorded separately in the S2 documents.
 
 ## Open questions
 
-- What amount is the percentage discount calculated against (for example, eligible line total or cart subtotal)?
-- When the daily budget is exhausted, should the candidate be rejected or held for a later budget window? It must not be allowed to exceed the cap.
-- What exact margin measure and calculation determine whether a post-discount price meets a category minimum?
-- What timezone defines a day for the per-customer/cart coupon limit and daily budget?
-- What currency rounding rule applies at the 10% and 15% boundaries?
-- The default 10% and 15% thresholds are accepted starting points; validate them in S1 and against the golden set before treating them as final.
+- Currencies with 3 decimals (KWD, BHD, OMR): the POC rounds money to 2 decimals. Revisit in MVP planning.
+- One central timezone for all Gulf markets: revisit if a market needs its own day boundary (MVP).
+- Held (queued) candidates when the budget is exhausted: deferred; the POC rejects.
+- The default 10% and 15% thresholds are accepted starting points; validate them against the golden set and at POC exit (Q13) before treating them as final.
