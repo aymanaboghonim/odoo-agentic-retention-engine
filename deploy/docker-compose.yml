@@ -31,6 +31,24 @@ services:
     command: ["odoo", "--database=odoo", "--init=website_sale", "--with-demo"]
     restart: unless-stopped
 
+  engine-db:
+    image: pgvector/pgvector:0.8.7-pg15@sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c
+    profiles: [engine]
+    environment:
+      POSTGRES_DB: engine
+      POSTGRES_USER: engine
+      POSTGRES_PASSWORD: ${ENGINE_DB_PASSWORD:?Set ENGINE_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${ENGINE_DB_HOST_PORT:-5433}:5432"
+    volumes:
+      - engine-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engine -d engine"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
 volumes:
+  engine-db-data:
   odoo-db-data:
   odoo-data:

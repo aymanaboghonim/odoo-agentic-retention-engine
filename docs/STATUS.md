@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: start POC-2 with #62 (engine foundation), then #56 (production financial gate). Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
+Next action: finish #62 (engine foundation, PR open), then #56 (production financial gate). Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
 
 ## Phases
 
@@ -26,7 +26,7 @@ Next action: start POC-2 with #62 (engine foundation), then #56 (production fina
   - [x] S3 Retrieval (#47): benchmark and decision complete; PostgreSQL FTS + pgvector with 80:20 SQL-CTE fusion is recorded in ADR-0015; PR #52 merged
   - [x] S4 Telegram bot and Mailpit (PR #57 merged; local Mailpit smoke and the required dedicated-chat Telegram check passed)
 - [ ] **Phase 2: POC walking skeleton** (milestone POC-2; scope planned 2026-11-04 in #61; one vertical slice: abandoned cart, agent proposal, safety gate, approval, Odoo coupon/activity, Telegram/Mailpit; English and MSA Arabic)
-  - [ ] #62 Engine foundation: engine DB, fail-closed config, durable run, audit, state machine (first; others depend on it)
+  - [x] #62 Engine foundation ([spec](specs/engine-foundation.md), [runbook](runbooks/engine-db-local.md)): engine DB, fail-closed config, durable run, audit, state machine (first; others depend on it)
   - [ ] #56 Production financial gate and agent-output rejection (after #62)
   - [ ] #63 Odoo adapter: read-only scan and context, JSON-2 activity and coupon writes (after #62)
   - [ ] #64 Policy retrieval with synthetic bilingual policies (after #62)

@@ -477,18 +477,19 @@ def test_postgres_lexical_query_uses_disjunctive_terms() -> None:
             return Result()
 
     retriever = PostgresRetriever.__new__(PostgresRetriever)
-    retriever.connection = Connection()
+    connection = Connection()
+    retriever.connection = connection  # type: ignore[assignment]
 
     assert retriever.search_lexical("office chair", "en", 20) == ["matched-document"]
-    assert "replace(" in retriever.connection.statement
-    assert "plainto_tsquery(%s, %s)::text" in retriever.connection.statement
-    assert "' & '" in retriever.connection.statement
-    assert "' | '" in retriever.connection.statement
-    assert retriever.connection.parameters == ("english", "office chair", 20)
+    assert "replace(" in connection.statement
+    assert "plainto_tsquery(%s, %s)::text" in connection.statement
+    assert "' & '" in connection.statement
+    assert "' | '" in connection.statement
+    assert connection.parameters == ("english", "office chair", 20)
     assert retriever.search_lexical("office chair", "en", 20, strict=True) == ["matched-document"]
-    assert "replace(" not in retriever.connection.statement
-    assert "plainto_tsquery(%s, %s)" in retriever.connection.statement
-    assert retriever.connection.parameters == ("english", "office chair", 20)
+    assert "replace(" not in connection.statement
+    assert "plainto_tsquery(%s, %s)" in connection.statement
+    assert connection.parameters == ("english", "office chair", 20)
     assert QUERY_PREFIX == "query: "
     assert PASSAGE_PREFIX == "passage: "
 
@@ -508,16 +509,17 @@ def test_postgres_single_roundtrip_uses_bounded_dense_and_lexical_candidates() -
             return Result()
 
     retriever = PostgresRetriever.__new__(PostgresRetriever)
-    retriever.connection = Connection()
+    connection = Connection()
+    retriever.connection = connection  # type: ignore[assignment]
 
     assert retriever.search_hybrid_single_roundtrip(
         [0.25, 0.5], "office chair", "en", 20, "hybrid_sql_cte"
     ) == ["fused-document"]
-    assert "dense_candidates AS" in retriever.connection.statement
-    assert "lexical_candidates AS" in retriever.connection.statement
-    assert "UNION ALL" in retriever.connection.statement
-    assert "SUM(weight / (%s + rank + 1))" in retriever.connection.statement
-    assert retriever.connection.parameters == (
+    assert "dense_candidates AS" in connection.statement
+    assert "lexical_candidates AS" in connection.statement
+    assert "UNION ALL" in connection.statement
+    assert "SUM(weight / (%s + rank + 1))" in connection.statement
+    assert connection.parameters == (
         "english",
         "office chair",
         "[0.25,0.5]",

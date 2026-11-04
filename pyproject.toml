@@ -7,6 +7,7 @@ dependencies = []
 
 [tool.uv]
 package = false
+default-groups = ["dev", "engine"]
 
 [dependency-groups]
 dev = [
@@ -14,6 +15,11 @@ dev = [
   "pre-commit==4.7.0",
   "pytest==9.1.1",
   "ruff==0.17.2",
+]
+engine = [
+    "alembic==1.20.1",
+    "psycopg[binary]==3.3.6",
+    "sqlalchemy==2.1.8",
 ]
 llm-eval = [
     "google-genai==2.34.0",
