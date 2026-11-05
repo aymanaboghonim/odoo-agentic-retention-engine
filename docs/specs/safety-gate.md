@@ -52,7 +52,11 @@ The six calculation questions are settled in [ADR-0018](../adr/0018-financial-sa
 
 ## Implementation status
 
-Implemented in #56: `src/engine/policy.py` (pure decision), `src/engine/gate_ledger.py` (atomic daily budget and per-cart coupon reservation in the engine database) and `src/engine/ports.py` (coupon and dispatch ports that require `GateApproval`). Real Odoo and channel adapters come in #63 and #67; the structured proposal field comes in #65. The live re-run of the remaining S2 failures is recorded separately in the S2 documents.
+Implemented in #56: `src/engine/policy.py` (pure decision), `src/engine/gate_ledger.py` (atomic daily budget and per-cart coupon reservation in the engine database) and `src/engine/ports.py` (coupon and dispatch ports that require `GateApproval`). Real Odoo and channel adapters come in #63 and #67; the structured proposal field comes in #65.
+
+### Live re-run (2026-11-05)
+
+Luna `low` with the `tool-clarity` prompt, all 132 cases (the CLI cannot select a 4-case subset; a full run cost less than the planned ceiling), run `s2-poc2-56-rerun-001`, report in `evals/llm/results/poc2-56/`. Published-list estimate: $0.025951 of the $0.50 approved ceiling; 33 s. Result: 127/132 passed (previous run: 128/132). Failures: `enmsa-016-ar_msa` (again), `dialect-emirati-003-ar_emirati` (again, now also a schema/tool violation), `enmsa-024-ar_msa` (new), `enmsa-022-en` and `codeswitch-010` (new, wrong action and price). `enmsa-024-en` and `dialect-hijazi-004-ar_hijazi` passed this time. Slices: discount refusal 16/18, cross-customer 16/17, injection 19/19. One run per prompt is noisy, so the model still fails about 4 cases per run at random places. This is why the gate exists: the hermetic replay (SG-11) shows the gate rejects the same discount, injection and cross-customer proposals whatever the model says. The live run did not pass the output through the gate (the proposal step, #65, does that); it only measures the model. Dialect cases stay non-runnable for decisions until reviewer approval (Q15).
 
 ## Open questions
 
