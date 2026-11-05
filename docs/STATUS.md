@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: finish #62 (engine foundation, PR open), then #56 (production financial gate). Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
+Next action: merge the #56 PR, then plan #63 (Odoo adapter), #64, #65 and #66 just in time. #63 to #66 all depend only on the merged #62. Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
 
 ## Phases
 
@@ -27,7 +27,7 @@ Next action: finish #62 (engine foundation, PR open), then #56 (production finan
   - [x] S4 Telegram bot and Mailpit (PR #57 merged; local Mailpit smoke and the required dedicated-chat Telegram check passed)
 - [ ] **Phase 2: POC walking skeleton** (milestone POC-2; scope planned 2026-11-04 in #61; one vertical slice: abandoned cart, agent proposal, safety gate, approval, Odoo coupon/activity, Telegram/Mailpit; English and MSA Arabic)
   - [x] #62 Engine foundation ([spec](specs/engine-foundation.md), [runbook](runbooks/engine-db-local.md)): engine DB, fail-closed config, durable run, audit, state machine (first; others depend on it)
-  - [ ] #56 Production financial gate and agent-output rejection (after #62)
+  - [x] #56 Production financial gate and agent-output rejection (after #62; [ADR-0018](adr/0018-financial-safety-gate-decisions.md), [spec](specs/safety-gate.md); live Luna `low` re-run 127/132 on 2026-11-05, $0.026; see spec)
   - [ ] #63 Odoo adapter: read-only scan and context, JSON-2 activity and coupon writes (after #62)
   - [ ] #64 Policy retrieval with synthetic bilingual policies (after #62)
   - [ ] #65 Agent proposal step: LLM adapter, validation, cost and budget cap (after #62)
