@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: merge the #63 PR, then plan #64 (policy retrieval), #65 and #66 just in time. #63 to #66 all depend only on the merged #62. Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The production discount/margin, coupon and dispatch gate does not exist; end-to-end deterministic rejection is untested and is tracked in #56 (POC-2).
+Next action: review the #64 policy retrieval PR, then plan #65 and #66 just in time. Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The deterministic financial gate is implemented in #56; its integration with the proposal and execution steps remains work for #65 and #67.
 
 ## Phases
 
@@ -29,7 +29,7 @@ Next action: merge the #63 PR, then plan #64 (policy retrieval), #65 and #66 jus
   - [x] #62 Engine foundation ([spec](specs/engine-foundation.md), [runbook](runbooks/engine-db-local.md)): engine DB, fail-closed config, durable run, audit, state machine (first; others depend on it)
   - [x] #56 Production financial gate and agent-output rejection (after #62; [ADR-0018](adr/0018-financial-safety-gate-decisions.md), [spec](specs/safety-gate.md); live Luna `low` re-run 127/132 on 2026-11-05, $0.026; see spec)
   - [x] #63 Odoo adapter: read-only scan and context, JSON-2 activity and coupon writes (after #62; [spec](specs/odoo-adapter.md), [runbook](runbooks/odoo-adapter-local.md), F-042; live test passed on the disposable instance)
-  - [ ] #64 Policy retrieval with synthetic bilingual policies (after #62)
+  - [x] #64 Policy retrieval with synthetic bilingual policies (after #62; [spec](specs/policy-retrieval.md), [runbook](runbooks/policy-retrieval-local.md); retrieval quality gates remain provisional)
   - [ ] #65 Agent proposal step: LLM adapter, validation, cost and budget cap (after #62)
   - [ ] #66 Approval API and CLI (after #62)
   - [ ] #67 Gated execution: coupon and Telegram/Mailpit dispatch, idempotency (after #56, #63, #66)

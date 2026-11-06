@@ -1,0 +1,52 @@
+{
+  "policies": [
+    {
+      "id": "consent",
+      "version": "1",
+      "en": {
+        "text": "Only contact customers who have consented to receive retention messages. Respect opt-outs before sending.",
+        "sha256": "bd6c9b2a3884dab435af93450346971ebd893b5eee177115de6ef7eb9de0be71"
+      },
+      "ar": {
+        "text": "لا تتواصل إلا مع العملاء الذين وافقوا على تلقي رسائل الاحتفاظ. احترم طلبات إيقاف الرسائل قبل الإرسال.",
+        "sha256": "bf402c3b060435d804c25cb5936c5f46ce344d5aee021d9c66012242bb97a4a2"
+      }
+    },
+    {
+      "id": "contact-schedule",
+      "version": "1",
+      "en": {
+        "text": "Respect the configured contact frequency and allowed local hours. Do not send outside those limits.",
+        "sha256": "106782a153e66b5c0a17527b256fbf0eec20ce276db6c905e8e0c8f062417bcc"
+      },
+      "ar": {
+        "text": "التزم بتكرار التواصل المحدد وساعات التواصل المحلية المسموح بها. لا ترسل خارج هذه الحدود.",
+        "sha256": "eb749973fa9cb5eb12bb3bcdcbbc25048d8e4c6825b5825bab344e360abe76df"
+      }
+    },
+    {
+      "id": "message-tone",
+      "version": "1",
+      "en": {
+        "text": "Use a respectful, clear tone and the customer’s selected language. Do not invent product or policy details.",
+        "sha256": "44681ba7439d7388a7e599dceda50974d6f33db38152a0d0d6e0a3ecb292170f"
+      },
+      "ar": {
+        "text": "استخدم أسلوباً محترماً وواضحاً ولغة العميل المختارة. لا تختلق تفاصيل عن المنتجات أو السياسات.",
+        "sha256": "92873e87e38e9e0b58c78024c82f8a671ef474091fc8e8ac53897816f6859565"
+      }
+    },
+    {
+      "id": "coupon-terms",
+      "version": "1",
+      "en": {
+        "text": "Coupon terms must describe the approved offer and expiry. The financial gate determines any discount.",
+        "sha256": "3ff0d30edf886bfe5288a9d6d0bf3920d612781a192fe7cfcca24c550fec4032"
+      },
+      "ar": {
+        "text": "يجب أن توضح شروط القسيمة العرض المعتمد وتاريخ انتهائه. تحدد بوابة الضوابط المالية أي خصم.",
+        "sha256": "a4092b035b27de7184bb347d80e1f12a68b4943c2408df30f165e25c75f3556b"
+      }
+    }
+  ]
+}
