@@ -42,6 +42,16 @@ run_events = sa.Table(
     sa.Column("at", sa.DateTime(timezone=True), nullable=False),
 )
 
+agent_proposals = sa.Table(
+    "agent_proposals",
+    metadata,
+    sa.Column("run_id", sa.Uuid(), sa.ForeignKey("runs.id"), primary_key=True),
+    sa.Column("schema_version", sa.Text(), nullable=False),
+    sa.Column("fingerprint", sa.Text(), nullable=False),
+    sa.Column("proposal", sa.JSON(), nullable=False),
+    sa.Column("gate_result", sa.JSON(), nullable=False),
+)
+
 
 class RunNotFound(Exception):
     pass
@@ -160,6 +170,48 @@ class RunRepository:
             )
             for r in rows
         ]
+
+    def persist_proposal(
+        self,
+        run_id: uuid.UUID,
+        *,
+        schema_version: str,
+        fingerprint: str,
+        proposal: dict[str, Any],
+        gate_result: dict[str, Any],
+    ) -> None:
+        """Store the proposal and its state transition in the same transaction."""
+        expected, new = RunState.GENERATING_PROPOSAL, RunState.EVALUATING_POLICY
+        validate_transition(expected, new)
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            row = conn.execute(
+                runs.update()
+                .where(runs.c.id == run_id, runs.c.state == expected.value)
+                .values(state=new.value, policy_result=gate_result, updated_at=now)
+                .returning(runs.c.id)
+            ).first()
+            if row is None:
+                raise StaleRunState("run no longer generating proposal")
+            conn.execute(
+                agent_proposals.insert().values(
+                    run_id=run_id,
+                    schema_version=schema_version,
+                    fingerprint=fingerprint,
+                    proposal=proposal,
+                    gate_result=gate_result,
+                )
+            )
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=expected.value,
+                    to_state=new.value,
+                    actor="system",
+                    detail={"schema_version": schema_version, "fingerprint": fingerprint},
+                    at=now,
+                )
+            )
 
     def transition(
         self,
