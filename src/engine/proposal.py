@@ -283,6 +283,8 @@ class ProposalService:
                     actor="system",
                     detail={"reason": "gate_or_non_dispatch_action"},
                 )
+            elif decision.outcome is Outcome.NEEDS_APPROVAL:
+                self.runs.request_approval(run_id, self.gate)
             LOG.info("proposal run=%s status=validated", run_id)
         except Exception as error:
             if isinstance(error, (ProposalError, BudgetError)):

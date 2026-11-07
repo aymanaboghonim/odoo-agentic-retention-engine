@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: review the #65 proposal PR, then plan #66 just in time. Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The proposal runtime adapts this prompt and requires its own live evaluation in #69; gated execution remains #67.
+Next action: review the #66 approval PR, then plan #67 just in time. Each issue gets its own detailed plan just in time before work starts. POC-2 scope is planned in #61. Phase 1 is complete: S1 to S4 and their follow-ups (#49, #51, #53) are merged and POC-1 has no open issues. S2 outcome in [ADR-0016](adr/0016-s2-llm-evaluation-and-model-selection.md) (accepted for the POC): GPT-6 Luna `low` with the `tool-clarity` prompt (128/132 vs 115/132 baseline; one prompt-injection regression accepted as possible noise, one run per prompt). Limits: 4 remaining failures, no retained model text, bounded discount matcher. The proposal runtime adapts this prompt and requires its own live evaluation in #69; gated execution remains #67.
 
 ## Phases
 
@@ -31,11 +31,12 @@ Next action: review the #65 proposal PR, then plan #66 just in time. Each issue 
   - [x] #63 Odoo adapter: read-only scan and context, JSON-2 activity and coupon writes (after #62; [spec](specs/odoo-adapter.md), [runbook](runbooks/odoo-adapter-local.md), F-042; live test passed on the disposable instance)
   - [x] #64 Policy retrieval with synthetic bilingual policies (after #62; [spec](specs/policy-retrieval.md), [runbook](runbooks/policy-retrieval-local.md); retrieval quality gates remain provisional)
   - [x] #65 Agent proposal step: provider adapter, validation, gate handoff and per-run budget ([spec](specs/agent-proposal.md), [runbook](runbooks/agent-proposal-local.md); live evaluation remains #69)
-  - [ ] #66 Approval API and CLI (after #62)
+  - [x] #66 Approval API and CLI ([spec](specs/approval-api.md), [runbook](runbooks/approval-local.md); #67 owns the actual execution-time recheck)
   - [ ] #67 Gated execution: coupon and Telegram/Mailpit dispatch, idempotency (after #56, #63, #66)
   - [ ] #68 Full-stack compose, worker trigger, capacity measurement (after #63, #64, #65)
   - [ ] #69 End-to-end test, live EN/MSA eval, provisional gates (last)
   - POC-2 decisions (owner, 2026-11-04): approval by API + CLI with static env operator tokens; coupon written through Odoo JSON-2 in the local instance (Odoo 19 coupon model verified first, fallback only by ADR); per-run cost in the engine DB and structured logs, Langfuse/OTel moved to POC-3; dialects only if owner review is recorded in the S2 worksheet, else English + MSA; deferred: Q12, Q13 final gates (provisional only), production topology, churn/RFM.
+  - #66 approval decisions (owner, 2026-11-07): one named static-token operator and no time expiry for the POC; approval is bound to the displayed snapshot and gate fingerprint. The API does not execute actions. #67 owns the actual immediate-before-execution recheck; see the [spec](specs/approval-api.md) for reasons and limits.
 - [ ] **Phase 3: POC exit review, MVP plan**
 
 ## Target repo tree

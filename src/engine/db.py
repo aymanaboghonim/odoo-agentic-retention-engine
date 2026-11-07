@@ -11,6 +11,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine
 
+from engine.approval_data import InvalidProposalSnapshot, offer_from_record, snapshot_hash
+from engine.policy import Gate, Outcome, as_dict
 from engine.runs import TERMINAL_STATES, RunState, validate_transition
 
 metadata = sa.MetaData()
@@ -52,6 +54,18 @@ agent_proposals = sa.Table(
     sa.Column("gate_result", sa.JSON(), nullable=False),
 )
 
+approval_requests = sa.Table(
+    "approval_requests",
+    metadata,
+    sa.Column("run_id", sa.Uuid(), sa.ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("snapshot", sa.JSON(), nullable=False),
+    sa.Column("snapshot_hash", sa.Text(), nullable=False),
+    sa.Column("decision", sa.Text(), nullable=True),
+    sa.Column("actor", sa.Text(), nullable=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
+)
+
 
 class RunNotFound(Exception):
     pass
@@ -59,6 +73,10 @@ class RunNotFound(Exception):
 
 class StaleRunState(Exception):
     """The run was changed by someone else since it was read."""
+
+
+class ApprovalConflict(Exception):
+    """The proposal or request is no longer eligible for this decision."""
 
 
 @dataclass(frozen=True)
@@ -170,6 +188,213 @@ class RunRepository:
             )
             for r in rows
         ]
+
+    def request_approval(self, run_id: uuid.UUID, gate: Gate) -> None:
+        """Evaluate and persist one approval request with its state and audit."""
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            run = conn.execute(sa.select(runs).where(runs.c.id == run_id).with_for_update()).first()
+            row = conn.execute(
+                sa.select(agent_proposals)
+                .where(agent_proposals.c.run_id == run_id)
+                .with_for_update()
+            ).first()
+            if run is None or run.state != RunState.EVALUATING_POLICY.value or row is None:
+                raise ApprovalConflict("run is not eligible for approval")
+            if conn.execute(
+                sa.select(approval_requests.c.run_id).where(approval_requests.c.run_id == run_id)
+            ).first():
+                raise ApprovalConflict("approval request already exists")
+            try:
+                offer = offer_from_record(row.proposal)
+            except InvalidProposalSnapshot as error:
+                raise ApprovalConflict("invalid proposal") from error
+            if offer.run_id != str(run_id) or offer.fingerprint() != row.fingerprint:
+                raise ApprovalConflict("proposal fingerprint mismatch")
+            if row.proposal.get("action") != "draft_message":
+                raise ApprovalConflict("only draft messages can require approval")
+            decision = gate.evaluate(offer, now=now)
+            if decision.outcome is not Outcome.NEEDS_APPROVAL:
+                raise ApprovalConflict("gate does not require approval")
+            gate_result = as_dict(decision)
+            snapshot = {
+                "schema_version": row.schema_version,
+                "fingerprint": row.fingerprint,
+                "proposal": row.proposal,
+                "gate_result": gate_result,
+            }
+            token = snapshot_hash(snapshot)
+            conn.execute(
+                agent_proposals.update()
+                .where(agent_proposals.c.run_id == run_id)
+                .values(gate_result=gate_result)
+            )
+            conn.execute(
+                approval_requests.insert().values(
+                    run_id=run_id, snapshot=snapshot, snapshot_hash=token, created_at=now
+                )
+            )
+            conn.execute(
+                runs.update()
+                .where(runs.c.id == run_id)
+                .values(
+                    state=RunState.AWAITING_APPROVAL.value,
+                    policy_result=gate_result,
+                    updated_at=now,
+                )
+            )
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=RunState.EVALUATING_POLICY.value,
+                    to_state=RunState.AWAITING_APPROVAL.value,
+                    actor="system",
+                    detail={"snapshot_hash": token},
+                    at=now,
+                )
+            )
+
+    def pending_approvals(self) -> list[dict[str, Any]]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                sa.select(
+                    approval_requests.c.run_id,
+                    approval_requests.c.snapshot,
+                    approval_requests.c.snapshot_hash,
+                )
+                .join(runs, runs.c.id == approval_requests.c.run_id)
+                .where(
+                    approval_requests.c.decision.is_(None),
+                    runs.c.state == RunState.AWAITING_APPROVAL.value,
+                )
+                .order_by(approval_requests.c.created_at, approval_requests.c.run_id)
+            ).all()
+        return [
+            {
+                "run_id": str(row.run_id),
+                "snapshot": row.snapshot,
+                "snapshot_hash": row.snapshot_hash,
+            }
+            for row in rows
+        ]
+
+    def decide_approval(self, run_id: uuid.UUID, *, token: str, decision: str, actor: str) -> Run:
+        if decision not in {"approve", "reject"} or not actor.strip():
+            raise ValueError("invalid decision or actor")
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            run = conn.execute(sa.select(runs).where(runs.c.id == run_id).with_for_update()).first()
+            request = conn.execute(
+                sa.select(approval_requests)
+                .where(approval_requests.c.run_id == run_id)
+                .with_for_update()
+            ).first()
+            proposal = conn.execute(
+                sa.select(agent_proposals)
+                .where(agent_proposals.c.run_id == run_id)
+                .with_for_update()
+            ).first()
+            if (
+                run is None
+                or run.state != RunState.AWAITING_APPROVAL.value
+                or request is None
+                or request.decision is not None
+                or proposal is None
+            ):
+                raise ApprovalConflict("approval is not pending")
+            current = {
+                "schema_version": proposal.schema_version,
+                "fingerprint": proposal.fingerprint,
+                "proposal": proposal.proposal,
+                "gate_result": proposal.gate_result,
+            }
+            try:
+                offer = offer_from_record(proposal.proposal)
+            except InvalidProposalSnapshot as error:
+                raise ApprovalConflict("invalid proposal") from error
+            if (
+                token != request.snapshot_hash
+                or snapshot_hash(request.snapshot) != token
+                or snapshot_hash(current) != token
+                or offer.run_id != str(run_id)
+                or offer.fingerprint() != proposal.fingerprint
+            ):
+                raise ApprovalConflict("proposal has changed")
+            new = RunState.EVALUATING_POLICY if decision == "approve" else RunState.REJECTED
+            validate_transition(RunState.AWAITING_APPROVAL, new)
+            conn.execute(
+                approval_requests.update()
+                .where(approval_requests.c.run_id == run_id)
+                .values(decision=decision, actor=actor, decided_at=now)
+            )
+            row = conn.execute(
+                runs.update()
+                .where(runs.c.id == run_id)
+                .values(
+                    state=new.value,
+                    updated_at=now,
+                    outcome="rejected" if decision == "reject" else None,
+                )
+                .returning(runs)
+            ).one()
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=RunState.AWAITING_APPROVAL.value,
+                    to_state=new.value,
+                    actor=actor,
+                    detail={"decision": decision, "snapshot_hash": token},
+                    at=now,
+                )
+            )
+        return _to_run(row)
+
+    def current_human_approval(self, run_id: uuid.UUID) -> str | None:
+        """Return the approved gate fingerprint only while the stored snapshot still matches."""
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                sa.select(
+                    runs.c.state,
+                    approval_requests.c.snapshot,
+                    approval_requests.c.snapshot_hash,
+                    approval_requests.c.decision,
+                    agent_proposals.c.schema_version,
+                    agent_proposals.c.fingerprint,
+                    agent_proposals.c.proposal,
+                    agent_proposals.c.gate_result,
+                )
+                .join(approval_requests, approval_requests.c.run_id == runs.c.id)
+                .join(agent_proposals, agent_proposals.c.run_id == runs.c.id)
+                .where(runs.c.id == run_id)
+            ).first()
+        if (
+            row is None
+            or row.decision != "approve"
+            or row.state
+            not in {
+                RunState.EVALUATING_POLICY.value,
+                RunState.READY_TO_EXECUTE.value,
+            }
+        ):
+            return None
+        current = {
+            "schema_version": row.schema_version,
+            "fingerprint": row.fingerprint,
+            "proposal": row.proposal,
+            "gate_result": row.gate_result,
+        }
+        try:
+            offer = offer_from_record(row.proposal)
+        except InvalidProposalSnapshot as error:
+            raise ApprovalConflict("invalid approved proposal") from error
+        if (
+            snapshot_hash(row.snapshot) != row.snapshot_hash
+            or snapshot_hash(current) != row.snapshot_hash
+            or offer.run_id != str(run_id)
+            or offer.fingerprint() != row.fingerprint
+        ):
+            raise ApprovalConflict("approved proposal has changed")
+        return row.fingerprint
 
     def persist_proposal(
         self,
