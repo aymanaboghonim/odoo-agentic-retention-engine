@@ -4,6 +4,10 @@
 - ADRs: ADR-0002 (modular engine with API and worker), ADR-0004 (scheduled batch work), ADR-0013 (POC channels).
 - Status: draft
 
+Issue #66 adds the POC approval API and CLI in
+[approval-api.md](approval-api.md). The actual immediately-before-execution
+enforcement of AS-5 remains #67.
+
 ## Purpose
 
 Define a persistent, auditable lifecycle for agent runs that process abandoned carts and campaign requests. Keep policy decisions deterministic and require a human decision before any action that is not eligible for automatic execution.
