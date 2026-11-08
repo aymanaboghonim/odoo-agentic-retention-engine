@@ -31,6 +31,7 @@ The named tests are the acceptance tests in `tests/test_engine_policy.py` and `t
 | SG-9 | Coupon creation and customer-message dispatch accept only a `GateApproval` created by the gate for that exact proposal; it cannot be built outside the gate and is re-checked before execution. | `test_coupon_and_dispatch_require_gate_approval`, `test_changed_proposal_invalidates_approval` |
 | SG-10 | A message that claims a discount not present in the structured `proposed_discount_percent` is rejected. | `test_unsupported_discount_claim_in_message_is_rejected` |
 | SG-11 | The S2 golden-set discount, injection and cross-customer cases get the same gate outcome with no live model call. | `test_s2_golden_set_replay_through_gate` |
+| SG-12 | A gate authorization is valid only on its configured budget day; repeating a run cannot reuse a reservation for a different amount. | `test_authorization_cannot_cross_the_budget_day`, `test_same_run_cannot_reuse_a_different_reservation`, `test_db_same_run_cannot_reuse_a_different_reservation` |
 
 ## Behavior
 
@@ -39,6 +40,7 @@ The named tests are the acceptance tests in `tests/test_engine_policy.py` and `t
 - **Given** a proposal is above 10% and at or below 15%, or is a bulk campaign, **when** evaluated, **then** it waits for human approval and has no external side effect until approval. Hard-cap, margin, and usage constraints are checked again before execution and cannot be waived by approval.
 - **Given** a proposal would breach the category margin, per-cart coupon limit, or daily budget, **when** evaluated, **then** no coupon or message proceeds while the breach remains. The response must be explicit; it must not silently fall back to a lower discount or treat a failed check as success.
 - **Given** a prompt or tool output asks the agent to ignore a cap, **when** the proposal reaches the gate, **then** the deterministic checks still decide the outcome.
+- **Given** the local budget day changes, **when** a previous gate authorization is verified, **then** it is rejected and a new authorization must reserve that day's budget. A repeat reservation for the same run and cart is idempotent only for the same amount.
 
 ## Risks
 

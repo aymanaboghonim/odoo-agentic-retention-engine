@@ -19,9 +19,12 @@ give the model tools, and sends only the prepared synthetic payload.
 
 Call `generate` once for the bound run, customer, cart, language (`en` or `ar`)
 and synthetic request. A valid draft is stored in `agent_proposals` with its
-version, fingerprint, policy provenance and gate result; it remains in
-`evaluating_policy`. Refusals, no-action responses and gate rejections do not
-proceed to dispatch. The service never sends a message or creates a coupon.
+version, fingerprint, policy provenance, non-contact cart snapshot and gate
+result. Auto-eligible drafts remain in `evaluating_policy`; drafts needing
+human approval enter `awaiting_approval`. Refusals, no-action responses and gate rejections do not
+proceed to dispatch. A positive-discount draft includes a code rendered by
+trusted code before review; it is not proof of an existing coupon. The service
+never sends a message or creates a coupon.
 
 `proposal_calls` stores reservations, reported token usage, conservative USD
 estimates and rate provenance. Unknown usage or a transport failure retains the
@@ -31,6 +34,12 @@ before deciding how to recover. Generation estimates are not bills; the
 count-only endpoint's cost is unknown (F-038). Check F-005 before a live run
 and reverify pricing when stale or changed. Live evaluation and its approved
 ceiling remain #69; CI uses no live provider calls.
+
+`ProposalSettings.review_budget` can additionally bind calls to a shared,
+immutable aggregate budget. It keeps each call's full reservation even after
+lower reported usage, and keeps unknown usage reserved. It is optional in the
+general service; #67's live-review workflow must require the same review ID
+and USD 0.50 ceiling on every call rather than relying on per-run limits.
 
 To run the hermetic DB tests, use an isolated engine test database:
 

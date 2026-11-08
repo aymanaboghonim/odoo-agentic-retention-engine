@@ -119,6 +119,39 @@ def test_daily_budget_uses_configured_timezone() -> None:
         cfg.day_for(datetime(2026, 11, 4, 12, 0))
 
 
+def test_authorization_cannot_cross_the_budget_day() -> None:
+    gate = Gate(config(), InMemoryGateLedger())
+    offer = proposal("5")
+    before_midnight = datetime(2026, 11, 4, 20, 59, tzinfo=UTC)
+    midnight = datetime(2026, 11, 4, 21, 0, tzinfo=UTC)
+    approval = gate.issue_approval(offer, now=before_midnight)
+    gate.verify(approval, offer, now=before_midnight)
+    with pytest.raises(GateRejected) as error:
+        gate.verify(approval, offer, now=midnight)
+    assert error.value.reasons == (Reason.STALE_AUTHORIZATION,)
+    gate.verify(gate.issue_approval(offer, now=midnight), offer, now=midnight)
+
+
+def test_same_run_cannot_reuse_a_different_reservation() -> None:
+    ledger = InMemoryGateLedger()
+    gate = Gate(config(), ledger)
+    gate.issue_approval(proposal("5"), now=NOW)
+    with pytest.raises(GateRejected) as error:
+        gate.issue_approval(proposal("10"), now=NOW)
+    assert Reason.INVALID_PROPOSAL in error.value.reasons
+    assert (
+        ledger.reserve(
+            day="2026-11-04",
+            customer_id="cust-1",
+            cart_id="cart-1",
+            run_id="run-1",
+            amount=Decimal("10"),
+            daily_budget=Decimal("100"),
+        )
+        is Reason.INVALID_PROPOSAL
+    )
+
+
 def test_budget_exhausted_rejects_with_reason() -> None:
     gate = Gate(config(GATE_DAILY_BUDGET="10"), InMemoryGateLedger())
     gate.issue_approval(proposal("10", cart_id="a"), now=NOW)

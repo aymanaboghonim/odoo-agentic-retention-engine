@@ -27,13 +27,15 @@ class PostgresGateLedger:
         with self._engine.connect() as conn:
             existing = conn.execute(
                 sa.text(
-                    "SELECT run_id FROM gate_coupon_reservations "
+                    "SELECT run_id, amount FROM gate_coupon_reservations "
                     "WHERE day = :day AND customer_id = :c AND cart_id = :k"
                 ),
                 {"day": date.fromisoformat(day), "c": customer_id, "k": cart_id},
             ).first()
             if existing is not None:
-                return None if existing.run_id == run_id else Reason.COUPON_LIMIT_REACHED
+                if existing.run_id != run_id:
+                    return Reason.COUPON_LIMIT_REACHED
+                return None if existing.amount == amount else Reason.INVALID_PROPOSAL
         return None
 
     def reserve(
@@ -83,12 +85,14 @@ class PostgresGateLedger:
             if inserted is None:
                 owner = conn.execute(
                     sa.text(
-                        "SELECT run_id FROM gate_coupon_reservations "
+                        "SELECT run_id, amount FROM gate_coupon_reservations "
                         "WHERE day = :day AND customer_id = :c AND cart_id = :k"
                     ),
                     {"day": day_value, "c": customer_id, "k": cart_id},
                 ).one()
-                return None if owner.run_id == run_id else Reason.COUPON_LIMIT_REACHED
+                if owner.run_id != run_id:
+                    return Reason.COUPON_LIMIT_REACHED
+                return None if owner.amount == amount else Reason.INVALID_PROPOSAL
             # The conditional upsert takes a row lock, so concurrent reservations serialize.
             updated = conn.execute(
                 sa.text(
@@ -109,14 +113,19 @@ class InMemoryGateLedger:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._coupons: dict[tuple[str, str, str], str] = {}
+        self._coupons: dict[tuple[str, str, str], tuple[str, Decimal]] = {}
         self._reserved: dict[str, Decimal] = {}
 
     def check(
         self, *, day: str, customer_id: str, cart_id: str, run_id: str, amount: Decimal
     ) -> Reason | None:
-        owner = self._coupons.get((day, customer_id, cart_id))
-        return Reason.COUPON_LIMIT_REACHED if owner not in (None, run_id) else None
+        reservation = self._coupons.get((day, customer_id, cart_id))
+        if reservation is None:
+            return None
+        owner, reserved_amount = reservation
+        if owner != run_id:
+            return Reason.COUPON_LIMIT_REACHED
+        return None if reserved_amount == amount else Reason.INVALID_PROPOSAL
 
     def reserve(
         self,
@@ -129,12 +138,15 @@ class InMemoryGateLedger:
         daily_budget: Decimal,
     ) -> Reason | None:
         with self._lock:
-            owner = self._coupons.get((day, customer_id, cart_id))
-            if owner is not None:
-                return None if owner == run_id else Reason.COUPON_LIMIT_REACHED
+            reservation = self._coupons.get((day, customer_id, cart_id))
+            if reservation is not None:
+                owner, reserved_amount = reservation
+                if owner != run_id:
+                    return Reason.COUPON_LIMIT_REACHED
+                return None if reserved_amount == amount else Reason.INVALID_PROPOSAL
             total = self._reserved.get(day, Decimal(0)) + amount
             if total > daily_budget:
                 return Reason.DAILY_BUDGET_EXHAUSTED
-            self._coupons[(day, customer_id, cart_id)] = run_id
+            self._coupons[(day, customer_id, cart_id)] = (run_id, amount)
             self._reserved[day] = total
         return None

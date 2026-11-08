@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # Policy decisions are documented in docs/adr/0018-financial-safety-gate-decisions.md.
@@ -47,6 +47,7 @@ class Reason(StrEnum):
     HUMAN_APPROVAL_REQUIRED = "human_approval_required"
     BULK_CAMPAIGN = "bulk_campaign"
     DISCOUNT_IN_APPROVAL_BAND = "discount_in_approval_band"
+    STALE_AUTHORIZATION = "stale_authorization"
 
 
 @dataclass(frozen=True)
@@ -129,6 +130,7 @@ class OfferProposal:
     proposed_discount_percent: Decimal | None
     is_bulk: bool = False
     customer_message: str | None = None
+    language: Literal["en", "ar"] = "en"
 
     def fingerprint(self) -> str:
         canonical = json.dumps(asdict(self), default=str, sort_keys=True, ensure_ascii=True)
@@ -353,6 +355,8 @@ class Gate:
             raise TypeError("A GateApproval is required.")
         if approval.fingerprint != proposal.fingerprint():
             raise GateRejected((Reason.HUMAN_APPROVAL_REQUIRED,))
+        if approval.day != self._config.day_for(now):
+            raise GateRejected((Reason.STALE_AUTHORIZATION,))
         decision = evaluate(proposal, self._config, now=now)
         if decision.outcome is Outcome.REJECT:
             raise GateRejected(decision.reasons)
