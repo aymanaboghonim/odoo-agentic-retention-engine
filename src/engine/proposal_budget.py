@@ -49,6 +49,17 @@ class Rate:
         ) / Decimal(1_000_000)
 
 
+@dataclass(frozen=True)
+class ReviewBudget:
+    review_id: str
+    limit_usd: Decimal
+
+    def __post_init__(self) -> None:
+        if not self.review_id.strip() or len(self.review_id) > 200:
+            raise BudgetError("review ID is required and must be at most 200 characters")
+        _positive(self.limit_usd, "review budget")
+
+
 class ProposalBudget:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
@@ -62,6 +73,7 @@ class ProposalBudget:
         input_limit: int,
         output_limit: int,
         rate: Rate,
+        review: ReviewBudget | None = None,
     ) -> Decimal:
         _positive(limit, "run budget")
         if (
@@ -77,6 +89,32 @@ class ProposalBudget:
             Decimal("0.000000000001"), rounding=ROUND_CEILING
         )
         with self._engine.begin() as conn:
+            if review is not None:
+                conn.execute(
+                    sa.text(
+                        "INSERT INTO proposal_review_budgets (id, limit_usd) VALUES (:id, :limit) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    ),
+                    {"id": review.review_id, "limit": review.limit_usd},
+                )
+                stored_review_limit = conn.execute(
+                    sa.text(
+                        "SELECT limit_usd FROM proposal_review_budgets WHERE id=:id FOR UPDATE"
+                    ),
+                    {"id": review.review_id},
+                ).scalar_one()
+                if stored_review_limit != review.limit_usd:
+                    raise BudgetError("review budget cannot change after first reservation")
+                review_used = conn.execute(
+                    sa.text(
+                        "SELECT COALESCE(SUM(GREATEST(reserved_usd, "
+                        "COALESCE(actual_usd, reserved_usd))), 0) "
+                        "FROM proposal_calls WHERE review_id=:id"
+                    ),
+                    {"id": review.review_id},
+                ).scalar_one()
+                if review_used + reserved > review.limit_usd:
+                    raise BudgetError("aggregate review budget exhausted")
             conn.execute(
                 sa.text(
                     "INSERT INTO proposal_budget (run_id, limit_usd) VALUES (:run, :limit) "
@@ -108,9 +146,9 @@ class ProposalBudget:
                 sa.text(
                     "INSERT INTO proposal_calls "
                     "(id, run_id, status, reserved_usd, rate_provenance, input_rate, "
-                    "output_rate, input_limit, output_limit) "
+                    "output_rate, input_limit, output_limit, review_id) "
                     "VALUES (:id, :run, 'reserved', :reserved, :provenance, "
-                    ":input_rate, :output_rate, :input_limit, :output_limit)"
+                    ":input_rate, :output_rate, :input_limit, :output_limit, :review_id)"
                 ),
                 {
                     "id": call_id,
@@ -121,6 +159,7 @@ class ProposalBudget:
                     "output_rate": rate.output_per_million,
                     "input_limit": input_limit,
                     "output_limit": output_limit,
+                    "review_id": review.review_id if review is not None else None,
                 },
             )
         return reserved
@@ -137,6 +176,14 @@ class ProposalBudget:
             Decimal("0.000000000001"), rounding=ROUND_CEILING
         )
         with self._engine.begin() as conn:
+            review_id = conn.execute(
+                sa.text("SELECT review_id FROM proposal_calls WHERE id=:id"), {"id": call_id}
+            ).scalar_one()
+            if review_id is not None:
+                conn.execute(
+                    sa.text("SELECT id FROM proposal_review_budgets WHERE id=:id FOR UPDATE"),
+                    {"id": review_id},
+                ).one()
             row = (
                 conn.execute(
                     sa.text("SELECT * FROM proposal_calls WHERE id=:id FOR UPDATE"), {"id": call_id}

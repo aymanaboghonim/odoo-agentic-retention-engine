@@ -7,11 +7,13 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from engine import odoo
+from engine.coupon_code import coupon_code_for_run
 from engine.odoo import (
     AbandonedCart,
     CartLine,
@@ -92,16 +94,32 @@ def test_age_hours() -> None:
     assert cart.age_hours(datetime(2026, 11, 1, 11, tzinfo=UTC)) == 11
 
 
+def test_execution_lookup_uses_current_abandoned_delay() -> None:
+    reader = odoo.OdooReader(ENV["ODOO_READONLY_DATABASE_URL"])
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.execute.return_value.fetchone.return_value = None
+    now = datetime(2026, 11, 5, 12, 0, tzinfo=UTC)
+    with patch.object(reader, "_connect", return_value=connection):
+        assert reader.get_abandoned_cart(42, now=now) is None
+    query, parameters = connection.execute.call_args.args
+    assert "so.id = %(order_id)s" in query
+    assert "so.date_order <= %(now)s - w.cart_abandoned_delay" in query
+    assert parameters == {"order_id": 42, "now": now.replace(tzinfo=None)}
+
+
 class _Recorder(BaseHTTPRequestHandler):
     calls: list[dict[str, Any]] = []
     replies: dict[str, object] = {}
+    reply_queues: dict[str, list[object]] = {}
 
     def do_POST(self) -> None:
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         type(self).calls.append(
             {"path": self.path, "body": body, "auth": self.headers["Authorization"]}
         )
-        reply = type(self).replies.get(self.path, 404)
+        queue = type(self).reply_queues.get(self.path, [])
+        reply = queue.pop(0) if queue else type(self).replies.get(self.path, 404)
         status = reply if isinstance(reply, int) else 200
         self.send_response(status)
         self.end_headers()
@@ -116,6 +134,7 @@ class _Recorder(BaseHTTPRequestHandler):
 def server() -> Any:
     _Recorder.calls = []
     _Recorder.replies = {}
+    _Recorder.reply_queues = {}
     httpd = HTTPServer(("127.0.0.1", 0), _Recorder)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -145,30 +164,153 @@ def test_activity_uses_json2_with_bearer_key(server: HTTPServer) -> None:
 
 
 def test_coupon_is_created_as_program_and_card(server: HTTPServer) -> None:
-    _Recorder.replies = {
-        "/json/2/loyalty.card/search_read": [],
-        "/json/2/loyalty.program/create": [31],
-        "/json/2/loyalty.card/create": [32],
+    card = {
+        "id": 32,
+        "code": "RET-ABC",
+        "partner_id": [9, "Synthetic"],
+        "program_id": [31, "Retention offer RET-ABC"],
+        "points": 1,
+        "expiration_date": "2026-11-12",
+        "active": True,
+    }
+    program = {
+        "id": 31,
+        "program_type": "coupons",
+        "trigger": "with_code",
+        "date_to": "2026-11-12",
+        "active": True,
+        "reward_ids": [41],
+    }
+    reward = {
+        "reward_type": "discount",
+        "discount_mode": "percent",
+        "discount": 10.0,
+        "discount_applicability": "order",
+        "required_points": 1.0,
+    }
+    _Recorder.reply_queues = {
+        "/json/2/loyalty.card/search_read": [[], [card]],
+        "/json/2/loyalty.program/search_read": [[], [program]],
+        "/json/2/loyalty.program/create": [[31]],
+        "/json/2/loyalty.card/create": [[32]],
+        "/json/2/loyalty.reward/search_read": [[reward], [reward]],
     }
     coupon = _client(server).create_coupon(
         code="RET-ABC", percent=Decimal("10"), partner_id=9, expires=date(2026, 11, 12)
     )
     assert (coupon.program_id, coupon.card_id, coupon.code) == (31, 32, "RET-ABC")
     program = next(c for c in _Recorder.calls if c["path"].endswith("loyalty.program/create"))
-    reward = program["body"]["vals_list"][0]["reward_ids"][0][2]
+    program_body = cast(dict[str, Any], program["body"])
+    reward = program_body["vals_list"][0]["reward_ids"][0][2]
     assert reward["discount"] == 10.0
     assert reward["discount_mode"] == "percent"
     card = next(c for c in _Recorder.calls if c["path"].endswith("loyalty.card/create"))
-    assert card["body"]["vals_list"][0]["partner_id"] == 9
+    card_body = cast(dict[str, Any], card["body"])
+    assert card_body["vals_list"][0]["partner_id"] == 9
 
 
 def test_coupon_creation_is_idempotent_by_code(server: HTTPServer) -> None:
-    _Recorder.replies = {"/json/2/loyalty.card/search_read": [{"id": 5, "program_id": [31, "x"]}]}
+    card = {
+        "id": 5,
+        "code": "RET-ABC",
+        "partner_id": [9, "Synthetic"],
+        "program_id": [31, "Retention offer RET-ABC"],
+        "points": 1,
+        "expiration_date": "2026-11-12",
+        "active": True,
+    }
+    program = {
+        "id": 31,
+        "program_type": "coupons",
+        "trigger": "with_code",
+        "date_to": "2026-11-12",
+        "active": True,
+        "reward_ids": [41],
+    }
+    reward = {
+        "reward_type": "discount",
+        "discount_mode": "percent",
+        "discount": 10,
+        "discount_applicability": "order",
+        "required_points": 1,
+    }
+    _Recorder.reply_queues = {
+        "/json/2/loyalty.card/search_read": [[card]],
+        "/json/2/loyalty.program/search_read": [[program]],
+        "/json/2/loyalty.reward/search_read": [[reward]],
+    }
     coupon = _client(server).create_coupon(
         code="RET-ABC", percent=Decimal("10"), partner_id=9, expires=date(2026, 11, 12)
     )
-    assert coupon.program_id == 31
+    assert (coupon.program_id, coupon.card_id) == (31, 5)
     assert not any(c["path"].endswith("/create") for c in _Recorder.calls)
+
+
+def test_existing_coupon_with_mismatched_terms_is_refused(server: HTTPServer) -> None:
+    _Recorder.replies = {
+        "/json/2/loyalty.card/search_read": [
+            {
+                "id": 5,
+                "code": "RET-ABC",
+                "partner_id": [10, "Other synthetic user"],
+                "program_id": [31, "Retention offer RET-ABC"],
+                "points": 1,
+                "expiration_date": "2026-11-12",
+                "active": True,
+            }
+        ]
+    }
+    with pytest.raises(OdooApiError, match="approved terms"):
+        _client(server).create_coupon(
+            code="RET-ABC", percent=Decimal("10"), partner_id=9, expires=date(2026, 11, 12)
+        )
+    assert len(_Recorder.calls) == 1
+
+
+def test_partial_coupon_program_is_reused_only_when_terms_match(server: HTTPServer) -> None:
+    program = {
+        "id": 31,
+        "program_type": "coupons",
+        "trigger": "with_code",
+        "date_to": "2026-11-12",
+        "active": True,
+        "reward_ids": [41],
+    }
+    card = {
+        "id": 32,
+        "code": "RET-ABC",
+        "partner_id": [9, "Synthetic"],
+        "program_id": [31, "Retention offer RET-ABC"],
+        "points": 1,
+        "expiration_date": "2026-11-12",
+        "active": True,
+    }
+    reward = {
+        "reward_type": "discount",
+        "discount_mode": "percent",
+        "discount": 10,
+        "discount_applicability": "order",
+        "required_points": 1,
+    }
+    _Recorder.reply_queues = {
+        "/json/2/loyalty.card/search_read": [[], [card]],
+        "/json/2/loyalty.program/search_read": [[program], [program]],
+        "/json/2/loyalty.card/create": [[32]],
+        "/json/2/loyalty.reward/search_read": [[reward], [reward]],
+    }
+    coupon = _client(server).create_coupon(
+        code="RET-ABC", percent=Decimal("10"), partner_id=9, expires=date(2026, 11, 12)
+    )
+    assert (coupon.program_id, coupon.card_id) == (31, 32)
+    assert not any(c["path"].endswith("loyalty.program/create") for c in _Recorder.calls)
+
+
+def test_coupon_code_uses_stable_run_identity() -> None:
+    assert coupon_code_for_run("run-1") == coupon_code_for_run("run-1")
+    assert coupon_code_for_run("run-1") != coupon_code_for_run("run-2")
+    assert re.fullmatch(r"RET-[0-9A-F]{32}", coupon_code_for_run("run-1"))
+    with pytest.raises(ValueError):
+        coupon_code_for_run("")
 
 
 def test_http_error_does_not_leak_key(server: HTTPServer) -> None:
@@ -183,4 +325,10 @@ def test_no_sql_write_path_in_adapter() -> None:
         r"\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|TRUNCATE)\b", source, re.I
     )
     reader_methods = {name for name in dir(odoo.OdooReader) if not name.startswith("__")}
-    assert reader_methods == {"scan_abandoned_carts", "get_cart", "_connect", "_cart"}
+    assert reader_methods == {
+        "scan_abandoned_carts",
+        "get_cart",
+        "get_abandoned_cart",
+        "_connect",
+        "_cart",
+    }

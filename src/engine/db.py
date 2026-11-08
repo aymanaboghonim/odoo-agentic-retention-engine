@@ -66,6 +66,32 @@ approval_requests = sa.Table(
     sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
 )
 
+execution_claims = sa.Table(
+    "execution_claims",
+    metadata,
+    sa.Column("run_id", sa.Uuid(), sa.ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("claim_id", sa.Uuid(), nullable=False, unique=True),
+    sa.Column("binding_hash", sa.Text(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+execution_effects = sa.Table(
+    "execution_effects",
+    metadata,
+    sa.Column(
+        "run_id",
+        sa.Uuid(),
+        sa.ForeignKey("execution_claims.run_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column("effect", sa.Text(), primary_key=True),
+    sa.Column("status", sa.Text(), nullable=False),
+    sa.Column("attempts", sa.Integer(), nullable=False),
+    sa.Column("max_attempts", sa.Integer(), nullable=False),
+    sa.Column("reference", sa.Text()),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 
 class RunNotFound(Exception):
     pass
@@ -77,6 +103,10 @@ class StaleRunState(Exception):
 
 class ApprovalConflict(Exception):
     """The proposal or request is no longer eligible for this decision."""
+
+
+class ExecutionConflict(Exception):
+    """A claim or external effect cannot safely be started or changed."""
 
 
 @dataclass(frozen=True)
@@ -97,6 +127,19 @@ class RunEvent:
     to_state: RunState
     actor: str
     detail: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class ExecutionRecord:
+    run_id: uuid.UUID
+    state: RunState
+    schema_version: str
+    fingerprint: str
+    proposal: dict[str, Any]
+    gate_result: dict[str, Any]
+    human_approved: bool
+    approval_snapshot_hash: str | None
+    context_hash: str
 
 
 def create_engine(database_url: str) -> Engine:
@@ -374,6 +417,7 @@ class RunRepository:
             not in {
                 RunState.EVALUATING_POLICY.value,
                 RunState.READY_TO_EXECUTE.value,
+                RunState.EXECUTING.value,
             }
         ):
             return None
@@ -395,6 +439,40 @@ class RunRepository:
         ):
             raise ApprovalConflict("approved proposal has changed")
         return row.fingerprint
+
+    def get_execution_record(self, run_id: uuid.UUID) -> ExecutionRecord:
+        with self._engine.connect() as conn:
+            return self._execution_record(conn, run_id)
+
+    def authorize_execution(self, run_id: uuid.UUID, *, context_hash: str) -> Run:
+        """Move a validated proposal to ready only if its approved snapshot is unchanged."""
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            run = conn.execute(sa.select(runs).where(runs.c.id == run_id).with_for_update()).first()
+            if run is None:
+                raise RunNotFound(str(run_id))
+            record = self._execution_record(conn, run_id)
+            if run.state != RunState.EVALUATING_POLICY.value or record.context_hash != context_hash:
+                raise ExecutionConflict("proposal is no longer eligible for execution")
+            row = conn.execute(
+                runs.update()
+                .where(runs.c.id == run_id, runs.c.state == RunState.EVALUATING_POLICY.value)
+                .values(state=RunState.READY_TO_EXECUTE.value, updated_at=now)
+                .returning(*runs.c)
+            ).first()
+            if row is None:
+                raise ExecutionConflict("run changed while authorizing execution")
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=RunState.EVALUATING_POLICY.value,
+                    to_state=RunState.READY_TO_EXECUTE.value,
+                    actor="worker",
+                    detail={"context_hash": context_hash},
+                    at=now,
+                )
+            )
+        return _to_run(row)
 
     def persist_proposal(
         self,
@@ -483,6 +561,278 @@ class RunRepository:
                 )
             )
         return _to_run(row)
+
+    def claim_execution(
+        self, run_id: uuid.UUID, *, binding_hash: str, context_hash: str
+    ) -> uuid.UUID:
+        """Claim a ready run once, atomically recording its transition and binding."""
+        if len(binding_hash) != 64 or any(c not in "0123456789abcdef" for c in binding_hash):
+            raise ExecutionConflict("execution binding must be a SHA-256 hash")
+        claim_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            record = self._execution_record(conn, run_id)
+            if record.state is not RunState.READY_TO_EXECUTE or record.context_hash != context_hash:
+                raise ExecutionConflict("run is not ready to claim")
+            row = conn.execute(
+                runs.update()
+                .where(runs.c.id == run_id, runs.c.state == RunState.READY_TO_EXECUTE.value)
+                .values(state=RunState.EXECUTING.value, updated_at=now)
+                .returning(runs.c.id)
+            ).first()
+            if row is None:
+                raise ExecutionConflict("run is not ready to claim")
+            conn.execute(
+                execution_claims.insert().values(
+                    run_id=run_id, claim_id=claim_id, binding_hash=binding_hash, created_at=now
+                )
+            )
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=RunState.READY_TO_EXECUTE.value,
+                    to_state=RunState.EXECUTING.value,
+                    actor="worker",
+                    detail={"binding_hash": binding_hash},
+                    at=now,
+                )
+            )
+        return claim_id
+
+    @staticmethod
+    def _execution_record(conn: sa.Connection, run_id: uuid.UUID) -> ExecutionRecord:
+        run = conn.execute(sa.select(runs).where(runs.c.id == run_id).with_for_update()).first()
+        proposal_row = conn.execute(
+            sa.select(agent_proposals).where(agent_proposals.c.run_id == run_id).with_for_update()
+        ).first()
+        approval = conn.execute(
+            sa.select(approval_requests)
+            .where(approval_requests.c.run_id == run_id)
+            .with_for_update()
+        ).first()
+        if run is None or proposal_row is None:
+            raise ExecutionConflict("proposal record is missing")
+        try:
+            offer = offer_from_record(proposal_row.proposal)
+        except InvalidProposalSnapshot as error:
+            raise ExecutionConflict("proposal record is invalid") from error
+        current = {
+            "schema_version": proposal_row.schema_version,
+            "fingerprint": proposal_row.fingerprint,
+            "proposal": proposal_row.proposal,
+            "gate_result": proposal_row.gate_result,
+        }
+        if (
+            offer.run_id != str(run_id)
+            or offer.fingerprint() != proposal_row.fingerprint
+            or proposal_row.proposal.get("action") != "draft_message"
+            or not isinstance(proposal_row.proposal.get("cart_snapshot"), dict)
+            or proposal_row.proposal.get("execution_channel") not in {"telegram", "mailpit"}
+        ):
+            raise ExecutionConflict("proposal binding is invalid")
+        outcome = proposal_row.gate_result.get("outcome")
+        human_approved = False
+        approval_hash: str | None = None
+        if outcome == Outcome.NEEDS_APPROVAL.value:
+            if approval is None or approval.decision != "approve":
+                raise ExecutionConflict("human approval is not present")
+            if (
+                snapshot_hash(approval.snapshot) != approval.snapshot_hash
+                or snapshot_hash(current) != approval.snapshot_hash
+            ):
+                raise ExecutionConflict("approved proposal has changed")
+            human_approved = True
+            approval_hash = approval.snapshot_hash
+        elif outcome != Outcome.AUTO_APPROVE.value:
+            raise ExecutionConflict("proposal did not pass the recorded policy gate")
+        elif approval is not None and approval.decision == "reject":
+            raise ExecutionConflict("proposal was rejected")
+        return ExecutionRecord(
+            run_id=run_id,
+            state=RunState(run.state),
+            schema_version=proposal_row.schema_version,
+            fingerprint=proposal_row.fingerprint,
+            proposal=proposal_row.proposal,
+            gate_result=proposal_row.gate_result,
+            human_approved=human_approved,
+            approval_snapshot_hash=approval_hash,
+            context_hash=snapshot_hash(
+                {"record": current, "approval_snapshot_hash": approval_hash}
+            ),
+        )
+
+    def start_effect(
+        self,
+        run_id: uuid.UUID,
+        claim_id: uuid.UUID,
+        *,
+        binding_hash: str,
+        effect: str,
+        max_attempts: int,
+    ) -> int:
+        """Record an attempt before a request; an unfinished attempt is never retried."""
+        if effect not in {"coupon", "message"} or (
+            not isinstance(max_attempts, int)
+            or isinstance(max_attempts, bool)
+            or not 1 <= max_attempts <= 2**31 - 1
+        ):
+            raise ExecutionConflict("invalid effect or attempt limit")
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            self._lock_execution(conn, run_id, claim_id, binding_hash)
+            existing = conn.execute(
+                sa.select(execution_effects).where(
+                    execution_effects.c.run_id == run_id, execution_effects.c.effect == effect
+                )
+            ).first()
+            if existing is None:
+                attempt = 1
+                conn.execute(
+                    execution_effects.insert().values(
+                        run_id=run_id,
+                        effect=effect,
+                        status="started",
+                        attempts=attempt,
+                        max_attempts=max_attempts,
+                        updated_at=now,
+                    )
+                )
+            else:
+                if (
+                    existing.status != "not_sent"
+                    or existing.max_attempts != max_attempts
+                    or existing.attempts >= max_attempts
+                ):
+                    raise ExecutionConflict("effect is not eligible for retry")
+                attempt = existing.attempts + 1
+                conn.execute(
+                    execution_effects.update()
+                    .where(
+                        execution_effects.c.run_id == run_id, execution_effects.c.effect == effect
+                    )
+                    .values(status="started", attempts=attempt, reference=None, updated_at=now)
+                )
+            self._execution_event(
+                conn, run_id, {"effect": effect, "status": "started", "attempt": attempt}, now
+            )
+        return attempt
+
+    def finish_effect(
+        self,
+        run_id: uuid.UUID,
+        claim_id: uuid.UUID,
+        *,
+        binding_hash: str,
+        effect: str,
+        attempt: int,
+        status: str,
+        reference: str | None = None,
+    ) -> None:
+        """Record a known result; uncertainty is a terminal hold, not a retry."""
+        if effect not in {"coupon", "message"} or status not in {
+            "confirmed",
+            "unknown",
+            "not_sent",
+        }:
+            raise ExecutionConflict("invalid effect result")
+        if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+            raise ExecutionConflict("invalid effect attempt")
+        if status == "confirmed" and (not isinstance(reference, str) or not reference.strip()):
+            raise ExecutionConflict("confirmed effects require a provider reference")
+        if status != "confirmed" and reference is not None:
+            raise ExecutionConflict("unconfirmed effects cannot have a provider reference")
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            self._lock_execution(conn, run_id, claim_id, binding_hash)
+            changed = conn.execute(
+                execution_effects.update()
+                .where(
+                    execution_effects.c.run_id == run_id,
+                    execution_effects.c.effect == effect,
+                    execution_effects.c.status == "started",
+                    execution_effects.c.attempts == attempt,
+                )
+                .values(status=status, reference=reference, updated_at=now)
+                .returning(execution_effects.c.run_id)
+            ).first()
+            if changed is None:
+                raise ExecutionConflict("effect has no active attempt")
+            self._execution_event(
+                conn, run_id, {"effect": effect, "status": status, "attempt": attempt}, now
+            )
+
+    def complete_execution(
+        self, run_id: uuid.UUID, claim_id: uuid.UUID, *, binding_hash: str, needs_coupon: bool
+    ) -> Run:
+        """Complete only after every required effect has a confirmed result."""
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            self._lock_execution(conn, run_id, claim_id, binding_hash)
+            effects = conn.execute(
+                sa.select(execution_effects.c.effect, execution_effects.c.status).where(
+                    execution_effects.c.run_id == run_id
+                )
+            ).all()
+            required = {"message", "coupon"} if needs_coupon else {"message"}
+            statuses = {row.effect: row.status for row in effects}
+            if statuses != {effect: "confirmed" for effect in required}:
+                raise ExecutionConflict("required effects are not all confirmed")
+            row = conn.execute(
+                runs.update()
+                .where(runs.c.id == run_id, runs.c.state == RunState.EXECUTING.value)
+                .values(
+                    state=RunState.COMPLETED.value,
+                    outcome="coupon_and_message_confirmed" if needs_coupon else "message_confirmed",
+                    updated_at=now,
+                )
+                .returning(*runs.c)
+            ).first()
+            if row is None:
+                raise ExecutionConflict("run is no longer executing")
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=RunState.EXECUTING.value,
+                    to_state=RunState.COMPLETED.value,
+                    actor="worker",
+                    detail={"effects": sorted(required)},
+                    at=now,
+                )
+            )
+        return _to_run(row)
+
+    @staticmethod
+    def _lock_execution(
+        conn: sa.Connection, run_id: uuid.UUID, claim_id: uuid.UUID, binding_hash: str
+    ) -> None:
+        claim = conn.execute(
+            sa.select(execution_claims.c.claim_id, execution_claims.c.binding_hash, runs.c.state)
+            .join(runs, runs.c.id == execution_claims.c.run_id)
+            .where(execution_claims.c.run_id == run_id)
+            .with_for_update(of=runs)
+        ).first()
+        if (
+            claim is None
+            or claim.claim_id != claim_id
+            or claim.binding_hash != binding_hash
+            or claim.state != RunState.EXECUTING.value
+        ):
+            raise ExecutionConflict("execution claim or binding is not current")
+
+    @staticmethod
+    def _execution_event(
+        conn: sa.Connection, run_id: uuid.UUID, detail: dict[str, Any], now: datetime
+    ) -> None:
+        conn.execute(
+            run_events.insert().values(
+                run_id=run_id,
+                from_state=RunState.EXECUTING.value,
+                to_state=RunState.EXECUTING.value,
+                actor="worker",
+                detail=detail,
+                at=now,
+            )
+        )
 
     def fail(self, run_id: uuid.UUID, *, reason: str, actor: str = "system") -> Run:
         """Record an explicit failure from whatever active state the run is in."""

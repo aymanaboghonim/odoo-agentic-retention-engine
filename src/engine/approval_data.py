@@ -26,6 +26,9 @@ def offer_from_record(record: dict[str, Any]) -> OfferProposal:
             raise ValueError("invalid string")
         if not isinstance(record["is_bulk"], bool):
             raise ValueError("invalid bulk flag")
+        language = record.get("language", "en")
+        if language not in {"en", "ar"}:
+            raise ValueError("invalid language")
         message = record["customer_message"]
         if message is not None and not isinstance(message, str):
             raise ValueError("invalid message")
@@ -56,6 +59,7 @@ def offer_from_record(record: dict[str, Any]) -> OfferProposal:
             proposed_discount_percent=decimal_field("proposed_discount_percent", optional=True),
             is_bulk=record["is_bulk"],
             customer_message=message,
+            language=language,
         )
     except (KeyError, ValueError, TypeError, InvalidOperation) as error:
         raise InvalidProposalSnapshot("invalid stored proposal") from error

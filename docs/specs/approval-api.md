@@ -41,9 +41,8 @@ execution-time recheck belong to later work. The execution integration is #67.
   `ready_to_execute`; a human cannot override the gate. Rejection is terminal.
   #66 tests the gate revalidation contract; #67 owns wiring and testing the
   actual immediate-before-execution checks and side effects.
-- Keep #65's null-or-zero discount behavior. Synthetic approval-band and bulk
-  fixtures exercise the approval path; the current proposal generator does not
-  naturally generate an approval-required offer.
+- Issue #67 allows structured nonzero model-proposed discounts. The gate and
+  approval rules remain authoritative; see [gated execution](gated-execution.md).
 
 ## Invariants
 

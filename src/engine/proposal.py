@@ -8,14 +8,15 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Literal, Protocol
 
 from sqlalchemy import Engine
 
+from engine.coupon_code import coupon_code_for_run
 from engine.db import RunRepository
-from engine.odoo import AbandonedCart, cart_to_proposal_inputs
+from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, OfferProposal, Outcome, as_dict
-from engine.proposal_budget import BudgetError, ProposalBudget, Rate
+from engine.proposal_budget import BudgetError, ProposalBudget, Rate, ReviewBudget
 from engine.proposal_provider import VERSION, LLMClient, ProviderError
 from engine.retrieval import Retriever
 from engine.runs import RunState
@@ -41,6 +42,7 @@ class ProposalSettings:
     input_tokens: int
     output_tokens: int
     rate: Rate
+    review_budget: ReviewBudget | None = None
 
     def __post_init__(self) -> None:
         if self.synthetic_only is not True:
@@ -69,6 +71,13 @@ class ProposalSettings:
             output_tokens = int(env["PROPOSAL_OUTPUT_TOKEN_LIMIT"])
         except (KeyError, ValueError, ArithmeticError) as error:
             raise ValueError("proposal budget and token limits must be set and valid") from error
+        review_id = env.get("PROPOSAL_REVIEW_ID", "").strip()
+        review_limit = env.get("PROPOSAL_REVIEW_BUDGET_USD", "").strip()
+        if bool(review_id) != bool(review_limit):
+            raise ValueError("review ID and aggregate budget must both be set or both be omitted")
+        review_budget = (
+            ReviewBudget(review_id, Decimal(review_limit)) if review_id and review_limit else None
+        )
         return cls(
             synthetic_only=env.get("PROPOSAL_SYNTHETIC_ONLY") == "YES",
             budget_usd=budget,
@@ -79,6 +88,7 @@ class ProposalSettings:
                 Decimal("0.50"),
                 "F-005 standard text including cache writes; verified 2026-11-06",
             ),
+            review_budget=review_budget,
         )
 
 
@@ -110,8 +120,13 @@ def _validate_output(raw: str) -> dict[str, object]:
     elif not isinstance(message, str) or not message.strip() or len(message) > 4000:
         raise ProposalError("invalid proposal message")
     discount = data["proposed_discount_percent"]
-    if discount is not None and (not isinstance(discount, Decimal) or discount != 0):
-        raise ProposalError("discount proposals are disabled")
+    if discount is not None and (
+        not isinstance(discount, Decimal)
+        or not discount.is_finite()
+        or discount < 0
+        or discount > 100
+    ):
+        raise ProposalError("invalid proposed discount")
     price = data["price_claim"]
     currency = data["currency"]
     if price is not None and (not isinstance(price, Decimal) or not price.is_finite() or price < 0):
@@ -150,6 +165,7 @@ class ProposalService:
         cart_id: int,
         language: str,
         request: str,
+        execution_channel: Literal["telegram", "mailpit"] | None = None,
     ) -> None:
         # A run's trigger reference is bound by the trusted synthetic trigger, not the model.
         run = self.runs.get_run(run_id)
@@ -159,6 +175,9 @@ class ProposalService:
         try:
             if language not in {"en", "ar"} or not request.strip():
                 raise ProposalError("invalid language or empty request")
+            proposal_language: Literal["en", "ar"] = "en" if language == "en" else "ar"
+            if execution_channel not in {None, "telegram", "mailpit"}:
+                raise ProposalError("invalid execution channel")
             self.runs.transition(
                 run_id, RunState.VALIDATING_INPUT, RunState.LOADING_CONTEXT, actor="system"
             )
@@ -207,6 +226,7 @@ class ProposalService:
                 input_limit=self.settings.input_tokens,
                 output_limit=self.settings.output_tokens,
                 rate=self.settings.rate,
+                review=self.settings.review_budget,
             )
             try:
                 count = self.provider.count_tokens(payload)
@@ -252,6 +272,24 @@ class ProposalService:
             discount = answer["proposed_discount_percent"]
             if discount is not None and not isinstance(discount, Decimal):
                 raise ProposalError("invalid discount type")
+            if (
+                discount is not None
+                and discount > 0
+                and len({line.category for line in cart.lines}) != 1
+            ):
+                raise ProposalError("discount requires a single cart category")
+            if discount is not None and discount > 0 and answer["action"] == "draft_message":
+                if not isinstance(message, str):
+                    raise ProposalError("discount draft requires a message")
+                code = coupon_code_for_run(str(run_id))
+                percent = format(discount, "f")
+                if language == "en":
+                    footer = f"Coupon code for {percent}% discount: {code}"
+                else:
+                    footer = f"رمز خصم {percent}%: {code}"
+                message = f"{message}\n\n{footer}"
+                if len(message) > 4000:
+                    raise ProposalError("rendered proposal message is too long")
             proposal = OfferProposal(
                 run_id=str(run_id),
                 customer_id=str(customer_id),
@@ -263,6 +301,7 @@ class ProposalService:
                 eligible_unit_cost_total=cost,
                 proposed_discount_percent=discount,
                 customer_message=message if isinstance(message, str) else None,
+                language=proposal_language,
             )
             decision = self.gate.evaluate(proposal, now=datetime.now(UTC))
             self._persist(
@@ -274,6 +313,8 @@ class ProposalService:
                     {"source_id": p.source_id, "version": p.version, "content_hash": p.content_hash}
                     for p in policies
                 ],
+                cart,
+                execution_channel,
             )
             if decision.outcome is Outcome.REJECT or answer["action"] != "draft_message":
                 self.runs.transition(
@@ -304,10 +345,15 @@ class ProposalService:
         answer: dict[str, object],
         decision: dict[str, object],
         sources: list[dict[str, str]],
+        cart: AbandonedCart,
+        execution_channel: Literal["telegram", "mailpit"] | None,
     ) -> None:
         record = asdict(proposal)
         record["action"] = answer["action"]
         record["policy_sources"] = sources
+        record["cart_snapshot"] = cart_snapshot(cart)
+        if execution_channel is not None:
+            record["execution_channel"] = execution_channel
         record = json.loads(json.dumps(record, default=str))
         self.runs.persist_proposal(
             run_id,

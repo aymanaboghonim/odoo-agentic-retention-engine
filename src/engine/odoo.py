@@ -3,7 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 import psycopg
 from psycopg.rows import dict_row
 
+from engine.coupon_code import coupon_code_for_run
 from engine.policy import GateApproval, OfferProposal
 
 DEFAULT_ALLOWED_HOSTS = ("127.0.0.1", "localhost", "::1", "odoo")
@@ -138,6 +139,11 @@ LIMIT %(limit)s
 )
 
 _ONE_SQL = _CART_SELECT + "  AND so.id = %(order_id)s\n"
+_ELIGIBLE_ONE_SQL = (
+    _CART_SELECT
+    + "  AND so.id = %(order_id)s\n"
+    + "  AND so.date_order <= %(now)s - w.cart_abandoned_delay * INTERVAL '1 hour'\n"
+)
 
 _LINES_SQL = """
 SELECT l.product_id, l.product_uom_qty AS quantity, l.price_unit,
@@ -175,6 +181,14 @@ class OdooReader:
     def get_cart(self, order_id: int) -> AbandonedCart | None:
         with self._connect() as conn:
             row = conn.execute(_ONE_SQL, {"order_id": order_id}).fetchone()
+            return self._cart(conn, row) if row else None
+
+    def get_abandoned_cart(self, order_id: int, *, now: datetime) -> AbandonedCart | None:
+        """Reload a cart only if it still meets the website's abandoned-cart delay."""
+        with self._connect() as conn:
+            row = conn.execute(
+                _ELIGIBLE_ONE_SQL, {"order_id": order_id, "now": _naive_utc(now)}
+            ).fetchone()
             return self._cart(conn, row) if row else None
 
     def _cart(self, conn: psycopg.Connection[dict[str, Any]], row: dict[str, Any]) -> AbandonedCart:
@@ -222,6 +236,20 @@ def cart_to_proposal_inputs(cart: AbandonedCart) -> tuple[Decimal, Decimal | Non
         (cast(Decimal, line.unit_cost) * line.quantity for line in cart.lines), Decimal(0)
     )
     return total, cost_total
+
+
+def cart_snapshot(cart: AbandonedCart) -> dict[str, Any]:
+    """Canonical non-contact cart context stored with a proposal."""
+    snapshot = {
+        "order_id": cart.order_id,
+        "partner_id": cart.partner_id,
+        "language": cart.language,
+        "currency": cart.currency,
+        "amount_total": cart.amount_total,
+        "date_order": cart.date_order.isoformat(),
+        "lines": [asdict(line) for line in cart.lines],
+    }
+    return cast(dict[str, Any], json.loads(json.dumps(snapshot, default=str)))
 
 
 class JsonTwoClient:
@@ -293,37 +321,93 @@ class JsonTwoClient:
     def create_coupon(
         self, *, code: str, percent: Decimal, partner_id: int, expires: date
     ) -> CouponRef:
+        if not code or not percent.is_finite() or not Decimal(0) < percent <= Decimal(15):
+            raise OdooApiError("Coupon code or discount terms are invalid")
         existing = self.call(
             "loyalty.card",
             "search_read",
-            {"domain": [["code", "=", code]], "fields": ["program_id"], "limit": 1},
-        )
-        if isinstance(existing, list) and existing:
-            program = cast(list[dict[str, Any]], existing)[0]["program_id"]
-            return CouponRef(program_id=int(program[0]), code=code, card_id=None)
-        program_id = self._create(
-            "loyalty.program",
             {
-                "name": f"Retention offer {code}",
-                "program_type": "coupons",
-                "applies_on": "current",
-                "trigger": "with_code",
-                "date_to": expires.isoformat(),
-                "reward_ids": [
-                    [
-                        0,
-                        0,
-                        {
-                            "reward_type": "discount",
-                            "discount_mode": "percent",
-                            "discount": float(percent),
-                            "discount_applicability": "order",
-                            "required_points": 1,
-                        },
-                    ]
+                "domain": [["code", "=", code]],
+                "fields": [
+                    "id",
+                    "code",
+                    "partner_id",
+                    "program_id",
+                    "points",
+                    "expiration_date",
+                    "active",
                 ],
+                "limit": 2,
             },
         )
+        if not isinstance(existing, list) or not all(isinstance(item, dict) for item in existing):
+            raise OdooApiError("Odoo loyalty.card.search_read returned an unexpected result")
+        if existing:
+            if len(existing) != 1:
+                raise OdooApiError("Coupon code is not unique")
+            card = existing[0]
+            program_id = self._relation_id(card.get("program_id"), "coupon program")
+            self._verify_coupon(
+                card,
+                program_id=program_id,
+                code=code,
+                percent=percent,
+                partner_id=partner_id,
+                expires=expires,
+            )
+            card_id = card.get("id")
+            if type(card_id) is not int:
+                raise OdooApiError("Existing coupon card has no valid ID")
+            return CouponRef(program_id=program_id, code=code, card_id=card_id)
+
+        program_name = f"Retention offer {code}"
+        existing_programs = self.call(
+            "loyalty.program",
+            "search_read",
+            {
+                "domain": [["name", "=", program_name]],
+                "fields": ["id", "program_type", "trigger", "date_to", "active", "reward_ids"],
+                "context": {"active_test": False},
+                "limit": 2,
+            },
+        )
+        if (
+            not isinstance(existing_programs, list)
+            or not all(isinstance(item, dict) for item in existing_programs)
+            or len(existing_programs) > 1
+        ):
+            raise OdooApiError("Coupon program lookup is ambiguous")
+        if existing_programs:
+            program = existing_programs[0]
+            existing_program_id = program.get("id")
+            if type(existing_program_id) is not int:
+                raise OdooApiError("Existing coupon program has no valid ID")
+            program_id = existing_program_id
+            self._verify_program(program, percent=percent, expires=expires)
+        else:
+            program_id = self._create(
+                "loyalty.program",
+                {
+                    "name": program_name,
+                    "program_type": "coupons",
+                    "applies_on": "current",
+                    "trigger": "with_code",
+                    "date_to": expires.isoformat(),
+                    "reward_ids": [
+                        [
+                            0,
+                            0,
+                            {
+                                "reward_type": "discount",
+                                "discount_mode": "percent",
+                                "discount": float(percent),
+                                "discount_applicability": "order",
+                                "required_points": 1,
+                            },
+                        ]
+                    ],
+                },
+            )
         card_id = self._create(
             "loyalty.card",
             {
@@ -334,7 +418,127 @@ class JsonTwoClient:
                 "expiration_date": expires.isoformat(),
             },
         )
+        created_cards = self.call(
+            "loyalty.card",
+            "search_read",
+            {
+                "domain": [["id", "=", card_id]],
+                "fields": [
+                    "id",
+                    "code",
+                    "partner_id",
+                    "program_id",
+                    "points",
+                    "expiration_date",
+                    "active",
+                ],
+                "limit": 1,
+            },
+        )
+        if (
+            not isinstance(created_cards, list)
+            or len(created_cards) != 1
+            or not isinstance(created_cards[0], dict)
+        ):
+            raise OdooApiError("Created coupon card could not be confirmed")
+        self._verify_coupon(
+            created_cards[0],
+            program_id=program_id,
+            code=code,
+            percent=percent,
+            partner_id=partner_id,
+            expires=expires,
+        )
         return CouponRef(program_id=program_id, code=code, card_id=card_id)
+
+    def _verify_coupon(
+        self,
+        card: dict[str, Any],
+        *,
+        program_id: int,
+        code: str,
+        percent: Decimal,
+        partner_id: int,
+        expires: date,
+    ) -> None:
+        if (
+            card.get("code") != code
+            or self._relation_id(card.get("partner_id"), "coupon owner") != partner_id
+            or self._relation_id(card.get("program_id"), "coupon program") != program_id
+            or card.get("points") != 1
+            or card.get("expiration_date") != expires.isoformat()
+            or card.get("active") is not True
+        ):
+            raise OdooApiError("Coupon card does not match the approved terms")
+        programs = self.call(
+            "loyalty.program",
+            "search_read",
+            {
+                "domain": [["id", "=", program_id]],
+                "fields": ["id", "program_type", "trigger", "date_to", "active", "reward_ids"],
+                "context": {"active_test": False},
+                "limit": 1,
+            },
+        )
+        if (
+            not isinstance(programs, list)
+            or len(programs) != 1
+            or not isinstance(programs[0], dict)
+        ):
+            raise OdooApiError("Coupon program could not be confirmed")
+        self._verify_program(programs[0], percent=percent, expires=expires)
+
+    def _verify_program(self, program: dict[str, Any], *, percent: Decimal, expires: date) -> None:
+        if (
+            program.get("program_type") != "coupons"
+            or program.get("trigger") != "with_code"
+            or program.get("date_to") != expires.isoformat()
+            or program.get("active") is not True
+        ):
+            raise OdooApiError("Coupon program does not match the approved terms")
+        reward_ids = program.get("reward_ids")
+        if (
+            not isinstance(reward_ids, list)
+            or len(reward_ids) != 1
+            or type(reward_ids[0]) is not int
+        ):
+            raise OdooApiError("Coupon program reward is ambiguous")
+        rewards = self.call(
+            "loyalty.reward",
+            "search_read",
+            {
+                "domain": [["id", "=", reward_ids[0]]],
+                "fields": [
+                    "reward_type",
+                    "discount_mode",
+                    "discount",
+                    "discount_applicability",
+                    "required_points",
+                ],
+                "limit": 1,
+            },
+        )
+        if not isinstance(rewards, list) or len(rewards) != 1 or not isinstance(rewards[0], dict):
+            raise OdooApiError("Coupon reward could not be confirmed")
+        reward = rewards[0]
+        try:
+            actual_percent = Decimal(str(reward.get("discount")))
+        except ValueError, ArithmeticError:
+            raise OdooApiError("Coupon reward has invalid discount terms") from None
+        if (
+            reward.get("reward_type") != "discount"
+            or reward.get("discount_mode") != "percent"
+            or actual_percent != percent
+            or reward.get("discount_applicability") != "order"
+            or reward.get("required_points") != 1
+        ):
+            raise OdooApiError("Coupon reward does not match the approved terms")
+
+    @staticmethod
+    def _relation_id(value: object, label: str) -> int:
+        if not isinstance(value, list) or not value or type(value[0]) is not int:
+            raise OdooApiError(f"Odoo returned an invalid {label} relation")
+        return value[0]
 
     def archive_coupon(self, coupon: CouponRef) -> None:
         """Deactivate the offer. Odoo 19 JSON-2 refuses to delete a loyalty.card (F-032)."""
@@ -362,7 +566,7 @@ class OdooCouponCreator:
     def create(self, approval: GateApproval, proposal: OfferProposal) -> str:
         if proposal.proposed_discount_percent is None:
             raise OdooApiError("Cannot create a coupon without a discount percent.")
-        code = f"RET-{approval.fingerprint[:12].upper()}"
+        code = coupon_code_for_run(approval.run_id)
         expires = datetime.now(UTC).date() + timedelta(days=self._settings.coupon_days)
         coupon = self._client.create_coupon(
             code=code,

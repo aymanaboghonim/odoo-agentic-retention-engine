@@ -4,6 +4,7 @@ import json
 import os
 import uuid
 from collections.abc import Iterator, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
@@ -12,12 +13,13 @@ import pytest
 import sqlalchemy as sa
 
 from engine.config import normalize_database_url
+from engine.coupon_code import coupon_code_for_run
 from engine.db import RunRepository, create_engine, upgrade_schema
 from engine.gate_ledger import InMemoryGateLedger
 from engine.odoo import AbandonedCart, CartLine
 from engine.policy import Gate, GateConfig
 from engine.proposal import ProposalError, ProposalService, ProposalSettings
-from engine.proposal_budget import Rate
+from engine.proposal_budget import Rate, ReviewBudget
 from engine.proposal_provider import OpenAIClient, ProviderError, ProviderResult
 from engine.retrieval import SearchResult
 from engine.runs import RunState
@@ -44,7 +46,13 @@ def run_id(db: sa.Engine) -> Iterator[uuid.UUID]:
     )
     yield run.id
     with db.begin() as conn:
-        for table in ("agent_proposals", "proposal_calls", "proposal_budget", "run_events"):
+        for table in (
+            "approval_requests",
+            "agent_proposals",
+            "proposal_calls",
+            "proposal_budget",
+            "run_events",
+        ):
             conn.execute(sa.text(f"DELETE FROM {table} WHERE run_id=:run"), {"run": run.id})
         conn.execute(sa.text("DELETE FROM runs WHERE id=:run"), {"run": run.id})
 
@@ -153,6 +161,8 @@ def test_proposal_valid_with_fake_provider(db: sa.Engine, run_id: uuid.UUID) -> 
     assert row["proposal"]["customer_message"] == "Your cart is waiting."
     assert row["gate_result"]["outcome"] == "auto_approve"
     assert row["proposal"]["policy_sources"][0]["source_id"] == "consent"
+    assert row["proposal"]["cart_snapshot"]["lines"][0]["product_id"] == 1
+    assert "partner_email" not in row["proposal"]["cart_snapshot"]
     assert call["input_tokens"] == 10 and call["output_tokens"] == 20
     with create_engine(normalize_database_url(URL)).connect() as new_connection:
         assert (
@@ -194,7 +204,10 @@ def test_proposal_untrusted_input_is_data(db: sa.Engine, run_id: uuid.UUID) -> N
     "response",
     [
         "not-json",
-        '{"action":"draft_message","customer_message":"X","price_claim":null,"currency":null,"proposed_discount_percent":90}',
+        '{"action":"draft_message","customer_message":"X","price_claim":null,"currency":null,"proposed_discount_percent":101}',
+        '{"action":"draft_message","customer_message":"X","price_claim":null,"currency":null,"proposed_discount_percent":-1}',
+        '{"action":"draft_message","customer_message":"X","price_claim":null,"currency":null,"proposed_discount_percent":true}',
+        '{"action":"draft_message","customer_message":"X","price_claim":null,"currency":null,"proposed_discount_percent":NaN}',
         '{"action":"draft_message","customer_message":"90% off",'
         '"price_claim":null,"currency":null,"proposed_discount_percent":0}',
         '{"action":"draft_message","customer_message":"X","price_claim":7,"currency":"USD","proposed_discount_percent":0}',
@@ -217,6 +230,109 @@ def test_proposal_gate_handoff_has_no_side_effects(db: sa.Engine, run_id: uuid.U
     svc = service(db, FakeProvider())
     generate(svc, run_id)
     assert RunRepository(db).get_run(run_id).state is RunState.EVALUATING_POLICY
+
+
+@pytest.mark.parametrize(
+    ("percent", "expected_state", "outcome"),
+    [
+        (0, RunState.EVALUATING_POLICY, "auto_approve"),
+        (5, RunState.EVALUATING_POLICY, "auto_approve"),
+        (12, RunState.AWAITING_APPROVAL, "needs_approval"),
+        (16, RunState.REJECTED, "reject"),
+    ],
+)
+def test_generated_discounts_reach_deterministic_gate(
+    db: sa.Engine, run_id: uuid.UUID, percent: int, expected_state: RunState, outcome: str
+) -> None:
+    provider = FakeProvider()
+    provider.result = ProviderResult(
+        json.dumps(
+            {
+                "action": "draft_message",
+                "customer_message": "Your cart is waiting.",
+                "price_claim": None,
+                "currency": None,
+                "proposed_discount_percent": percent,
+            }
+        ),
+        10,
+        20,
+        True,
+    )
+    generate(service(db, provider), run_id)
+    run = RunRepository(db).get_run(run_id)
+    assert run.state is expected_state
+    assert run.policy_result is not None
+    assert run.policy_result["outcome"] == outcome
+
+
+@pytest.mark.parametrize("language", ["en", "ar"])
+def test_discount_code_is_in_exact_approval_message(
+    db: sa.Engine, run_id: uuid.UUID, language: str
+) -> None:
+    provider = FakeProvider()
+    provider.result = ProviderResult(
+        json.dumps(
+            {
+                "action": "draft_message",
+                "customer_message": "Your cart is waiting."
+                if language == "en"
+                else "سلتك بانتظارك.",
+                "price_claim": None,
+                "currency": None,
+                "proposed_discount_percent": 12,
+            }
+        ),
+        10,
+        20,
+        True,
+    )
+    service(db, provider).generate(
+        run_id,
+        customer_id=9,
+        cart_id=1,
+        language=language,
+        request="Please remind me",
+        execution_channel="mailpit",
+    )
+    with db.connect() as conn:
+        row = conn.execute(
+            sa.text(
+                "SELECT p.proposal, a.snapshot FROM agent_proposals p "
+                "JOIN approval_requests a ON a.run_id=p.run_id WHERE p.run_id=:id"
+            ),
+            {"id": run_id},
+        ).one()
+    message = row.proposal["customer_message"]
+    assert coupon_code_for_run(str(run_id)) in message
+    assert "12%" in message
+    assert row.proposal["execution_channel"] == "mailpit"
+    assert row.snapshot["proposal"]["customer_message"] == message
+    assert row.snapshot["proposal"]["execution_channel"] == "mailpit"
+
+
+def test_discount_rejects_mixed_category_cart(db: sa.Engine, run_id: uuid.UUID) -> None:
+    provider = FakeProvider()
+    provider.result = ProviderResult(
+        json.dumps(
+            {
+                "action": "draft_message",
+                "customer_message": "Your cart is waiting.",
+                "price_claim": None,
+                "currency": None,
+                "proposed_discount_percent": 5,
+            }
+        ),
+        10,
+        20,
+        True,
+    )
+    initial = cart()
+    other_line = replace(initial.lines[0], product_id=2, category="other")
+    carts = Carts(replace(initial, lines=(*initial.lines, other_line)))
+    with pytest.raises(ProposalError, match="single cart category"):
+        generate(service(db, provider, carts), run_id)
+    assert RunRepository(db).get_run(run_id).state is RunState.FAILED
 
 
 def test_persistence_failure_does_not_publish_proposal(db: sa.Engine, run_id: uuid.UUID) -> None:
@@ -280,6 +396,19 @@ def test_synthetic_mode_and_budget_are_required() -> None:
         ProposalSettings.from_env(config)
     settings = ProposalSettings.from_env({**config, "PROPOSAL_SYNTHETIC_ONLY": "YES"})
     assert settings.rate.input_per_million == Decimal("0.125")
+    review = ProposalSettings.from_env(
+        {
+            **config,
+            "PROPOSAL_SYNTHETIC_ONLY": "YES",
+            "PROPOSAL_REVIEW_ID": "poc2-67-review",
+            "PROPOSAL_REVIEW_BUDGET_USD": "0.50",
+        }
+    )
+    assert review.review_budget == ReviewBudget("poc2-67-review", Decimal("0.50"))
+    with pytest.raises(ValueError, match="both be set"):
+        ProposalSettings.from_env(
+            {**config, "PROPOSAL_SYNTHETIC_ONLY": "YES", "PROPOSAL_REVIEW_ID": "incomplete"}
+        )
 
 
 def test_detected_contact_identifier_prevents_call(db: sa.Engine, run_id: uuid.UUID) -> None:
@@ -304,6 +433,27 @@ def test_budget_blocks_count_and_generation(db: sa.Engine, run_id: uuid.UUID) ->
         generate(svc, run_id)
     assert provider.payload is None
     assert RunRepository(db).get_run(run_id).state is RunState.FAILED
+
+
+def test_proposal_uses_shared_review_budget(db: sa.Engine, run_id: uuid.UUID) -> None:
+    provider = FakeProvider()
+    svc = service(db, provider)
+    review = ReviewBudget(str(uuid.uuid4()), Decimal("0.50"))
+    svc.settings = replace(svc.settings, review_budget=review)
+    try:
+        generate(svc, run_id)
+        with db.connect() as conn:
+            recorded = conn.execute(
+                sa.text("SELECT review_id FROM proposal_calls WHERE run_id=:run"), {"run": run_id}
+            ).scalar_one()
+        assert recorded == review.review_id
+    finally:
+        with db.begin() as conn:
+            conn.execute(sa.text("DELETE FROM proposal_calls WHERE run_id=:run"), {"run": run_id})
+            conn.execute(
+                sa.text("DELETE FROM proposal_review_budgets WHERE id=:id"),
+                {"id": review.review_id},
+            )
 
 
 def test_ambiguous_generation_failure_keeps_reservation(db: sa.Engine, run_id: uuid.UUID) -> None:

@@ -108,6 +108,8 @@ def test_scan_finds_eligible_cart_and_skips_recent(world: dict[str, Any]) -> Non
     assert world["order_id"] not in {
         c.order_id for c in reader.scan_abandoned_carts(now=early, limit=500)
     }
+    assert reader.get_abandoned_cart(world["order_id"], now=early) is None
+    assert reader.get_abandoned_cart(world["order_id"], now=now) is not None
 
 
 def test_read_only_role_cannot_write(world: dict[str, Any]) -> None:

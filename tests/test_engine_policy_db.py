@@ -107,3 +107,28 @@ def test_db_coupon_limit_and_idempotent_retry(engine: sa.Engine) -> None:
     with engine.connect() as conn:
         reserved = conn.execute(sa.text("SELECT reserved FROM gate_budget_days")).scalar_one()
     assert reserved == Decimal("10.00")
+
+
+def test_db_same_run_cannot_reuse_a_different_reservation(engine: sa.Engine) -> None:
+    ledger = PostgresGateLedger(engine)
+    gate = Gate(_config("500"), ledger)
+    first = _proposal(1)
+    gate.issue_approval(first, now=NOW)
+    changed = OfferProposal(**{**first.__dict__, "proposed_discount_percent": Decimal("12")})
+    with pytest.raises(GateRejected) as error:
+        gate.issue_approval(changed, now=NOW, human_approved=True)
+    assert Reason.INVALID_PROPOSAL in error.value.reasons
+    assert (
+        ledger.reserve(
+            day="2026-11-04",
+            customer_id=first.customer_id,
+            cart_id=first.cart_id,
+            run_id=first.run_id,
+            amount=Decimal("12"),
+            daily_budget=Decimal("500"),
+        )
+        is Reason.INVALID_PROPOSAL
+    )
+    with engine.connect() as conn:
+        reserved = conn.execute(sa.text("SELECT reserved FROM gate_budget_days")).scalar_one()
+    assert reserved == Decimal("10.00")
