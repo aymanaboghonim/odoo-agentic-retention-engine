@@ -1,0 +1,145 @@
+services:
+  odoo-db:
+    image: postgres:15@sha256:64b99032e218b66b1d1a6334995056e1aa57f50a0c522cc856e72dff0e4b0d63
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: ${FULL_STACK_ODOO_DB_PASSWORD:?Set FULL_STACK_ODOO_DB_PASSWORD}
+    volumes:
+      - odoo-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [private]
+
+  odoo:
+    image: odoo:19.0@sha256:27f920e002c43a1af7022a68f3cc17db71a2f9f3348800cb050721ce54893e49
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    environment:
+      HOST: odoo-db
+      USER: odoo
+      PASSWORD: ${FULL_STACK_ODOO_DB_PASSWORD:?Set FULL_STACK_ODOO_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:${FULL_STACK_ODOO_PORT:-18070}:8069"
+    volumes:
+      - odoo-data:/var/lib/odoo
+    command: ["odoo", "--database=odoo", "--init=website_sale", "--with-demo", "--max-cron-threads=0"]
+    networks: [private, ingress]
+
+  engine-db:
+    image: pgvector/pgvector:0.8.7-pg15@sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c
+    environment:
+      POSTGRES_DB: engine
+      POSTGRES_USER: engine
+      POSTGRES_PASSWORD: ${FULL_STACK_ENGINE_DB_PASSWORD:?Set FULL_STACK_ENGINE_DB_PASSWORD}
+    volumes:
+      - engine-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engine -d engine"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [private]
+
+  initialize:
+    build:
+      context: ..
+      dockerfile: deploy/full-stack.Dockerfile
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+      odoo:
+        condition: service_started
+      engine-db:
+        condition: service_healthy
+    environment:
+      FULL_STACK_SYNTHETIC_ISOLATED: "YES"
+      FULL_STACK_ODOO_DB_PASSWORD: ${FULL_STACK_ODOO_DB_PASSWORD:?Set FULL_STACK_ODOO_DB_PASSWORD}
+      FULL_STACK_ODOO_RO_PASSWORD: ${FULL_STACK_ODOO_RO_PASSWORD:?Set FULL_STACK_ODOO_RO_PASSWORD}
+      ENGINE_DATABASE_URL: ${FULL_STACK_ENGINE_DATABASE_URL:?Set FULL_STACK_ENGINE_DATABASE_URL}
+    command: ["python", "-m", "engine.full_stack_init"]
+    networks: [private]
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/full-stack.Dockerfile
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+    environment:
+      FULL_STACK_SYNTHETIC_ISOLATED: "YES"
+      FULL_STACK_INSTANCE_ID: ${FULL_STACK_INSTANCE_ID:?Set FULL_STACK_INSTANCE_ID}
+      FULL_STACK_SCAN_PAGE_SIZE: ${FULL_STACK_SCAN_PAGE_SIZE:-50}
+      FULL_STACK_SCAN_INTERVAL_SECONDS: ${FULL_STACK_SCAN_INTERVAL_SECONDS:-60}
+      ENGINE_DATABASE_URL: ${FULL_STACK_ENGINE_DATABASE_URL:?Set FULL_STACK_ENGINE_DATABASE_URL}
+      ODOO_READONLY_DATABASE_URL: ${FULL_STACK_ODOO_READONLY_DATABASE_URL:?Set FULL_STACK_ODOO_READONLY_DATABASE_URL}
+    command: ["python", "-m", "engine.full_stack_worker"]
+    networks: [private]
+
+  approval-api:
+    build:
+      context: ..
+      dockerfile: deploy/full-stack.Dockerfile
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+    environment:
+      ENGINE_DATABASE_URL: ${FULL_STACK_ENGINE_DATABASE_URL:?Set FULL_STACK_ENGINE_DATABASE_URL}
+      APPROVAL_OPERATOR: ${APPROVAL_OPERATOR:?Set APPROVAL_OPERATOR}
+      APPROVAL_TOKEN: ${APPROVAL_TOKEN:?Set APPROVAL_TOKEN}
+      APPROVAL_API_PORT: "8080"
+    command: ["python", "-m", "engine.approval_api"]
+    networks: [private]
+
+  mailpit:
+    image: axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
+    ports:
+      - "127.0.0.1:${FULL_STACK_MAILPIT_PORT:-18025}:8025"
+    networks: [private, ingress]
+
+  proposal:
+    profiles: [proposal]
+    build:
+      context: ..
+      dockerfile: deploy/full-stack.Dockerfile
+    environment:
+      FULL_STACK_SYNTHETIC_ISOLATED: "YES"
+      FULL_STACK_INSTANCE_ID: ${FULL_STACK_INSTANCE_ID:?Set FULL_STACK_INSTANCE_ID}
+      FULL_STACK_CAPACITY_PROPOSAL: ${FULL_STACK_CAPACITY_PROPOSAL:-}
+      ENGINE_DATABASE_URL: ${FULL_STACK_ENGINE_DATABASE_URL:?Set FULL_STACK_ENGINE_DATABASE_URL}
+      ODOO_READONLY_DATABASE_URL: ${FULL_STACK_ODOO_READONLY_DATABASE_URL:?Set FULL_STACK_ODOO_READONLY_DATABASE_URL}
+      PROPOSAL_SYNTHETIC_ONLY: ${FULL_STACK_PROPOSAL_SYNTHETIC_ONLY:-}
+      PROPOSAL_BUDGET_USD: ${FULL_STACK_PROPOSAL_BUDGET_USD:-}
+      PROPOSAL_INPUT_TOKEN_LIMIT: ${FULL_STACK_PROPOSAL_INPUT_TOKEN_LIMIT:-}
+      PROPOSAL_OUTPUT_TOKEN_LIMIT: ${FULL_STACK_PROPOSAL_OUTPUT_TOKEN_LIMIT:-}
+      PROPOSAL_REVIEW_ID: ${FULL_STACK_PROPOSAL_REVIEW_ID:-}
+      PROPOSAL_REVIEW_BUDGET_USD: ${FULL_STACK_PROPOSAL_REVIEW_BUDGET_USD:-}
+      GATE_TIMEZONE: ${GATE_TIMEZONE:-}
+      GATE_CURRENCY: ${GATE_CURRENCY:-}
+      GATE_DAILY_BUDGET: ${GATE_DAILY_BUDGET:-}
+      GATE_CATEGORY_MIN_MARGINS: ${GATE_CATEGORY_MIN_MARGINS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ODOO_URL: http://odoo:8069
+      ODOO_DB_NAME: odoo
+      ODOO_API_KEY: ${FULL_STACK_ODOO_API_KEY:-}
+      HF_HOME: /model-cache
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${FULL_STACK_MODEL_CACHE:-/tmp}:/model-cache:ro
+    networks: [private, egress]
+
+networks:
+  private:
+    internal: true
+  egress:
+  ingress:
+
+volumes:
+  odoo-db:
+  odoo-data:
+  engine-db:

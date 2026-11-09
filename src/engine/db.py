@@ -9,7 +9,7 @@ from typing import Any
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine
 
 from engine.approval_data import InvalidProposalSnapshot, offer_from_record, snapshot_hash
 from engine.policy import Gate, Outcome, as_dict
@@ -177,37 +177,53 @@ class RunRepository:
         self, *, trigger_type: str, trigger_ref: str, idempotency_key: str, actor: str = "system"
     ) -> tuple[Run, bool]:
         """Return (run, created). A repeated idempotency key returns the existing run."""
+        with self._engine.begin() as conn:
+            return self.create_run_in_transaction(
+                conn,
+                trigger_type=trigger_type,
+                trigger_ref=trigger_ref,
+                idempotency_key=idempotency_key,
+                actor=actor,
+            )
+
+    def create_run_in_transaction(
+        self,
+        conn: Connection,
+        *,
+        trigger_type: str,
+        trigger_ref: str,
+        idempotency_key: str,
+        actor: str = "system",
+    ) -> tuple[Run, bool]:
+        """Create a run and audit event within the caller's transaction."""
         now = datetime.now(UTC)
         run_id = uuid.uuid4()
-        with self._engine.begin() as conn:
-            inserted = conn.execute(
-                sa.dialects.postgresql.insert(runs)
-                .values(
-                    id=run_id,
-                    state=RunState.RECEIVED.value,
-                    trigger_type=trigger_type,
-                    trigger_ref=trigger_ref,
-                    idempotency_key=idempotency_key,
-                    created_at=now,
-                    updated_at=now,
+        inserted = conn.execute(
+            sa.dialects.postgresql.insert(runs)
+            .values(
+                id=run_id,
+                state=RunState.RECEIVED.value,
+                trigger_type=trigger_type,
+                trigger_ref=trigger_ref,
+                idempotency_key=idempotency_key,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing(index_elements=["idempotency_key"])
+            .returning(runs.c.id)
+        ).first()
+        if inserted is not None:
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=None,
+                    to_state=RunState.RECEIVED.value,
+                    actor=actor,
+                    detail={"trigger_type": trigger_type, "trigger_ref": trigger_ref},
+                    at=now,
                 )
-                .on_conflict_do_nothing(index_elements=["idempotency_key"])
-                .returning(runs.c.id)
-            ).first()
-            if inserted is not None:
-                conn.execute(
-                    run_events.insert().values(
-                        run_id=run_id,
-                        from_state=None,
-                        to_state=RunState.RECEIVED.value,
-                        actor=actor,
-                        detail={"trigger_type": trigger_type, "trigger_ref": trigger_ref},
-                        at=now,
-                    )
-                )
-            row = conn.execute(
-                sa.select(runs).where(runs.c.idempotency_key == idempotency_key)
-            ).one()
+            )
+        row = conn.execute(sa.select(runs).where(runs.c.idempotency_key == idempotency_key)).one()
         return _to_run(row), inserted is not None
 
     def get_run(self, run_id: uuid.UUID) -> Run:
