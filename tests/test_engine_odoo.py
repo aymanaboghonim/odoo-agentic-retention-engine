@@ -322,11 +322,16 @@ def test_http_error_does_not_leak_key(server: HTTPServer) -> None:
 def test_no_sql_write_path_in_adapter() -> None:
     source = Path(odoo.__file__).read_text(encoding="utf-8")
     assert not re.search(
-        r"\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|TRUNCATE)\b", source, re.I
+        r"\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|TRUNCATE\s+(?:TABLE\s+)?\w+)\b",
+        source,
+        re.I,
     )
     reader_methods = {name for name in dir(odoo.OdooReader) if not name.startswith("__")}
     assert reader_methods == {
         "scan_abandoned_carts",
+        "scan_synthetic_review_carts",
+        "verify_synthetic_readonly_role",
+        "get_synthetic_review_cart",
         "get_cart",
         "get_abandoned_cart",
         "_connect",

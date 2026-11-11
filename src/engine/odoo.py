@@ -145,6 +145,43 @@ _ELIGIBLE_ONE_SQL = (
     + "  AND so.date_order <= %(now)s - w.cart_abandoned_delay * INTERVAL '1 hour'\n"
 )
 
+_SYNTHETIC_ELIGIBLE = (
+    _CART_SELECT
+    + """  AND so.date_order <= %(now)s - w.cart_abandoned_delay * INTERVAL '1 hour'
+  AND so.client_order_ref ~ '^retention-review-[0-9a-f]{12}$'
+  AND p.email = so.client_order_ref || '@example.test'
+"""
+)
+
+_SYNTHETIC_SCAN_SQL = (
+    _SYNTHETIC_ELIGIBLE
+    + """  AND so.id > %(after_id)s
+ORDER BY so.id
+LIMIT %(limit)s
+"""
+)
+
+_SYNTHETIC_ONE_SQL = _SYNTHETIC_ELIGIBLE + "  AND so.id = %(order_id)s\n"
+
+_READONLY_ROLE_SQL = """
+SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication, r.rolbypassrls,
+       has_database_privilege(current_user, current_database(), 'CREATE') AS database_create,
+       has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create,
+       EXISTS (
+           SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'public'
+             AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+             AND has_table_privilege(current_user, c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE')
+       ) AS table_write,
+       EXISTS (
+           SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'public'
+             AND c.relkind = 'S'
+             AND has_sequence_privilege(current_user, c.oid, 'USAGE,UPDATE')
+       ) AS sequence_write
+FROM pg_roles r WHERE r.rolname = current_user
+"""
+
 _LINES_SQL = """
 SELECT l.product_id, l.product_uom_qty AS quantity, l.price_unit,
        pp.default_code AS sku,
@@ -177,6 +214,34 @@ class OdooReader:
         with self._connect() as conn:
             rows = conn.execute(_SCAN_SQL, {"now": _naive_utc(now), "limit": limit}).fetchall()
             return [self._cart(conn, row) for row in rows]
+
+    def scan_synthetic_review_carts(
+        self, *, now: datetime, after_id: int, limit: int
+    ) -> list[AbandonedCart]:
+        """Page over explicitly marked local review fixtures by stable order ID."""
+        if after_id < 0 or not 1 <= limit <= 1000:
+            raise ValueError("invalid synthetic scan cursor or page limit")
+        with self._connect() as conn:
+            rows = conn.execute(
+                _SYNTHETIC_SCAN_SQL,
+                {"now": _naive_utc(now), "after_id": after_id, "limit": limit},
+            ).fetchall()
+            return [self._cart(conn, row) for row in rows]
+
+    def verify_synthetic_readonly_role(self) -> None:
+        """Reject a role with elevated privileges before starting synthetic scans."""
+        with self._connect() as conn:
+            row = conn.execute(_READONLY_ROLE_SQL).fetchone()
+            if row is None or any(row.values()):
+                raise OdooConfigError("synthetic scan requires an unprivileged read-only Odoo role")
+
+    def get_synthetic_review_cart(self, order_id: int, *, now: datetime) -> AbandonedCart | None:
+        """Reload a still-eligible marked review fixture, not an arbitrary Odoo cart."""
+        with self._connect() as conn:
+            row = conn.execute(
+                _SYNTHETIC_ONE_SQL, {"order_id": order_id, "now": _naive_utc(now)}
+            ).fetchone()
+            return self._cart(conn, row) if row else None
 
     def get_cart(self, order_id: int) -> AbandonedCart | None:
         with self._connect() as conn:

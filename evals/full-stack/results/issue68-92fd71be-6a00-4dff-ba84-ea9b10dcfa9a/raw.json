@@ -1,0 +1,949 @@
+{
+  "attempt": "recovery",
+  "host": {
+    "logical_cpus": 8,
+    "platform": "Linux-5.15.153.1-microsoft-standard-WSL2-x86_64-with-glibc2.39"
+  },
+  "idle_samples": [
+    {
+      "at": 1794216558.3203232,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85217771,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 3.98,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216560.3331585,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.13,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85217771,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216562.3465803,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.13,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.34,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 3.93,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    }
+  ],
+  "method": "sequential docker stats --no-stream snapshots with one-second pauses plus command runtime",
+  "proposal_samples": [
+    {
+      "at": 1794216571.4419856,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.16,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216576.3872688,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.1,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.83,
+          "memory_bytes": 85217771,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 3.89,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216579.5333042,
+      "containers": [
+        {
+          "cpu_percent": 7.38,
+          "memory_bytes": 163787571,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.11,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85217771,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.02,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216582.6059942,
+      "containers": [
+        {
+          "cpu_percent": 6.98,
+          "memory_bytes": 222717542,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216585.6627285,
+      "containers": [
+        {
+          "cpu_percent": 7.25,
+          "memory_bytes": 361968435,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 4.01,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.15,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216588.7255313,
+      "containers": [
+        {
+          "cpu_percent": 9.11,
+          "memory_bytes": 478989516,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 2.48,
+          "memory_bytes": 28741468,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216591.7895885,
+      "containers": [
+        {
+          "cpu_percent": 8.15,
+          "memory_bytes": 575773081,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 3.89,
+          "memory_bytes": 52649000,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216594.849788,
+      "containers": [
+        {
+          "cpu_percent": 9.14,
+          "memory_bytes": 681154969,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216597.90744,
+      "containers": [
+        {
+          "cpu_percent": 8.87,
+          "memory_bytes": 782447411,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216600.968458,
+      "containers": [
+        {
+          "cpu_percent": 7.3,
+          "memory_bytes": 883425280,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.11,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 4.12,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216604.0287616,
+      "containers": [
+        {
+          "cpu_percent": 7.83,
+          "memory_bytes": 971925094,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.13,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28720496,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216607.0899818,
+      "containers": [
+        {
+          "cpu_percent": 7.86,
+          "memory_bytes": 1055916032,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28720496,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 3.9,
+          "memory_bytes": 52669972,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216613.0894349,
+      "containers": [
+        {
+          "cpu_percent": 8.16,
+          "memory_bytes": 1157493686,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.11,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28720496,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216616.15194,
+      "containers": [
+        {
+          "cpu_percent": 7.93,
+          "memory_bytes": 1258425417,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.12,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28720496,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85217771,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216619.212682,
+      "containers": [
+        {
+          "cpu_percent": 64.19,
+          "memory_bytes": 1620276412,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.13,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28720496,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 6.13,
+          "memory_bytes": 85238743,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 52638515,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216622.2693765,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 1620276412,
+          "name": "poc68-isolated-proposal-run-79962b13c6ae"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.17,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85238743,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 53739520,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216627.3403535,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.13,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216630.3933988,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.13,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.02,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 4.07,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    }
+  ],
+  "run_id": "92fd71be-6a00-4dff-ba84-ea9b10dcfa9a",
+  "scan_samples": [
+    {
+      "at": 1794216564.3606176,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.14,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216566.3736005,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.11,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 28710010,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 1.75,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 0.6,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    },
+    {
+      "at": 1794216569.429604,
+      "containers": [
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 55291412,
+          "name": "poc68-isolated-worker-1"
+        },
+        {
+          "cpu_percent": 0.15,
+          "memory_bytes": 77793853,
+          "name": "poc68-isolated-approval-api-1"
+        },
+        {
+          "cpu_percent": 0.01,
+          "memory_bytes": 227645849,
+          "name": "poc68-isolated-odoo-1"
+        },
+        {
+          "cpu_percent": 2.23,
+          "memory_bytes": 28814868,
+          "name": "poc68-isolated-mailpit-1"
+        },
+        {
+          "cpu_percent": 0.0,
+          "memory_bytes": 85228257,
+          "name": "poc68-isolated-odoo-db-1"
+        },
+        {
+          "cpu_percent": 4.1,
+          "memory_bytes": 50667192,
+          "name": "poc68-isolated-engine-db-1"
+        }
+      ]
+    }
+  ],
+  "stage_elapsed_seconds": {
+    "proposal": 53.08411059300033,
+    "scan": 5.069034557000123
+  },
+  "summary": {
+    "idle": {
+      "max_cpu_percent": 4.41,
+      "max_memory_bytes": 525336573,
+      "mean_cpu_percent": 2.8866666666666667,
+      "mean_memory_bytes": 525329582.3333333
+    },
+    "proposal": {
+      "max_cpu_percent": 70.46,
+      "max_memory_bytes": 2148695799,
+      "mean_cpu_percent": 10.89611111111111,
+      "mean_memory_bytes": 1184413891.2777777
+    },
+    "scan": {
+      "max_cpu_percent": 6.489999999999999,
+      "max_memory_bytes": 525441431,
+      "mean_cpu_percent": 3.0366666666666666,
+      "mean_memory_bytes": 525371525.6666667
+    }
+  }
+}
