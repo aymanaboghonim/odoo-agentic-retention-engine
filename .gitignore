@@ -30,6 +30,7 @@ evals/llm/s2_odoo_inventory.json
 evals/llm/s2_odoo_inventory.md
 
 # OS and editor
+chat.json
 .DS_Store
 Thumbs.db
 .idea/

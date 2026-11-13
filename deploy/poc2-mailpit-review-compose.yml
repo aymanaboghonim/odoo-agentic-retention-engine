@@ -1,0 +1,4 @@
+services:
+  proposal:
+    networks: !reset []
+    network_mode: "container:poc68-isolated-mailpit-1"
