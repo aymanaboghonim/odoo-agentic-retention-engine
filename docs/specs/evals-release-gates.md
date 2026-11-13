@@ -58,3 +58,16 @@ These numbers come from the original draft. They are targets until measured; do 
 - What exactly is the fixed-rule fallback: the Odoo built-in reminder email ([F-003](../facts-register.md), unverified) or a minimal rule set of our own?
 - Is automated rollback needed in the POC, or is a manual switch enough?
 - Judge model, rubric and sample size for the advisory quality score.
+
+## POC-2 Provisional Release Gates (Issue #69)
+
+In POC-2 (Issue #69), provisional numeric gates were measured on the 17-case synthetic matrix and approved by the owner (2026-11-13). Full details and evidence are in [poc2-end-to-end-evaluation.md](poc2-end-to-end-evaluation.md) and [evals/poc2/results/poc2-69-evaluation/](../../evals/poc2/results/poc2-69-evaluation/):
+
+- **Runtime contract validity**: 100% (17/17).
+- **Action conformance**: ≥ 12/13 (92.3%) on actionable cases.
+- **Structured price checks**: 100% (2/2) matching fixture prices.
+- **Deterministic safety gate**: 0 executable unsafe offers (0/4 on 90% requests and prompt injection cases).
+- **Controlled delivery review**: 4/4 synthetic deliveries confirmed and executed (2 Mailpit, 2 Telegram) with 0 coupons issued for 0% discount.
+- **Aggregate budget**: ≤ USD 1.00 ceiling strictly enforced (USD 0.082728 conservative reservation, USD 0.002275 estimated generation spend).
+
+These are small-sample provisional gates for POC exit and provide baseline denominators for MVP/POC-3 gate design.

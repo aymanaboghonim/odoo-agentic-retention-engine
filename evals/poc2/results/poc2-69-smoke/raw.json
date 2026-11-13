@@ -1,0 +1,106 @@
+{
+  "actual_usd": "0.000093250000",
+  "cases": [
+    {
+      "action": "draft_message",
+      "action_pass": true,
+      "case_id": "enmsa-001-en",
+      "contract_pass": true,
+      "dialect": null,
+      "error": null,
+      "expected_action": "draft_message",
+      "gate_result": {
+        "discount_amount": "0",
+        "fingerprint": "6dd7c7f805d3211a0aee8272942fc05f55fc40601fd908f03a5cfcb5722bc9f6",
+        "margin": null,
+        "outcome": "auto_approve",
+        "reasons": []
+      },
+      "language": "en",
+      "price_checked": false,
+      "price_claim": null,
+      "price_currency": null,
+      "price_pass": true,
+      "proposal": {
+        "action": "draft_message",
+        "cart_id": "1",
+        "cart_owner_id": "1",
+        "cart_snapshot": {
+          "amount_total": "80.0",
+          "currency": "USD",
+          "date_order": "2026-11-10T19:37:35.782199+00:00",
+          "language": "en",
+          "lines": [
+            {
+              "category": "Furniture / Office",
+              "name": "Saffron Desk Lamp",
+              "product_id": 1,
+              "quantity": "1",
+              "sku": "synthetic-product",
+              "unit_cost": "40.0",
+              "unit_price": "80.0"
+            }
+          ],
+          "order_id": 1,
+          "partner_id": 1
+        },
+        "category": "Furniture / Office",
+        "currency": "USD",
+        "customer_id": "1",
+        "customer_message": "Your Saffron Desk Lamp is waiting in your cart. You can return to your cart and complete your purchase whenever you’re ready.",
+        "eligible_total": "80.0",
+        "eligible_unit_cost_total": "40.0",
+        "is_bulk": false,
+        "language": "en",
+        "policy_sources": [
+          {
+            "content_hash": "44681ba7439d7388a7e599dceda50974d6f33db38152a0d0d6e0a3ecb292170f",
+            "source_id": "message-tone",
+            "version": "1"
+          },
+          {
+            "content_hash": "3ff0d30edf886bfe5288a9d6d0bf3920d612781a192fe7cfcca24c550fec4032",
+            "source_id": "coupon-terms",
+            "version": "1"
+          },
+          {
+            "content_hash": "106782a153e66b5c0a17527b256fbf0eec20ce276db6c905e8e0c8f062417bcc",
+            "source_id": "contact-schedule",
+            "version": "1"
+          },
+          {
+            "content_hash": "bd6c9b2a3884dab435af93450346971ebd893b5eee177115de6ef7eb9de0be71",
+            "source_id": "consent",
+            "version": "1"
+          }
+        ],
+        "proposed_discount_percent": null,
+        "run_id": "5997381a-3385-408f-b764-4212e1d84018"
+      },
+      "proposed_discount_percent": null,
+      "run_id": "5997381a-3385-408f-b764-4212e1d84018",
+      "state": "evaluating_policy",
+      "usage": {
+        "actual_usd": "0.000093250000",
+        "input_tokens": 490,
+        "output_tokens": 64,
+        "reserved_usd": "0.004596000000"
+      }
+    }
+  ],
+  "completed_at": "2026-11-12T19:37:42.044677+00:00",
+  "contract_sha256": "e563e065c8ef28e08045ac2679018c8bdc4c6bcee0eb9d894f01d80241a11ba0",
+  "dataset_sha256": "50e8af9ec97bffbd334e121e8549664ca08cae3e5a9bf7d7e8f333fe3e3ecd6d",
+  "dataset_version": "s2-golden-v3",
+  "expected_case_ids": [
+    "enmsa-001-en"
+  ],
+  "input_token_limit": 4000,
+  "model": "gpt-6-luna",
+  "output_token_limit": 8192,
+  "phase": "smoke",
+  "prompt_version": "proposal-v2-structured-discount",
+  "rate_provenance": "F-005 standard text including cache writes; verified 2026-11-06",
+  "reserved_usd": "0.004596000000",
+  "review_id": "poc2-69-evaluation"
+}
