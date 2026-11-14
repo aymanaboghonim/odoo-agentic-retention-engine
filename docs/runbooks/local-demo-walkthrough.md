@@ -46,3 +46,7 @@ PYTHONPATH=src uv run --no-sync python scripts/poc3_local_demo.py --check-html d
 - All records are synthetic `.test` fixtures; no real customer PII or live Odoo instance is touched.
 - Gate outcomes, margins, discount amounts, `gate_fingerprint`, `snapshot_hash`, and `RET-...` coupon codes are computed by the real deterministic engine modules (`engine.policy`, `engine.approval_data`, `engine.coupon_code`).
 - This walkthrough is a static stakeholder review artifact only and must not be deployed or hosted as a production operator UI (`docs/architecture/poc-exit-review.md`).
+
+## Optional live E2E CLI (`scripts/poc3_live_e2e.py`)
+
+When running live end-to-end verification against the isolated `poc68-isolated` Docker Compose stack (`deploy/full-stack-compose.yml`), `scripts/poc3_live_e2e.py` exposes bounded subcommands for `preflight`, `scan`, `propose`, `show`, `approve-api`, `execute`, and `inspect`. It enforces `PROPOSAL_REVIEW_ID=poc3-live-e2e-demo`, a `USD 0.50` aggregate ceiling, `4,000 / 8,192` token limits, and explicit dedicated test-destination confirmation (`--confirm-destination`). Before executing any positive-discount coupon flow on a fresh `poc68-isolated` Odoo database, ensure `website_sale_loyalty` is installed as documented in [odoo-adapter-local.md](odoo-adapter-local.md) (F-042).
