@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Odoo Agentic Retention Engine — Local POC Walkthrough</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --ink: #172033;
+      --muted: #52607a;
+      --border: #d8e0ee;
+      --accent: #1d4ed8;
+      --ok-bg: #dcfce7;
+      --ok-ink: #166534;
+      --warn-bg: #fef3c7;
+      --warn-ink: #92400e;
+      --reject-bg: #fee2e2;
+      --reject-ink: #991b1b;
+      --banner-bg: #fff7ed;
+      --banner-border: #ea580c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    .banner {
+      background: var(--banner-bg);
+      border-bottom: 3px solid var(--banner-border);
+      padding: 12px 24px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-align: center;
+      color: #9a3412;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px 20px 48px;
+    }
+    .hero {
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      margin: 0 0 6px;
+      font-size: 1.7rem;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    .tab-btn {
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--ink);
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .scenario-panel {
+      display: none;
+    }
+    .scenario-panel.active {
+      display: block;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+    }
+    .panel-header h2 {
+      margin: 0 0 4px;
+      font-size: 1.2rem;
+    }
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .badge-ok { background: var(--ok-bg); color: var(--ok-ink); }
+    .badge-warn { background: var(--warn-bg); color: var(--warn-ink); }
+    .badge-reject { background: var(--reject-bg); color: var(--reject-ink); }
+    .stages-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .stage-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .stage-wide {
+      grid-column: 1 / -1;
+    }
+    .stage-num {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    .stage-card h3 {
+      margin: 0 0 12px;
+      font-size: 1.05rem;
+    }
+    dl {
+      margin: 0;
+      display: grid;
+      gap: 8px;
+    }
+    dt {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    dd {
+      margin: 2px 0 0;
+      font-size: 0.92rem;
+      word-break: break-word;
+    }
+    code {
+      background: #eef2f8;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+    code.hash {
+      display: inline-block;
+      font-size: 0.76em;
+      word-break: break-all;
+    }
+    .pill-list {
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0;
+      margin: 4px 0 0;
+    }
+    .message-box {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+    }
+    .msg-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .message-box p {
+      margin: 0;
+    }
+    .dispatch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .dispatch-grid div {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+    }
+    .dispatch-grid span {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    footer {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="banner">SYNTHETIC DEMO ARTIFACT ONLY — NOT PRODUCTION HOSTED</div>
+  <main>
+    <section class="hero">
+      <h1>Odoo Agentic Retention Engine — Local 5-Stage POC Walkthrough</h1>
+      <p>
+        Offline static stakeholder artifact backed by the deterministic engine gate,
+        snapshot hashing, and synthetic English / MSA Arabic (RTL) scenarios.
+        No network access, no external services, no live LLM calls.
+      </p>
+    </section>
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab-btn active" data-target="panel-en-auto-reminder" onclick="selectScenario('en-auto-reminder')">1. English — Auto-Approve 0% Reminder (Mailpit)</button><button type="button" class="tab-btn" data-target="panel-ar-human-approval-12pct" onclick="selectScenario('ar-human-approval-12pct')">2. MSA Arabic (RTL) — Human Approval 12% Offer (Telegram)</button><button type="button" class="tab-btn" data-target="panel-en-hard-reject-90pct" onclick="selectScenario('en-hard-reject-90pct')">3. English — Deterministic Hard Reject 90% Over-Cap</button>
+    </div>
+<section id="panel-en-auto-reminder" class="scenario-panel active">
+  <header class="panel-header">
+    <div>
+      <h2>1. English — Auto-Approve 0% Reminder (Mailpit)</h2>
+      <p class="subtitle">Mirrors #69 mailpit-en synthetic flow: 0% discount skips coupon creation.</p>
+    </div>
+    <span class="badge badge-ok">auto_approve</span>
+  </header>
+
+  <div class="stages-grid">
+    <article class="stage-card">
+      <div class="stage-num">Stage 1</div>
+      <h3>Abandoned Cart Scan</h3>
+      <dl>
+        <div><dt>Cart Reference</dt><dd><code>retention-review-a1b2c3d4e5f6</code></dd></div>
+        <div>
+          <dt>Customer</dt>
+          <dd>Synthetic Buyer EN (<code>retention-review-a1b2c3d4e5f6@example.test</code>)</dd>
+        </div>
+        <div><dt>Item &amp; Category</dt><dd>Saffron Desk Lamp — Furniture / Office</dd></div>
+        <div>
+          <dt>Total / Unit Cost</dt>
+          <dd>
+            USD 80.00 /
+            USD 40.00
+          </dd>
+        </div>
+        <div><dt>Abandoned Since</dt><dd><code>2026-11-10T19:39:50Z</code></dd></div>
+      </dl>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 2</div>
+      <h3>Policy Retrieval &amp; Proposal</h3>
+      <dl>
+        <div><dt>Run ID</dt><dd><code>2a3009f6-0000-4000-8000-000000000001</code></dd></div>
+        <div>
+          <dt>Language / Action</dt>
+          <dd>
+            <code>en</code> (ltr) —
+            <code>draft_message</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Proposed Discount</dt>
+          <dd><strong>0%</strong></dd>
+        </div>
+        <div><dt>Grounded Policies</dt><dd><ul class="pill-list"><li><code>message-tone</code></li><li><code>coupon-terms</code></li><li><code>contact-schedule</code></li><li><code>consent</code></li></ul></dd></div>
+      </dl>
+      <div class="message-box" dir="ltr" lang="en">
+        <div class="msg-label">Proposed Customer Message (LTR)</div>
+        <p>Hi! Your Saffron Desk Lamp ($80.00) is still waiting in your cart. You can return whenever you are ready to complete your order.</p>
+      </div>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 3</div>
+      <h3>Deterministic Safety Gate</h3>
+      <dl>
+        <div>
+          <dt>Outcome</dt>
+          <dd><span class="badge badge-ok">auto_approve</span></dd>
+        </div>
+        <div><dt>Reasons</dt><dd><code>none (within rules)</code></dd></div>
+        <div><dt>Discount Amount</dt><dd>USD 0.00</dd></div>
+        <div><dt>Margin After Discount</dt><dd>n/a (0% or rejected)</dd></div>
+        <div>
+          <dt>Gate Fingerprint</dt>
+          <dd><code class="hash">6461c933b47dcb33fbc0011d66e7b5772523a009331006ea1c1c4154f34d5bd4</code></dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 4</div>
+      <h3>Operator Approval Binding</h3>
+      <dl>
+        <div><dt>Approval State</dt><dd><code>approved</code></dd></div>
+        <div><dt>Operator Actor</dt><dd><code>poc-operator</code></dd></div>
+        <div><dt>Snapshot Hash</dt><dd><code class="hash">a913cb56094d62eed0396d3a6299c397b01004527b5c0c578ec4c3378ca1b37a</code></dd></div>
+        <div><dt>Review Note</dt><dd>Controlled #69 delivery review confirmed destination for Mailpit EN.</dd></div>
+      </dl>
+    </article>
+
+    <article class="stage-card stage-wide">
+      <div class="stage-num">Stage 5</div>
+      <h3>Worker Execution &amp; Channel Dispatch Record</h3>
+      <div class="dispatch-grid">
+        <div>
+          <span>Execution Status</span>
+          <strong><code>executed</code></strong>
+        </div>
+        <div><span>Channel</span><strong><code>mailpit</code></strong></div>
+        <div><span>Coupon Code</span><strong><code>none (0% or blocked)</code></strong></div>
+        <div><span>Odoo Activity</span><strong>mail.activity logged (no coupon for 0%)</strong></div>
+        <div><span>Destination</span><strong>Mailpit local sink (retention-review@example.test)</strong></div>
+        <div><span>Subject</span><strong>Reminder about your saved cart</strong></div>
+        <div><span>Dispatch ID</span><strong><code>demo-en-auto-reminder-001</code></strong></div>
+      </div>
+    </article>
+  </div>
+</section>
+<section id="panel-ar-human-approval-12pct" class="scenario-panel">
+  <header class="panel-header">
+    <div>
+      <h2>2. MSA Arabic (RTL) — Human Approval 12% Offer (Telegram)</h2>
+      <p class="subtitle">Demonstrates &gt;10% to 15% approval tier, margin check, snapshot binding, and deterministic coupon RET-...</p>
+    </div>
+    <span class="badge badge-warn">needs_approval</span>
+  </header>
+
+  <div class="stages-grid">
+    <article class="stage-card">
+      <div class="stage-num">Stage 1</div>
+      <h3>Abandoned Cart Scan</h3>
+      <dl>
+        <div><dt>Cart Reference</dt><dd><code>retention-review-b2c3d4e5f601</code></dd></div>
+        <div>
+          <dt>Customer</dt>
+          <dd>عميل تجريبي افتراضي (<code>retention-review-b2c3d4e5f601@example.test</code>)</dd>
+        </div>
+        <div><dt>Item &amp; Category</dt><dd>مصباح مكتب زعفراني — Furniture / Office</dd></div>
+        <div>
+          <dt>Total / Unit Cost</dt>
+          <dd>
+            USD 120.00 /
+            USD 50.00
+          </dd>
+        </div>
+        <div><dt>Abandoned Since</dt><dd><code>2026-11-10T20:15:00Z</code></dd></div>
+      </dl>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 2</div>
+      <h3>Policy Retrieval &amp; Proposal</h3>
+      <dl>
+        <div><dt>Run ID</dt><dd><code>82db2a17-0000-4000-8000-000000000002</code></dd></div>
+        <div>
+          <dt>Language / Action</dt>
+          <dd>
+            <code>ar</code> (rtl) —
+            <code>draft_message</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Proposed Discount</dt>
+          <dd><strong>12%</strong></dd>
+        </div>
+        <div><dt>Grounded Policies</dt><dd><ul class="pill-list"><li><code>message-tone</code></li><li><code>coupon-terms</code></li><li><code>contact-schedule</code></li><li><code>consent</code></li></ul></dd></div>
+      </dl>
+      <div class="message-box" dir="rtl" lang="ar">
+        <div class="msg-label">Proposed Customer Message (RTL)</div>
+        <p>مرحباً! لا يزال مصباح مكتب زعفراني في سلة التسوق الخاصة بك. يمكنك استخدام قسيمة خصم بنسبة 12% عند إتمام الطلب اليوم.</p>
+      </div>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 3</div>
+      <h3>Deterministic Safety Gate</h3>
+      <dl>
+        <div>
+          <dt>Outcome</dt>
+          <dd><span class="badge badge-warn">needs_approval</span></dd>
+        </div>
+        <div><dt>Reasons</dt><dd><code>discount_in_approval_band</code></dd></div>
+        <div><dt>Discount Amount</dt><dd>USD 14.40</dd></div>
+        <div><dt>Margin After Discount</dt><dd>52.65%</dd></div>
+        <div>
+          <dt>Gate Fingerprint</dt>
+          <dd><code class="hash">46edab928bc74cca08e8f35a6e9ef79231dd834ddc17a35f5336c714126b7f42</code></dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 4</div>
+      <h3>Operator Approval Binding</h3>
+      <dl>
+        <div><dt>Approval State</dt><dd><code>approved</code></dd></div>
+        <div><dt>Operator Actor</dt><dd><code>poc-operator</code></dd></div>
+        <div><dt>Snapshot Hash</dt><dd><code class="hash">d66ff8b19e1915e0b3d8c2a2452b4551681249f7c2e6768f0d9d13638176bc2e</code></dd></div>
+        <div><dt>Review Note</dt><dd>12% discount is in the 10–15% human-approval band; margin 52.65% &gt; 20% minimum. Operator approved exact snapshot_hash and gate_fingerprint.</dd></div>
+      </dl>
+    </article>
+
+    <article class="stage-card stage-wide">
+      <div class="stage-num">Stage 5</div>
+      <h3>Worker Execution &amp; Channel Dispatch Record</h3>
+      <div class="dispatch-grid">
+        <div>
+          <span>Execution Status</span>
+          <strong><code>executed</code></strong>
+        </div>
+        <div><span>Channel</span><strong><code>telegram</code></strong></div>
+        <div><span>Coupon Code</span><strong><code>RET-E64F3DC8EB727FF82C157E2B5F540FED</code></strong></div>
+        <div><span>Odoo Activity</span><strong>mail.activity logged (synthetic review)</strong></div>
+        <div><span>Destination</span><strong>Dedicated Telegram synthetic test chat (redacted chat ID)</strong></div>
+        <div><span>Dispatch ID</span><strong><code>demo-ar-human-approval-12pct-001</code></strong></div>
+      </div>
+    </article>
+  </div>
+</section>
+<section id="panel-en-hard-reject-90pct" class="scenario-panel">
+  <header class="panel-header">
+    <div>
+      <h2>3. English — Deterministic Hard Reject 90% Over-Cap</h2>
+      <p class="subtitle">Demonstrates fail-closed financial gate blocking &gt;15% / prompt-injection discount request before approval or dispatch.</p>
+    </div>
+    <span class="badge badge-reject">reject</span>
+  </header>
+
+  <div class="stages-grid">
+    <article class="stage-card">
+      <div class="stage-num">Stage 1</div>
+      <h3>Abandoned Cart Scan</h3>
+      <dl>
+        <div><dt>Cart Reference</dt><dd><code>retention-review-c3d4e5f60102</code></dd></div>
+        <div>
+          <dt>Customer</dt>
+          <dd>Synthetic Injection Probe (<code>retention-review-c3d4e5f60102@example.test</code>)</dd>
+        </div>
+        <div><dt>Item &amp; Category</dt><dd>Ergonomic Task Chair — Furniture / Office</dd></div>
+        <div>
+          <dt>Total / Unit Cost</dt>
+          <dd>
+            USD 240.00 /
+            USD 120.00
+          </dd>
+        </div>
+        <div><dt>Abandoned Since</dt><dd><code>2026-11-10T21:05:00Z</code></dd></div>
+      </dl>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 2</div>
+      <h3>Policy Retrieval &amp; Proposal</h3>
+      <dl>
+        <div><dt>Run ID</dt><dd><code>99990000-0000-4000-8000-000000000003</code></dd></div>
+        <div>
+          <dt>Language / Action</dt>
+          <dd>
+            <code>en</code> (ltr) —
+            <code>draft_message</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Proposed Discount</dt>
+          <dd><strong>90%</strong></dd>
+        </div>
+        <div><dt>Grounded Policies</dt><dd><ul class="pill-list"><li><code>coupon-terms</code></li><li><code>consent</code></li></ul></dd></div>
+      </dl>
+      <div class="message-box" dir="ltr" lang="en">
+        <div class="msg-label">Proposed Customer Message (LTR)</div>
+        <p>Special override: claim your 90% discount right now!</p>
+      </div>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 3</div>
+      <h3>Deterministic Safety Gate</h3>
+      <dl>
+        <div>
+          <dt>Outcome</dt>
+          <dd><span class="badge badge-reject">reject</span></dd>
+        </div>
+        <div><dt>Reasons</dt><dd><code>discount_above_hard_cap</code></dd></div>
+        <div><dt>Discount Amount</dt><dd>USD 0.00</dd></div>
+        <div><dt>Margin After Discount</dt><dd>n/a (0% or rejected)</dd></div>
+        <div>
+          <dt>Gate Fingerprint</dt>
+          <dd><code class="hash">06b1fa5154be07354f1754763fd2294073c0b4d39f71cb890d6ff87de58085c6</code></dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="stage-card">
+      <div class="stage-num">Stage 4</div>
+      <h3>Operator Approval Binding</h3>
+      <dl>
+        <div><dt>Approval State</dt><dd><code>skipped_rejected</code></dd></div>
+        <div><dt>Operator Actor</dt><dd><code>none</code></dd></div>
+        <div><dt>Snapshot Hash</dt><dd><code class="hash">aa10de130487936534fa133ebbd410edfa0030e8a01749a3b0f3cf4532e0f066</code></dd></div>
+        <div><dt>Review Note</dt><dd>Blocked automatically before reaching operator queue; never executable.</dd></div>
+      </dl>
+    </article>
+
+    <article class="stage-card stage-wide">
+      <div class="stage-num">Stage 5</div>
+      <h3>Worker Execution &amp; Channel Dispatch Record</h3>
+      <div class="dispatch-grid">
+        <div>
+          <span>Execution Status</span>
+          <strong><code>blocked_by_safety_gate</code></strong>
+        </div>
+        <div><span>Channel</span><strong><code>none</code></strong></div>
+        <div><span>Coupon Code</span><strong><code>none (0% or blocked)</code></strong></div>
+        <div><span>Odoo Activity</span><strong>none (rejected before approval or execution)</strong></div>
+        <div><span>Destination</span><strong>No dispatch (blocked by deterministic safety gate)</strong></div>
+        <div><span>Dispatch ID</span><strong><code>none</code></strong></div>
+      </div>
+    </article>
+  </div>
+</section>
+    <footer>
+      <strong>SYNTHETIC DEMO ARTIFACT ONLY — NOT PRODUCTION HOSTED</strong> — Generated by
+      <code>scripts/poc3_local_demo.py</code>. For architecture signoff boundaries,
+      see <code>docs/architecture/poc-exit-review.md</code>.
+    </footer>
+  </main>
+  <script>
+    function selectScenario(id) {
+      var buttons = document.querySelectorAll('.tab-btn');
+      var panels = document.querySelectorAll('.scenario-panel');
+      buttons.forEach(function(btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-target') === 'panel-' + id);
+      });
+      panels.forEach(function(panel) {
+        panel.classList.toggle('active', panel.id === 'panel-' + id);
+      });
+    }
+  </script>
+</body>
+</html>
