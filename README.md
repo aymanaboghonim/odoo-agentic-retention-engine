@@ -6,7 +6,7 @@ First slice (POC): an abandoned cart is found, an agent writes a personal, polic
 
 ## Status
 
-Early stage. The repo foundation is being built. See [docs/STATUS.md](docs/STATUS.md) for the live checklist and the next action.
+POC-2 walking skeleton and bilingual evaluation are complete; Phase 3 (POC exit review and local stakeholder demo) is in progress. See [docs/STATUS.md](docs/STATUS.md) for the live checklist and [docs/architecture/poc-exit-review.md](docs/architecture/poc-exit-review.md) for the consolidated POC exit signoff memo and MVP handoff plan.
 
 ## Where to read
 
@@ -14,6 +14,7 @@ Early stage. The repo foundation is being built. See [docs/STATUS.md](docs/STATU
 | :-- | :-- |
 | Vision, goals, scope | [docs/00-vision.md](docs/00-vision.md) |
 | Live progress and open questions | [docs/STATUS.md](docs/STATUS.md) |
+| POC exit review and MVP handoff | [docs/architecture/poc-exit-review.md](docs/architecture/poc-exit-review.md) |
 | How we work (process, traceability, branching) | [docs/process.md](docs/process.md) |
 | Architecture decisions | [docs/adr/](docs/adr/) |
 | Volatile facts to verify (prices, limits, versions) | [docs/facts-register.md](docs/facts-register.md) |

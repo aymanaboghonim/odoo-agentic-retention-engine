@@ -11,12 +11,12 @@ Issue: #29. This is a planning estimate, not a deployment decision or a performa
 
 | Workload | Current planning assumption | Evidence and limitation |
 | :-- | :-- | :-- |
-| POC host | 4 vCPU / 8 GB RAM was proposed in the blueprint as a starting point. | Not measured. It is not yet established that Odoo, the AI database, API, worker and retrieval fit or perform adequately together. |
-| Odoo plus demo data | Measured 2026-10-29 (Odoo 19.0, PostgreSQL 15): about 192 MiB + 167 MiB RAM idle, about 0% CPU, 171 MB database and 10 MB filestore. Light read load did not raise RAM. | Install-time and worker-load peaks not measured; see [F-014](../facts-register.md) and [ADR-0014](../adr/0014-odoo-19-baseline-and-seeding.md). |
-| Retrieval and embeddings | Unknown until S3 selects the store and embedding model. | Benchmark memory, latency and Recall@5 on the Arabic and English retrieval set ([ADR-0006](../adr/0006-retrieval-store-benchmark.md)). |
+| POC host | 4 vCPU / 8 GB RAM was proposed in the blueprint as a starting point. | Measured on local synthetic full stack in #68 ([full-stack capacity report](../../evals/full-stack/capacity-cost-estimate.md)): idle 501.0 MiB RAM (4.41% CPU), one bounded scan page 501.1 MiB RAM (6.49% CPU, 5.07 s), one authorized proposal 2,049.2 MiB peak RAM (70.46% CPU, 53.08 s). Fits within 8 GB RAM for sequential POC runs; not a concurrency or production sizing guarantee. |
+| Odoo plus demo data | Measured 2026-10-29 (Odoo 19.0, PostgreSQL 15): about 192 MiB + 167 MiB RAM idle, about 0% CPU, 171 MB database and 10 MB filestore. Light read load did not raise RAM. | Install-time and worker-load peaks not measured in S1; full-stack sequential sample recorded in #68 ([F-014](../facts-register.md), [ADR-0014](../adr/0014-odoo-19-baseline-and-seeding.md), [full-stack capacity report](../../evals/full-stack/capacity-cost-estimate.md)). |
+| Retrieval and embeddings | PostgreSQL FTS + `pgvector` with 80:20 RRF fusion selected in S3 ([ADR-0015](../adr/0015-postgresql-retrieval-store.md)). | Measured in #47 ([s3-benchmark.md](../../evals/retrieval/results/s3-benchmark.md)): Recall@5 = 1.000 (EN and AR), warm P95 = 7.45 ms, peak container RSS = 26.8 MiB on the 32-case synthetic corpus. |
 | Production | Not estimated. | The draft's “two pods on one node” is not a high-availability design: one node failure still removes both pods. Define availability and residency first, then size and price multiple failure domains. |
 
-**S1 measurement (done, Odoo + PostgreSQL only):** see the table above. The full-stack measurement (abandoned-cart scan, feature refresh, retrieval, interactive run) moves to Phase 2, when the engine, worker and retrieval exist. If the workload approaches host capacity or misses the agreed latency target, size up or separate services before calling the setup viable. No benchmark has been run yet.
+**S1 and POC-2 measurements (done for local synthetic scope):** see the table above and [evals/full-stack/capacity-cost-estimate.md](../../evals/full-stack/capacity-cost-estimate.md). Production concurrency and multi-node sizing remain open for MVP planning ([poc-exit-review.md](poc-exit-review.md)).
 
 ## Cost model
 
