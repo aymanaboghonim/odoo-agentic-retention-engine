@@ -2,7 +2,7 @@
 
 Single place for "where we left off". Update it in every PR.
 
-Next action: owner review and merge of PR for #80 (POC exit review, signoff memo, and MVP handoff), then implement #81 (local static demo artifact for stakeholder walkthrough). PR #79 for #69 was merged, completing Phase 2 (POC-2). The POC exit review, consolidated evidence, explicit no-go production boundaries, and prioritized MVP handoff backlog are recorded in [poc-exit-review.md](architecture/poc-exit-review.md).
+Next action: owner review and merge of PR for #81 (local static demo artifact for stakeholder walkthrough). Upon merge of #81, Phase 3 POC exit deliverables (#80 and #81) are complete, and the repository is ready for MVP Tier 1 planning. PR #82 for #80 was merged, recording the POC exit review, consolidated evidence, explicit no-go production boundaries, and prioritized MVP handoff backlog in [poc-exit-review.md](architecture/poc-exit-review.md). The offline stakeholder walkthrough is in [poc-walkthrough.html](demo/poc-walkthrough.html) and [local-demo-walkthrough.md](runbooks/local-demo-walkthrough.md) (synthetic demo artifact only; not production hosted).
 
 All 18 hermetic end-to-end integration tests pass in CI against PostgreSQL. The live 17-case bilingual evaluation completed (17/17 valid contracts, 12/13 action checks, 2/2 price checks, 0 unsafe discounts) under a single durable aggregate budget (USD 0.082728 reserved, USD 0.002275 estimated generation spend). The owner reviewed and approved provisional release gates in [poc2-end-to-end-evaluation.md](specs/poc2-end-to-end-evaluation.md) and [evals-release-gates.md](specs/evals-release-gates.md). All four controlled synthetic delivery reviews (English/MSA on Mailpit and dedicated Telegram test chat) were authorized and successfully dispatched without creating coupons for 0% discount offers.
 
@@ -46,9 +46,9 @@ PR #77 for #67 was merged. The workflow is documented in [gated-execution-review
   - [x] #69 End-to-end test, live EN/MSA eval, provisional gates (last); [spec](specs/poc2-end-to-end-evaluation.md), live evaluation report in [evals/poc2/results/poc2-69-evaluation/](../evals/poc2/results/poc2-69-evaluation/), four owner-reviewed deliveries complete; PR #79 merged
   - POC-2 decisions (owner, 2026-11-04): approval by API + CLI with static env operator tokens; coupon written through Odoo JSON-2 in the local instance (Odoo 19 coupon model verified first, fallback only by ADR); per-run cost in the engine DB and structured logs, Langfuse/OTel moved to POC-3; dialects only if owner review is recorded in the S2 worksheet, else English + MSA; deferred: Q12, Q13 final gates (provisional only), production topology, churn/RFM.
   - #66 approval decisions (owner, 2026-11-07): one named static-token operator and no time expiry for the POC; approval is bound to the displayed snapshot and gate fingerprint. The API does not execute actions. #67 owns the actual immediate-before-execution recheck; see the [spec](specs/approval-api.md) for reasons and limits.
-- [ ] **Phase 3: POC exit review, MVP plan** (milestone POC-3)
-  - [x] #80 POC exit review, signoff memo, and MVP handoff ([poc-exit-review.md](architecture/poc-exit-review.md); PR open)
-  - [ ] #81 Local static demo artifact for stakeholder walkthrough (Option B: local-only synthetic walkthrough showing scan/cart, proposal, gate result, approval state, and channel dispatch record; explicitly labeled demo artifact only)
+- [x] **Phase 3: POC exit review, MVP plan** (milestone POC-3)
+  - [x] #80 POC exit review, signoff memo, and MVP handoff ([poc-exit-review.md](architecture/poc-exit-review.md); PR #82 merged)
+  - [x] #81 Local static demo artifact for stakeholder walkthrough ([poc-walkthrough.html](demo/poc-walkthrough.html), [local-demo-walkthrough.md](runbooks/local-demo-walkthrough.md), `scripts/poc3_local_demo.py`, `tests/test_poc3_local_demo.py`; Option B local-only synthetic walkthrough, explicitly labeled demo artifact only; PR open)
 
 ## Target repo tree
 

@@ -68,7 +68,7 @@ When transitioning from this POC to an MVP build, work must proceed in the follo
    - Replace local Mailpit with a verified transactional email provider with webhook delivery/bounce tracking.
    - Evaluate WhatsApp Business API verification and cost prerequisites before replacing or augmenting Telegram.
 2. **Lightweight operator approval UI (Cloudflare Pages candidate)**:
-   - Build a minimal authenticated operator UI on top of the existing `/approvals` API contract (`#66`), keeping all execution worker-owned (`ADR-0012`). For the POC exit itself, stakeholder review uses the local-only static demo artifact (`#81`).
+   - Build a minimal authenticated operator UI on top of the existing `/approvals` API contract (`#66`), keeping all execution worker-owned (`ADR-0012`). For the POC exit itself, stakeholder review uses the local-only static demo artifact ([poc-walkthrough.html](../demo/poc-walkthrough.html), [local-demo-walkthrough.md](../runbooks/local-demo-walkthrough.md); `#81`).
 3. **Deferred retention use cases**:
    - RFM / CLV churn next-best-action and slow-moving inventory campaigns ([00-vision.md](../00-vision.md)) remain deferred until the abandoned-cart slice is operating under Tier 1 and Tier 2 controls.
 

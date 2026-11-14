@@ -15,6 +15,7 @@ POC-2 walking skeleton and bilingual evaluation are complete; Phase 3 (POC exit 
 | Vision, goals, scope | [docs/00-vision.md](docs/00-vision.md) |
 | Live progress and open questions | [docs/STATUS.md](docs/STATUS.md) |
 | POC exit review and MVP handoff | [docs/architecture/poc-exit-review.md](docs/architecture/poc-exit-review.md) |
+| Local static demo walkthrough (demo artifact only) | [docs/runbooks/local-demo-walkthrough.md](docs/runbooks/local-demo-walkthrough.md) |
 | How we work (process, traceability, branching) | [docs/process.md](docs/process.md) |
 | Architecture decisions | [docs/adr/](docs/adr/) |
 | Volatile facts to verify (prices, limits, versions) | [docs/facts-register.md](docs/facts-register.md) |
