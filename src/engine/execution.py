@@ -302,6 +302,26 @@ class ExecutionService:
             raise ExecutionError("only an ERP run can be executed in this path")
         return self._execute(run_id, test_destination=None)
 
+    def preview_erp_recipient(self, run_id: uuid.UUID) -> RecipientDestination:
+        """Run every ERP privacy check without any state change, for operator confirmation."""
+        if not self._settings.erp_enabled or self._erp is None:
+            raise ExecutionError("ERP execution is not enabled")
+        if self._runs.get_run(run_id).trigger_type != "erp":
+            raise ExecutionError("only an ERP run can be previewed")
+        try:
+            record = self._runs.get_execution_record(run_id)
+        except ExecutionConflict as error:
+            raise ExecutionError("proposal or human approval is not ready for execution") from error
+        channel = record.proposal.get("execution_channel")
+        if record.state is not RunState.EVALUATING_POLICY or channel not in {"telegram", "mailpit"}:
+            raise ExecutionError("run is not awaiting execution authorization")
+        proposal = offer_from_record(record.proposal)
+        cart = self._check_cart(record.proposal, proposal, datetime.now(UTC))
+        recipient = self._erp_recipient(record.proposal, proposal, cart, cast(str, channel))
+        if proposal.customer_message is not None:
+            self._rehydrate(record.proposal, proposal.customer_message, cart)
+        return recipient
+
     def _execute(
         self, run_id: uuid.UUID, *, test_destination: TestDestination | None
     ) -> ExecutionResult:

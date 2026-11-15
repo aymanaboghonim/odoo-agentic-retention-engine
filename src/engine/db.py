@@ -140,6 +140,7 @@ class Run:
     policy_result: dict[str, Any] | None
     outcome: str | None
     failure_reason: str | None
+    customer_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -185,6 +186,7 @@ def _to_run(row: Any) -> Run:
         policy_result=row.policy_result,
         outcome=row.outcome,
         failure_reason=row.failure_reason,
+        customer_id=getattr(row, "customer_id", None),
     )
 
 

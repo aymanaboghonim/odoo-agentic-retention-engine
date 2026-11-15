@@ -83,4 +83,13 @@ How it works:
 - Erasure removes Engine DB rows only. It also deletes runs in `executing` state (including held `unknown` effects). Reconcile those in Odoo before erasing. Erasing or anonymizing the Odoo partner is an Odoo operator task, outside the engine.
 - The retention sweep deletes in bounded batches with `SKIP LOCKED`. Runs without `retention_expires_at` (all pre-#85 runs and synthetic runs) are never swept; erasure still finds them by `trigger_ref`.
 
-Not done in #85 (unknown until run): no live run of `scripts/erp_minimal_fixtures.py` against the isolated Odoo (JSON-2 `mail.blacklist` create is unverified, `F-056`), and no CLI or worker wiring for live ERP execution. The ERP execution path is library code covered by hermetic tests.
+ERP execution wiring: the worker runs `SCAN_MODE=erp`, then [erp_cli.py](../../src/engine/erp_cli.py) runs `propose` (a `fixed` token template at zero LLM cost, or `model`), then `show` (a tokenized proposal and a privacy preview that print only the recipient domain and HMAC destination hash), then `execute`. `execute` needs `--confirm-run-id` and `--confirm-destination` to match exactly. Inside Compose, email goes to the private `mailpit` service: `MailpitEmailAdapter` accepts a dot-free service name only with `allow_private_service=True`, and only if it resolves to private, non-loopback addresses.
+
+Live verification on the isolated `poc68-isolated` stack (2026-11-15):
+
+- The fixtures created all six scenarios through JSON-2. A re-run reused them (6 partners, 7 orders, 1 blacklist entry).
+- The Engine DB was migrated to `0011`, and opt-in was recorded for the four consented fixtures.
+- One `erp` scan of 22 carts created 2 runs (`eligible`, first `duplicate` cart). It skipped `missing_email` 1, `blacklisted` 1, `recent` 1, `no_consent` 16, and `active_run` 1. A re-scan created 0.
+- A fixed proposal, privacy preview, and `execute` delivered one Mailpit message to the fixture's live Odoo address, with the name rehydrated. A row scan of the run found 0 Engine DB rows with the raw name or email.
+
+Not verified live: a `model` ERP proposal (no LLM call was made), Telegram ERP dispatch, and a positive-discount ERP coupon.

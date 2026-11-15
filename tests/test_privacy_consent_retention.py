@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import inspect
 import json
@@ -18,6 +19,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import sqlalchemy as sa
 
+from engine import erp_cli
+from engine.channels import ChannelError, MailpitEmailAdapter
 from engine.config import normalize_database_url
 from engine.coupon_code import coupon_code_for_run
 from engine.db import RunRepository, create_engine, upgrade_schema
@@ -959,3 +962,125 @@ def test_tokenizer_masks_contacts_before_names_in_both_scripts() -> None:
         f"أنا {ARABIC_NAME} و{EMAIL} و {PHONE}"
     )
     assert "ليلى" not in json.dumps(arabic.token_map(), ensure_ascii=False)
+
+
+# --- #85 ERP operator CLI wiring ---------------------------------------------------
+
+
+class FakeLive:
+    def __init__(self, engine: sa.Engine, reader: Reader) -> None:
+        self.engine = engine
+        self.reader = reader
+        self.env: dict[str, str] = {}
+        self.recipients = Recipients()
+        self.coupons = Coupons()
+        self._gate = gate()
+
+    def gate(self) -> Any:
+        return self._gate
+
+    def execution(self, channel: object) -> ExecutionService:
+        return ExecutionService(
+            self.engine,
+            self.reader,
+            self._gate,
+            self.coupons,
+            Unused(),
+            ExecutionSettings(False, erp_enabled=True),
+            erp=ErpExecution(PRIVACY, ALLOW, self.recipients, lambda: None),
+        )
+
+
+@pytest.fixture
+def live(db: sa.Engine, customers: list[int]) -> Iterator[tuple[FakeLive, uuid.UUID]]:
+    customer = new_customer(customers)
+    order = random.randint(10**8, 10**9)
+    PrivacyRepository(db, PRIVACY).set_consent(customer, "email", "opted_in", source="test")
+    run, _ = RunRepository(db).create_run(
+        trigger_type="erp",
+        trigger_ref=f"{customer}:{order}",
+        idempotency_key=f"q12-test:{uuid.uuid4()}",
+        customer_id=str(customer),
+        retention_days=PRIVACY.retention_days,
+    )
+    yield FakeLive(db, Reader(make_cart(customer, order))), run.id
+
+
+def cli_args(**values: object) -> argparse.Namespace:
+    return argparse.Namespace(**values)
+
+
+def test_fixed_erp_proposal_previews_and_dispatches_only_after_exact_confirmation(
+    live: tuple[FakeLive, uuid.UUID], capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake, run_id = live
+    erp_cli.propose(
+        fake,  # type: ignore[arg-type]
+        cli_args(run_id=run_id, channel="mailpit", language="ar", mode="fixed", request=""),
+    )
+    shown = capsys.readouterr().out
+    assert "privacy_preview=passed recipient_domain=example.test" in shown
+    assert NAME not in shown and EMAIL not in shown
+    digest = shown.split("destination_hash=")[1].split()[0]
+    with pytest.raises(ValueError, match="confirm-run-id"):
+        erp_cli.execute(
+            fake,  # type: ignore[arg-type]
+            cli_args(run_id=run_id, confirm_run_id=uuid.uuid4(), confirm_destination=digest),
+        )
+    with pytest.raises(ValueError, match="confirm-destination"):
+        erp_cli.execute(
+            fake,  # type: ignore[arg-type]
+            cli_args(run_id=run_id, confirm_run_id=run_id, confirm_destination="0" * 64),
+        )
+    assert fake.recipients.sent == []
+    assert RunRepository(fake.engine).get_run(run_id).state is RunState.EVALUATING_POLICY
+    erp_cli.execute(
+        fake,  # type: ignore[arg-type]
+        cli_args(run_id=run_id, confirm_run_id=run_id, confirm_destination=digest),
+    )
+    [(destination, text)] = fake.recipients.sent
+    assert destination.target == EMAIL
+    assert text == f"مرحبا {NAME}، سلتك ما زالت بانتظارك."
+    stored = stored_text(fake.engine, run_id)
+    assert NAME not in stored and EMAIL not in stored
+    assert json.dumps("{{PII_NAME_1}}") in stored or "{{PII_NAME_1}}" in stored
+    assert RunRepository(fake.engine).get_run(run_id).state is RunState.COMPLETED
+
+
+def test_show_reports_privacy_refusal_without_pii(
+    live: tuple[FakeLive, uuid.UUID], capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake, run_id = live
+    erp_cli.propose(
+        fake,  # type: ignore[arg-type]
+        cli_args(run_id=run_id, channel="mailpit", language="en", mode="fixed", request=""),
+    )
+    capsys.readouterr()
+    PrivacyRepository(fake.engine, PRIVACY).set_consent(
+        fake.reader.cart.partner_id, "email", "opted_out", source="test"
+    )
+    erp_cli.show(fake, cli_args(run_id=run_id))  # type: ignore[arg-type]
+    out = capsys.readouterr().out
+    assert "privacy_preview=refused" in out and "destination_hash" not in out
+    assert EMAIL not in out
+
+
+def test_cli_refuses_outside_isolated_stack(capsys: pytest.CaptureFixture[str]) -> None:
+    assert erp_cli.main(["preflight", "--channel", "mailpit"], {}) == 1
+    assert "FULL_STACK_SYNTHETIC_ISOLATED" in capsys.readouterr().err
+
+
+def test_mailpit_private_service_host_is_opt_in_and_private_only() -> None:
+    with pytest.raises(ChannelError):
+        MailpitEmailAdapter("mailpit")
+    with patch(
+        "engine.channels.socket.getaddrinfo", return_value=[(0, 0, 0, "", ("172.20.0.5", 0))]
+    ):
+        MailpitEmailAdapter("mailpit", allow_private_service=True)
+    with (
+        patch("engine.channels.socket.getaddrinfo", return_value=[(0, 0, 0, "", ("8.8.8.8", 0))]),
+        pytest.raises(ChannelError),
+    ):
+        MailpitEmailAdapter("mailpit", allow_private_service=True)
+    with pytest.raises(ChannelError):
+        MailpitEmailAdapter("smtp.example.com", allow_private_service=True)

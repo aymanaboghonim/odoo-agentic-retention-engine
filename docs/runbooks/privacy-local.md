@@ -53,4 +53,24 @@ python -m scripts.erp_minimal_fixtures --preflight-only
 python -m scripts.erp_minimal_fixtures --confirmed-synthetic
 ```
 
-It creates six scenarios (`eligible`, `missing-email`, `blacklisted`, `recent`, `no-consent`, `duplicate`) and prints the consent commands for the four consented ones. Re-runs reuse the same records. This has not yet been run live (see the spec notes).
+It creates six scenarios (`eligible`, `missing-email`, `blacklisted`, `recent`, `no-consent`, `duplicate`) and prints the consent commands for the four consented ones. Re-runs reuse the same records. Verified live on 2026-11-15 (see the spec notes).
+
+## Live ERP flow on the isolated stack
+
+Set the Q12 values in `.env` (`PRIVACY_RETENTION_DAYS`, `PRIVACY_TOMBSTONE_PEPPER`, `CAMPAIGN_COOLDOWN_DAYS`, `ERP_SCAN_CHANNEL`, `EXECUTION_ALLOWLIST_DOMAINS`). Keep `SCAN_MODE`, `PROPOSAL_ERP_MODE`, and `EXECUTION_ERP_MODE` out of `.env`. Enable them per command, so the running worker stays synthetic. Rebuild the images and run `initialize` once to migrate to `0011`.
+
+```bash
+DC="docker compose --project-name poc68-isolated --env-file .env -f deploy/full-stack-compose.yml"
+$DC --profile proposal build initialize worker proposal
+$DC run --rm --no-deps initialize
+$DC run --rm --no-deps proposal python -m engine.privacy_cli consent grant \
+  --customer-id <partner_id> --channel email --source <evidence-ref>
+$DC run --rm --no-deps -e SCAN_MODE=erp worker python -m engine.full_stack_worker --once
+$DC run --rm --no-deps -e EXECUTION_ERP_MODE=YES proposal python -m engine.erp_cli preflight --channel mailpit
+$DC run --rm --no-deps -e EXECUTION_ERP_MODE=YES proposal python -m engine.erp_cli propose \
+  --run-id <run_id> --channel mailpit --language en --mode fixed
+$DC run --rm --no-deps -e EXECUTION_ERP_MODE=YES proposal python -m engine.erp_cli execute \
+  --run-id <run_id> --confirm-run-id <run_id> --confirm-destination <destination_hash>
+```
+
+The scan logs only skip counts. `propose` and `show` print the tokenized message, the recipient domain, and `destination_hash`, never the address. `execute` re-checks consent, the blacklist, the tombstone, and the allowlist, then rehydrates the message from the live cart and sends it. `--mode model` calls the LLM and needs `PROPOSAL_ERP_MODE=YES` plus an aggregate review budget (`PROPOSAL_REVIEW_ID`, `PROPOSAL_REVIEW_BUDGET_USD`).
