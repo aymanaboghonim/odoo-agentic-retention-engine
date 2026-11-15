@@ -186,7 +186,8 @@ def test_proposal_outbound_privacy(db: sa.Engine, run_id: uuid.UUID) -> None:
     generate(service(db, provider), run_id, "Hello Example Person test@example.com")
     serialized = json.dumps(provider.payload)
     assert "Example Person" not in serialized and "test@example.com" not in serialized
-    assert "[customer]" in serialized
+    # #85 (TM-2): opaque per-run tokens replace the old "[customer]" placeholder.
+    assert "{{PII_NAME_1}}" in serialized and "{{PII_EMAIL_1}}" in serialized
 
 
 def test_proposal_untrusted_input_is_data(db: sa.Engine, run_id: uuid.UUID) -> None:

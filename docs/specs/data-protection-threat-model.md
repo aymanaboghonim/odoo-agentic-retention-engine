@@ -1,8 +1,8 @@
 # Spec: Data protection and AI threat model
 
-- Issue: #27
+- Issue: #27 (promoted to [privacy, PII tokenization, consent, retention, and right-to-erasure](privacy-consent-retention.md) in #85)
 - ADRs: ADR-0001 (AI database, read-only Odoo access), ADR-0003 (PII masking, synthetic data), ADR-0013 (POC channels), ADR-0007 (observability data).
-- Status: draft
+- Status: draft (invariants TM-1..TM-8 implemented and verified in [privacy-consent-retention.md](privacy-consent-retention.md))
 
 ## Purpose
 

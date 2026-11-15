@@ -107,15 +107,27 @@ class AbandonedCart:
     amount_total: Decimal
     date_order: datetime
     lines: tuple[CartLine, ...]
+    partner_phone: str = ""
+    # None means unknown; generalized ERP paths require an explicit False (fail closed).
+    email_blacklisted: bool | None = None
+    # The website's abandoned-cart delay; None means unknown (treated as not yet abandoned).
+    abandoned_delay_hours: float | None = None
 
     def age_hours(self, now: datetime) -> float:
         return (now - self.date_order).total_seconds() / 3600
 
 
-_CART_SELECT = """
+# F-056: Odoo 19 stores blacklisted addresses in mail_blacklist(email, active), matched on
+# res_partner.email_normalized; res_partner.phone exists and there is no mobile column.
+_CART_COLUMNS = """
 SELECT so.id, so.name, so.date_order, so.amount_total, so.company_id,
        cur.name AS currency, p.id AS partner_id, p.name AS partner_name,
-       p.email AS partner_email, p.lang AS language
+       COALESCE(p.email, '') AS partner_email, COALESCE(p.phone, '') AS partner_phone,
+       p.lang AS language, w.cart_abandoned_delay AS abandoned_delay_hours,
+       EXISTS (
+           SELECT 1 FROM mail_blacklist bl
+           WHERE bl.active AND bl.email = p.email_normalized
+       ) AS email_blacklisted
 FROM sale_order so
 JOIN website w ON w.id = so.website_id
 JOIN res_users wu ON wu.id = w.user_id
@@ -123,12 +135,26 @@ JOIN res_partner p ON p.id = so.partner_id
 JOIN res_currency cur ON cur.id = so.currency_id
 WHERE so.state = 'draft'
   AND so.partner_id <> wu.partner_id
-  AND COALESCE(p.email, '') <> ''
   AND EXISTS (
       SELECT 1 FROM sale_order_line l
       WHERE l.order_id = so.id AND l.display_type IS NULL AND l.product_id IS NOT NULL
   )
 """
+
+_CART_SELECT = _CART_COLUMNS + "  AND COALESCE(p.email, '') <> ''\n"
+
+# Generalized ERP scan: pages every website draft cart by ID. Email, blacklist, consent,
+# recency, and duplicate filters are applied by ErpCartScanner so every skip is counted.
+_ERP_SCAN_SQL = (
+    _CART_COLUMNS
+    + """  AND so.id > %(after_id)s
+ORDER BY so.id
+LIMIT %(limit)s
+"""
+)
+
+_MODULE_STATE_SQL = "SELECT state FROM ir_module_module WHERE name = %(name)s"
+LOYALTY_MODULE = "website_sale_loyalty"
 
 _SCAN_SQL = (
     _CART_SELECT
@@ -228,6 +254,25 @@ class OdooReader:
             ).fetchall()
             return [self._cart(conn, row) for row in rows]
 
+    def scan_erp_carts(self, *, after_id: int, limit: int) -> list[AbandonedCart]:
+        """Page over all website draft carts by stable order ID (read-only)."""
+        if after_id < 0 or not 1 <= limit <= 1000:
+            raise ValueError("invalid ERP scan cursor or page limit")
+        with self._connect() as conn:
+            rows = conn.execute(_ERP_SCAN_SQL, {"after_id": after_id, "limit": limit}).fetchall()
+            return [self._cart(conn, row) for row in rows]
+
+    def verify_loyalty_module_installed(self) -> None:
+        """F-042: positive-discount ERP runs need website_sale_loyalty in state installed."""
+        with self._connect() as conn:
+            row = conn.execute(_MODULE_STATE_SQL, {"name": LOYALTY_MODULE}).fetchone()
+        if row is None or row.get("state") != "installed":
+            raise OdooConfigError(f"{LOYALTY_MODULE} is not installed in Odoo")
+
+    def verify_readonly_role(self) -> None:
+        """Reject a role with elevated privileges before any read-only scan."""
+        self.verify_synthetic_readonly_role()
+
     def verify_synthetic_readonly_role(self) -> None:
         """Reject a role with elevated privileges before starting synthetic scans."""
         with self._connect() as conn:
@@ -270,6 +315,15 @@ class OdooReader:
             currency=row["currency"],
             amount_total=Decimal(row["amount_total"]),
             date_order=row["date_order"].replace(tzinfo=UTC),
+            partner_phone=row.get("partner_phone") or "",
+            email_blacklisted=(
+                row["email_blacklisted"] if isinstance(row.get("email_blacklisted"), bool) else None
+            ),
+            abandoned_delay_hours=(
+                float(row["abandoned_delay_hours"])
+                if row.get("abandoned_delay_hours") is not None
+                else None
+            ),
             lines=tuple(
                 CartLine(
                     product_id=line["product_id"],

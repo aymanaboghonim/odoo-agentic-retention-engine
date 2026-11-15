@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +30,27 @@ runs = sa.Table(
     sa.Column("failure_reason", sa.Text(), nullable=True),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("customer_id", sa.Text(), nullable=True, index=True),
+    sa.Column("retention_expires_at", sa.DateTime(timezone=True), nullable=True, index=True),
+)
+
+customer_consents = sa.Table(
+    "customer_consents",
+    metadata,
+    sa.Column("customer_id", sa.Text(), primary_key=True),
+    sa.Column("channel", sa.Text(), primary_key=True),
+    sa.Column("status", sa.Text(), nullable=False),
+    sa.Column("source", sa.Text(), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+erasure_requests = sa.Table(
+    "erasure_requests",
+    metadata,
+    sa.Column("subject_hash", sa.Text(), primary_key=True),
+    sa.Column("erased_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("runs_deleted", sa.Integer(), nullable=False),
+    sa.Column("reconsented_at", sa.DateTime(timezone=True), nullable=True),
 )
 
 run_events = sa.Table(
@@ -174,7 +195,14 @@ class RunRepository:
         self._engine = engine
 
     def create_run(
-        self, *, trigger_type: str, trigger_ref: str, idempotency_key: str, actor: str = "system"
+        self,
+        *,
+        trigger_type: str,
+        trigger_ref: str,
+        idempotency_key: str,
+        actor: str = "system",
+        customer_id: str | None = None,
+        retention_days: int | None = None,
     ) -> tuple[Run, bool]:
         """Return (run, created). A repeated idempotency key returns the existing run."""
         with self._engine.begin() as conn:
@@ -184,6 +212,8 @@ class RunRepository:
                 trigger_ref=trigger_ref,
                 idempotency_key=idempotency_key,
                 actor=actor,
+                customer_id=customer_id,
+                retention_days=retention_days,
             )
 
     def create_run_in_transaction(
@@ -194,8 +224,22 @@ class RunRepository:
         trigger_ref: str,
         idempotency_key: str,
         actor: str = "system",
+        customer_id: str | None = None,
+        retention_days: int | None = None,
     ) -> tuple[Run, bool]:
-        """Create a run and audit event within the caller's transaction."""
+        """Create a run and audit event within the caller's transaction.
+
+        `customer_id` is the opaque Odoo partner ID, never a name or contact value.
+        `retention_days` sets `retention_expires_at`; it must be at least one day.
+        """
+        if retention_days is not None and (
+            not isinstance(retention_days, int)
+            or isinstance(retention_days, bool)
+            or retention_days < 1
+        ):
+            raise ValueError("retention days must be an integer of at least 1")
+        if customer_id is not None and (not customer_id.isdigit() or customer_id.startswith("0")):
+            raise ValueError("customer ID must be a positive Odoo partner ID")
         now = datetime.now(UTC)
         run_id = uuid.uuid4()
         inserted = conn.execute(
@@ -208,6 +252,10 @@ class RunRepository:
                 idempotency_key=idempotency_key,
                 created_at=now,
                 updated_at=now,
+                customer_id=customer_id,
+                retention_expires_at=(
+                    now + timedelta(days=retention_days) if retention_days is not None else None
+                ),
             )
             .on_conflict_do_nothing(index_elements=["idempotency_key"])
             .returning(runs.c.id)
@@ -863,3 +911,31 @@ class RunRepository:
             detail={"reason": reason},
             failure_reason=reason,
         )
+
+
+# Child tables in foreign-key-safe delete order. Several FKs from migrations 0001-0010 do not
+# cascade, so each child is deleted explicitly before `runs`. `approval_requests`,
+# `execution_claims`, and `execution_effects` cascade, but are listed for clarity.
+_RUN_CHILD_DELETES = (
+    "DELETE FROM proposal_calls WHERE run_id = ANY(:ids)",
+    "DELETE FROM proposal_budget WHERE run_id = ANY(:ids)",
+    "DELETE FROM capacity_proposal_claim WHERE run_id = ANY(:ids)",
+    "DELETE FROM execution_effects WHERE run_id = ANY(:ids)",
+    "DELETE FROM execution_claims WHERE run_id = ANY(:ids)",
+    "DELETE FROM approval_requests WHERE run_id = ANY(:ids)",
+    "DELETE FROM agent_proposals WHERE run_id = ANY(:ids)",
+    "DELETE FROM run_events WHERE run_id = ANY(:ids)",
+    # `gate_coupon_reservations.run_id` is text, not a foreign key.
+    "DELETE FROM gate_coupon_reservations WHERE run_id = ANY(:text_ids)",
+)
+
+
+def delete_runs_in_transaction(conn: Connection, run_ids: list[uuid.UUID]) -> int:
+    """Delete runs and every dependent Engine DB row inside the caller's transaction."""
+    if not run_ids:
+        return 0
+    params = {"ids": list(run_ids), "text_ids": [str(run_id) for run_id in run_ids]}
+    for statement in _RUN_CHILD_DELETES:
+        conn.execute(sa.text(statement), params)
+    deleted = conn.execute(runs.delete().where(runs.c.id.in_(run_ids)).returning(runs.c.id)).all()
+    return len(deleted)

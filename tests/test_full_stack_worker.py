@@ -81,3 +81,52 @@ def test_worker_refuses_to_start_if_role_check_fails() -> None:
     ):
         main([])
     create.assert_not_called()
+
+
+def test_erp_scan_mode_requires_explicit_q12_settings() -> None:
+    erp_env = {**ENV, "SCAN_MODE": "erp"}
+    with pytest.raises(ValueError, match="ERP_SCAN_CHANNEL"):
+        WorkerSettings.from_env(erp_env)
+    with pytest.raises(ValueError, match="COOLDOWN"):
+        WorkerSettings.from_env({**erp_env, "ERP_SCAN_CHANNEL": "email"})
+    with pytest.raises(ValueError, match="PRIVACY_RETENTION_DAYS"):
+        WorkerSettings.from_env(
+            {**erp_env, "ERP_SCAN_CHANNEL": "email", "CAMPAIGN_COOLDOWN_DAYS": "7"}
+        )
+    with pytest.raises(ValueError, match="SCAN_MODE"):
+        WorkerSettings.from_env({**ENV, "SCAN_MODE": "everything"})
+    settings = WorkerSettings.from_env(
+        {
+            **erp_env,
+            "ERP_SCAN_CHANNEL": "email",
+            "CAMPAIGN_COOLDOWN_DAYS": "7",
+            "PRIVACY_RETENTION_DAYS": "30",
+            "PRIVACY_TOMBSTONE_PEPPER": "p" * 32,
+        }
+    )
+    assert settings.scan_mode == "erp" and settings.erp is not None
+    assert "p" * 32 not in repr(settings)
+    assert WorkerSettings.from_env(ENV).scan_mode == "synthetic"
+    reader = MagicMock()
+    with (
+        patch.dict(
+            "os.environ",
+            {
+                **erp_env,
+                **{
+                    "ERP_SCAN_CHANNEL": "email",
+                    "CAMPAIGN_COOLDOWN_DAYS": "7",
+                    "PRIVACY_RETENTION_DAYS": "30",
+                    "PRIVACY_TOMBSTONE_PEPPER": "p" * 32,
+                },
+            },
+            clear=True,
+        ),
+        patch("engine.full_stack_worker.OdooReader", return_value=reader),
+        patch("engine.full_stack_worker.create_engine", return_value=MagicMock()),
+        patch("engine.full_stack_worker.run_scheduled_scans") as scheduled,
+        patch("engine.full_stack_worker.signal.signal"),
+    ):
+        main([])
+    reader.verify_readonly_role.assert_called_once_with()
+    assert type(scheduled.call_args.args[0]).__name__ == "_ErpScanPage"

@@ -331,6 +331,10 @@ def test_no_sql_write_path_in_adapter() -> None:
         "scan_abandoned_carts",
         "scan_synthetic_review_carts",
         "verify_synthetic_readonly_role",
+        # #85 (Q12): read-only ERP scan, role check, and F-042 module preflight.
+        "scan_erp_carts",
+        "verify_readonly_role",
+        "verify_loyalty_module_installed",
         "get_synthetic_review_cart",
         "get_cart",
         "get_abandoned_cart",
