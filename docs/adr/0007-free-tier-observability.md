@@ -1,6 +1,6 @@
 # ADR-0007: Free-tier observability, same stack for POC and MVP
 
-- Status: accepted
+- Status: superseded by ADR-0020
 - Date: 2026-10-24
 
 ## Context
