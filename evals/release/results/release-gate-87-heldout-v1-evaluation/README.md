@@ -6,7 +6,7 @@
 - Cases evaluated: 44; estimated generation spend: USD 0.005983375000; conservative aggregate reservation: USD 0.206820000000 (ceiling USD 1.90).
 - Raw per-case data: [raw.json](raw.json).
 
-Held-out set: written by Claude Code after prompt tuning and not used to tune it. The wording and the Arabic are pending owner review.
+Held-out set: written by Claude Code after prompt tuning and not used to tune it. The wording and the Arabic were reviewed by the owner on 2026-11-16 (no changes requested).
 
 ## Result: PASSED
 

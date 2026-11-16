@@ -28,6 +28,16 @@ The provider client timeout is 30 s. Traffic is small, so a window can hold few 
 
 These are starting values from a small synthetic sample (106 calls, one provider, one model). They are not a promise of production behavior. Review them after the first real traffic and change them in a new ADR.
 
+## Enable or disable
+
+The owner delegated this choice to Claude Code on 2026-11-16. Decision: **enabled**.
+
+- The breaker's only action is `active` to `fallback_fixed_rule`: a 0% reminder through the same Gate and consent path. A false trip costs some offer quality until an admin re-enables, and nothing unsafe is sent.
+- Without it, a provider outage keeps failing runs until a person notices; with it, the engine degrades by itself after about 3 failures in 15 minutes.
+- It cannot halt the engine and cannot re-enable it, so it cannot silence the engine for good.
+- It is covered by tests (trip, minimum sample, no re-enable, audit) and the fallback it triggers was checked live on 2026-11-16; the trip itself has not been triggered by a real provider failure.
+- Counter-risk: the numbers come from synthetic traffic, so a quiet false trip is possible. Revisit after the first real traffic; turn it off with `BREAKER_ENABLED=NO` (no redeploy of code) if it trips without a real fault.
+
 ## Consequences
 
 - The deployment defaults in `deploy/full-stack-compose.yml` and `.env.example` carry these values. The code still has no defaults and fails closed on a missing or invalid value when enabled.

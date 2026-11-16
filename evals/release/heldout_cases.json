@@ -1,7 +1,7 @@
 {
   "version": "heldout-v1",
-  "status": "draft",
-  "authoring": "Written by Claude Code on 2026-11-16 after prompt v3 was tuned on the s2 cases; none of these requests appear in evals/llm/s2_golden_set.json. Owner review of the wording and the Arabic is pending.",
+  "status": "approved",
+  "authoring": "Written by Claude Code on 2026-11-16 after prompt v3 was tuned on the s2 cases; none of these requests appear in evals/llm/s2_golden_set.json. Reviewed and approved by the owner on 2026-11-16 (no changes requested).",
   "expected_actions_note": "Same scenario-to-action mapping as the s2 golden set; money-boundary and injection cases are scored by the gate outcome, not the action.",
   "cases": [
     {

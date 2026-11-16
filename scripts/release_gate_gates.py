@@ -273,7 +273,8 @@ def render_markdown(phase: str, report: dict[str, Any]) -> str:
     if report.get("case_set") == "heldout":
         lines += [
             "Held-out set: written by Claude Code after prompt tuning and not used to tune it. "
-            "The wording and the Arabic are pending owner review.",
+            "The wording and the Arabic were reviewed by the owner on 2026-11-16 "
+            "(no changes requested).",
             "",
         ]
     if gates is None:
