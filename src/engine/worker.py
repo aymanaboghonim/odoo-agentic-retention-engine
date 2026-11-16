@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from engine.channels import ChannelError, TelegramMessageSender
+from engine.runtime_state import RuntimeGuard, RuntimeState
 
 S4_LIVE_TEST_MESSAGE = "S4 channel verification: synthetic test only. No customer data."
 LOG = logging.getLogger(__name__)
@@ -16,6 +17,20 @@ LOG = logging.getLogger(__name__)
 
 class ScanPage(Protocol):
     def scan_page(self, *, now: datetime) -> tuple[int, int]: ...
+
+
+class GuardedScan:
+    """Spec KS-3: a halted engine creates no runs. Reading the state fails closed."""
+
+    def __init__(self, scanner: ScanPage, guard: RuntimeGuard) -> None:
+        self._scanner = scanner
+        self._guard = guard
+
+    def scan_page(self, *, now: datetime) -> tuple[int, int]:
+        if self._guard.state() is RuntimeState.HALTED:
+            LOG.info("stage=scan status=skipped reason=engine_halted")
+            return 0, 0
+        return self._scanner.scan_page(now=now)
 
 
 def run_scheduled_scans(

@@ -88,6 +88,29 @@ approval_requests = sa.Table(
     sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False, index=True),
 )
 
+engine_runtime_state = sa.Table(
+    "engine_runtime_state",
+    metadata,
+    sa.Column("id", sa.SmallInteger(), primary_key=True),
+    sa.Column("state", sa.Text(), nullable=False),
+    sa.Column("reason", sa.Text(), nullable=False),
+    sa.Column("changed_by", sa.Text(), nullable=False),
+    sa.Column("changed_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("version", sa.Integer(), nullable=False),
+)
+
+engine_runtime_events = sa.Table(
+    "engine_runtime_events",
+    metadata,
+    sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
+    sa.Column("from_state", sa.Text(), nullable=False),
+    sa.Column("to_state", sa.Text(), nullable=False),
+    sa.Column("actor", sa.Text(), nullable=False),
+    sa.Column("reason", sa.Text(), nullable=False),
+    sa.Column("version", sa.Integer(), nullable=False),
+    sa.Column("at", sa.DateTime(timezone=True), nullable=False),
+)
+
 execution_claims = sa.Table(
     "execution_claims",
     metadata,

@@ -20,7 +20,6 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
-from decimal import Decimal
 from typing import Literal, cast
 
 import sqlalchemy as sa
@@ -34,6 +33,7 @@ from engine.execution import (
     ExecutionService,
     ExecutionSettings,
 )
+from engine.fixed_rule import build_fixed_offer
 from engine.full_stack_worker import WorkerSettings
 from engine.gate_ledger import PostgresGateLedger
 from engine.odoo import (
@@ -43,9 +43,8 @@ from engine.odoo import (
     OdooReader,
     OdooSettings,
     cart_snapshot,
-    cart_to_proposal_inputs,
 )
-from engine.policy import Gate, GateConfig, OfferProposal, Outcome, as_dict
+from engine.policy import Gate, GateConfig, Outcome, as_dict
 from engine.privacy import AllowlistGuard, PiiTokenizer, PrivacySettings, consent_channel
 from engine.proposal import approval_ttl_from_env
 from engine.runs import RunState
@@ -192,7 +191,6 @@ def _fixed_proposal(
         (RunState.LOADING_CONTEXT, RunState.GENERATING_PROPOSAL),
     ):
         repo.transition(run_id, previous, current, actor="erp-operator")
-    total, cost = cart_to_proposal_inputs(cart)
     categories = {line.category for line in cart.lines}
     if len(categories) != 1:
         repo.fail(run_id, reason="fixed_proposal_requires_single_category", actor="erp-operator")
@@ -201,18 +199,11 @@ def _fixed_proposal(
     if "{{PII_NAME_1}}" not in tokenizer.issued():
         repo.fail(run_id, reason="fixed_proposal_requires_name", actor="erp-operator")
         raise ValueError("fixed ERP proposal requires a customer name in Odoo")
-    offer = OfferProposal(
-        run_id=str(run_id),
-        customer_id=str(cart.partner_id),
-        cart_id=str(cart.order_id),
-        cart_owner_id=str(cart.partner_id),
-        category=next(iter(categories)),
-        currency=cart.currency,
-        eligible_total=total,
-        eligible_unit_cost_total=cost,
-        proposed_discount_percent=Decimal(0),
-        customer_message=FIXED_MESSAGES[language],
-        language="en" if language == "en" else "ar",
+    offer = build_fixed_offer(
+        run_id,
+        cart,
+        "en" if language == "en" else "ar",
+        message=FIXED_MESSAGES[language],
     )
     gate = live.gate()
     decision = gate.evaluate(offer, now=datetime.now(UTC))

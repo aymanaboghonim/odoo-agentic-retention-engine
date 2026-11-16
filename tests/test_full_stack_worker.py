@@ -1,11 +1,25 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from engine.full_stack_worker import WorkerSettings, main
+from engine.runtime_state import RuntimeSnapshot, RuntimeState
+from engine.worker import GuardedScan
+
+
+class FakeRuntime:
+    """Stands in for the runtime-state table, which the mocked engine cannot serve."""
+
+    def __init__(self, state: RuntimeState = RuntimeState.ACTIVE) -> None:
+        self.state = state
+
+    def get(self) -> RuntimeSnapshot:
+        return RuntimeSnapshot(self.state, "test", "test", datetime.now(UTC), 1)
+
 
 ENV = {
     "FULL_STACK_SYNTHETIC_ISOLATED": "YES",
@@ -59,6 +73,7 @@ def test_worker_one_shot_scans_one_page_and_exits() -> None:
         patch("engine.full_stack_worker.OdooReader", return_value=reader),
         patch("engine.full_stack_worker.create_engine", return_value=engine),
         patch("engine.full_stack_worker.SyntheticCartScanner", return_value=scanner),
+        patch("engine.full_stack_worker.RuntimeStateRepository", return_value=FakeRuntime()),
         patch("engine.full_stack_worker.run_scheduled_scans") as scheduled,
         patch("engine.full_stack_worker.signal.signal"),
     ):
@@ -129,4 +144,38 @@ def test_erp_scan_mode_requires_explicit_q12_settings() -> None:
     ):
         main([])
     reader.verify_readonly_role.assert_called_once_with()
-    assert type(scheduled.call_args.args[0]).__name__ == "_ErpScanPage"
+    guarded = scheduled.call_args.args[0]
+    assert isinstance(guarded, GuardedScan)
+    assert type(guarded._scanner).__name__ == "_ErpScanPage"
+
+
+def test_halted_worker_skips_the_scan_but_still_runs_maintenance() -> None:
+    """KS-3: a halted runtime state creates no runs; the loop and maintenance still run."""
+    reader = MagicMock()
+    engine = MagicMock()
+    scanner = MagicMock()
+    with (
+        patch.dict("os.environ", ENV, clear=True),
+        patch("engine.full_stack_worker.OdooReader", return_value=reader),
+        patch("engine.full_stack_worker.create_engine", return_value=engine),
+        patch("engine.full_stack_worker.SyntheticCartScanner", return_value=scanner),
+        patch(
+            "engine.full_stack_worker.RuntimeStateRepository",
+            return_value=FakeRuntime(RuntimeState.HALTED),
+        ),
+        patch("engine.full_stack_worker.signal.signal"),
+    ):
+        main(["--once"])
+    scanner.scan_page.assert_not_called()
+
+
+def test_invalid_breaker_settings_stop_the_worker_before_any_database_work() -> None:
+    with (
+        patch.dict("os.environ", {**ENV, "BREAKER_ENABLED": "YES"}, clear=True),
+        patch("engine.full_stack_worker.OdooReader") as odoo,
+        patch("engine.full_stack_worker.create_engine") as create,
+        pytest.raises(ValueError, match="breaker settings"),
+    ):
+        main(["--once"])
+    odoo.assert_not_called()
+    create.assert_not_called()

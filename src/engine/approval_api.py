@@ -15,6 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from engine.auth import AuthError, AuthSettings, Principal, TokenVerifier
 from engine.config import EngineConfig
 from engine.db import ApprovalConflict, RunRepository, approval_requests, create_engine
+from engine.runtime_state import (
+    RuntimeState,
+    RuntimeStateConflict,
+    RuntimeStateError,
+    RuntimeStateRepository,
+)
 
 ORIGIN_HEADER = "x-origin-verify"
 
@@ -26,6 +32,14 @@ class DecisionInput(BaseModel):
     decision: Literal["approve", "reject"]
 
 
+class RuntimeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["active", "fallback_fixed_rule", "halted"]
+    reason: str = Field(min_length=3, max_length=200)
+    expected_version: int | None = Field(default=None, ge=1)
+
+
 def _is_loopback(request: Request) -> bool:
     try:
         return request.client is not None and ipaddress.ip_address(request.client.host).is_loopback
@@ -34,7 +48,11 @@ def _is_loopback(request: Request) -> bool:
 
 
 def create_app(
-    repo: RunRepository, verifier: TokenVerifier, *, origin_verify_secret: str | None = None
+    repo: RunRepository,
+    verifier: TokenVerifier,
+    *,
+    origin_verify_secret: str | None = None,
+    runtime: RuntimeStateRepository | None = None,
 ) -> FastAPI:
     """Approval API: behind CloudFront with an origin secret, otherwise loopback only."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -102,6 +120,36 @@ def create_app(
             ) from error
         return {"run_id": str(run.id), "state": run.state.value, "decision": payload.decision}
 
+    if runtime is not None:
+
+        @app.get("/runtime")
+        def read_runtime(
+            principal: Principal = Depends(require_role("viewer")),
+        ) -> dict[str, object]:
+            return runtime.get().as_dict()
+
+        @app.post("/runtime/state")
+        def change_runtime(
+            payload: RuntimeInput, principal: Principal = Depends(require_role("admin"))
+        ) -> dict[str, object]:
+            # KS-2: admin only. The actor is the token sub; the reason is validated as non-PII.
+            try:
+                snapshot = runtime.set_state(
+                    RuntimeState(payload.state),
+                    actor=principal.subject,
+                    reason=payload.reason,
+                    expected_version=payload.expected_version,
+                )
+            except RuntimeStateConflict as error:
+                raise HTTPException(
+                    status_code=409, detail="runtime state changed or is already set"
+                ) from error
+            except RuntimeStateError as error:
+                raise HTTPException(
+                    status_code=422, detail="invalid runtime state change"
+                ) from error
+            return snapshot.as_dict()
+
     return app
 
 
@@ -135,6 +183,7 @@ def main() -> None:
                 RunRepository(engine),
                 verifier,
                 origin_verify_secret=settings.origin_verify_secret,
+                runtime=RuntimeStateRepository(engine),
             ),
             host=host,
             port=port,

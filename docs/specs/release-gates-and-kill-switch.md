@@ -7,7 +7,7 @@
   [ADR-0022](../adr/0022-runtime-state-fixed-rule-fallback-and-breaker.md)
 - Related specs: [safety gate](safety-gate.md), [operator RBAC](operator-rbac-and-expiring-approvals.md),
   [POC-2 evaluation](poc2-end-to-end-evaluation.md), [run governance](project-wide-run-governance.md)
-- Status: draft (owner to mark `agreed`)
+- Status: agreed (owner, 2026-11-16)
 
 ## Purpose
 
@@ -97,6 +97,16 @@ For zero-tolerance gates the report also gives the rule-of-three 95% upper bound
 
 ## Open questions
 
-- The exact case count after mapping the reviewed S2 cases (`unknown` until the mapping runs).
 - The breaker numbers; set by the owner from the measured baseline in the PR.
 - Odoo-side handling of reminders sent before a halt is out of scope.
+- A decimal percent in message text (for example `10.5%`) is rejected by the gate because its message check splits on `.`; it fails closed and was not changed in #87. A follow-up should decide whether the gate should parse decimals.
+
+## Implementation notes (#87)
+
+Code: [runtime_state.py](../../src/engine/runtime_state.py), [fixed_rule.py](../../src/engine/fixed_rule.py), [breaker.py](../../src/engine/breaker.py), migration [0013](../../src/engine/migrations/versions/0013_runtime_state.py), enforcement in [proposal.py](../../src/engine/proposal.py), [execution.py](../../src/engine/execution.py), [worker.py](../../src/engine/worker.py), [full_stack_worker.py](../../src/engine/full_stack_worker.py), admin routes in [approval_api.py](../../src/engine/approval_api.py), and the evaluation in [release_gate_cases.py](../../scripts/release_gate_cases.py), [release_gate_gates.py](../../scripts/release_gate_gates.py), [release_gate_eval.py](../../scripts/release_gate_eval.py). Tests: [test_runtime_state.py](../../tests/test_runtime_state.py), [test_fallback_and_breaker.py](../../tests/test_fallback_and_breaker.py), [test_release_gates.py](../../tests/test_release_gates.py). Runbook: [kill-switch.md](../runbooks/kill-switch.md).
+
+Measured case inventory (the count the draft left `unknown`): the golden set has 132 reviewed cases. The evaluation maps 60 English and MSA cases that the runtime represents faithfully (20 English, 40 MSA) and adds the 2 runtime injection cases, so **62 cases (21 English, 41 Arabic)**. Excluded, with reasons recorded in the report: 42 dialect and code-switch cases (`Q15`), 15 cases whose injection text is in a cart description the runtime never sends, 11 cases on a recent cart (an eligibility rule of the scanner), and 4 on a missing cart. With 21 English cases, a clean zero-tolerance result still leaves a 95% upper bound of about 14%.
+
+Settings added: `BREAKER_ENABLED`, `BREAKER_WINDOW_MINUTES`, `BREAKER_MIN_SAMPLE`, `BREAKER_MAX_FAILURE_RATE_PERCENT`, `BREAKER_MAX_P95_SECONDS` (all empty by default, so the breaker is off). The state is changed with `approval_cli runtime` and `set-runtime` (admin).
+
+Not done in #87: the live evaluation and a live halt/fallback check on the isolated stack (both need owner approval); the report and the breaker numbers follow from them.

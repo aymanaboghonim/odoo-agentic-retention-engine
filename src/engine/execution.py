@@ -16,6 +16,7 @@ from engine.approval_data import offer_from_record, snapshot_hash
 from engine.channels import EmailPort, TelegramMessageSender
 from engine.coupon_code import coupon_code_for_run
 from engine.db import ApprovalConflict, ApprovalExpired, ExecutionConflict, RunRepository
+from engine.fixed_rule import FIXED_SCHEMA
 from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, GateApproval, GateRejected, OfferProposal
 from engine.privacy import (
@@ -29,6 +30,7 @@ from engine.privacy import (
     rehydrate,
 )
 from engine.runs import RunState
+from engine.runtime_state import RuntimeGuard, RuntimeState
 
 MAILPIT_REVIEW_RECIPIENT = "retention-review@example.test"
 MAILPIT_REVIEW_SENDER = "retention-engine@example.test"
@@ -48,6 +50,16 @@ class KnownNotSent(ExecutionError):
 
 class ApprovalExpiredError(ExecutionError):
     """The human approval passed its `expires_at`; nothing was claimed or sent (spec AA-7)."""
+
+
+class EngineHeldError(ExecutionError):
+    """The runtime state forbids this execution (spec KS-3, KS-4). Nothing was sent."""
+
+    def __init__(self, reason: Literal["engine_halted", "engine_fallback"]) -> None:
+        super().__init__(
+            "engine is halted" if reason == "engine_halted" else "engine is in fallback mode"
+        )
+        self.reason = reason
 
 
 class PrivacyRejected(ExecutionError):
@@ -279,7 +291,9 @@ class ExecutionService:
         settings: ExecutionSettings,
         *,
         erp: ErpExecution | None = None,
+        runtime: RuntimeGuard | None = None,
     ) -> None:
+        self._runtime = runtime
         self._engine = engine
         self._runs = RunRepository(engine)
         self._carts = carts
@@ -326,6 +340,14 @@ class ExecutionService:
             self._rehydrate(record.proposal, proposal.customer_message, cart)
         return recipient
 
+    def _check_runtime(self, schema_version: str) -> None:
+        """Spec KS-3/KS-4: refuse while halted, and hold LLM proposals during fallback."""
+        state = self._runtime.state() if self._runtime is not None else RuntimeState.ACTIVE
+        if state is RuntimeState.HALTED:
+            raise EngineHeldError("engine_halted")
+        if state is RuntimeState.FALLBACK and schema_version != FIXED_SCHEMA:
+            raise EngineHeldError("engine_fallback")
+
     def _reject_expired(self, run_id: uuid.UUID) -> ApprovalExpiredError:
         """Record that an expired approval stopped this run, from whichever state it is in."""
         current = self._runs.get_run(run_id)
@@ -353,6 +375,8 @@ class ExecutionService:
             raise ExecutionError("proposal or human approval is not ready for execution") from error
         if record.state is not RunState.EVALUATING_POLICY:
             raise ExecutionError("run is not awaiting execution authorization")
+        # Before the gate reserves budget and before any claim: a held run changes nothing.
+        self._check_runtime(record.schema_version)
         channel = record.proposal.get("execution_channel")
         if test_destination is not None and channel != test_destination.channel:
             raise ExecutionError("execution channel differs from the approved proposal")
@@ -503,6 +527,7 @@ class ExecutionService:
             raise ExecutionError("approved proposal changed during execution") from error
         if record.state is not RunState.EXECUTING or record.context_hash != context_hash:
             raise ExecutionError("approved proposal changed during execution")
+        self._check_runtime(record.schema_version)
         if record.proposal != stored_proposal:
             raise ExecutionError("execution proposal binding changed")
         try:
@@ -548,11 +573,12 @@ class ExecutionService:
                 run_id, context_hash, stored_proposal, proposal, approval
             )
         except ExecutionError as error:
-            reason = (
-                "approval_expired"
-                if isinstance(error, ApprovalExpiredError)
-                else "execution_revalidation_failed"
-            )
+            if isinstance(error, ApprovalExpiredError):
+                reason = "approval_expired"
+            elif isinstance(error, EngineHeldError):
+                reason = error.reason
+            else:
+                reason = "execution_revalidation_failed"
             self._runs.fail(run_id, reason=reason, actor="worker")
             raise
 
