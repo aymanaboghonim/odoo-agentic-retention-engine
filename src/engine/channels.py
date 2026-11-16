@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import smtplib
+import socket
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -153,13 +154,34 @@ class TelegramUpdatePoller:
         return delivered
 
 
+def _private_service(host: str) -> bool:
+    """A Compose service name that resolves only to private, non-public addresses."""
+    if not host or "." in host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    addresses = {ipaddress.ip_address(info[4][0]) for info in infos}
+    return bool(addresses) and all(
+        address.is_private and not address.is_loopback for address in addresses
+    )
+
+
 class MailpitEmailAdapter:
-    def __init__(self, host: str = "127.0.0.1", port: int = 1025, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 1025,
+        timeout: float = 10.0,
+        *,
+        allow_private_service: bool = False,
+    ) -> None:
         try:
             is_loopback = ipaddress.ip_address(host).is_loopback
         except ValueError:
             is_loopback = False
-        if not is_loopback:
+        if not is_loopback and not (allow_private_service and _private_service(host)):
             raise ChannelError("Mailpit SMTP host must be a loopback IP address.")
         if not 1 <= port <= 65535:
             raise ChannelError("Mailpit SMTP port must be between 1 and 65535.")

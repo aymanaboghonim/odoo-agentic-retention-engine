@@ -16,6 +16,7 @@ from engine.coupon_code import coupon_code_for_run
 from engine.db import RunRepository
 from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, OfferProposal, Outcome, as_dict
+from engine.privacy import PiiTokenizer, PrivacyError, has_unknown_tokens
 from engine.proposal_budget import BudgetError, ProposalBudget, Rate, ReviewBudget
 from engine.proposal_provider import VERSION, LLMClient, ProviderError
 from engine.retrieval import Retriever
@@ -43,9 +44,11 @@ class ProposalSettings:
     output_tokens: int
     rate: Rate
     review_budget: ReviewBudget | None = None
+    # Q12: ERP runs are allowed only when explicitly enabled; PII is always tokenized.
+    erp_enabled: bool = False
 
     def __post_init__(self) -> None:
-        if self.synthetic_only is not True:
+        if self.synthetic_only is not True and self.erp_enabled is not True:
             raise ValueError("synthetic-only mode must be explicitly enabled")
         if (
             not isinstance(self.input_tokens, int)
@@ -89,15 +92,18 @@ class ProposalSettings:
                 "F-005 standard text including cache writes; verified 2026-11-06",
             ),
             review_budget=review_budget,
+            erp_enabled=env.get("PROPOSAL_ERP_MODE") == "YES",
         )
 
 
-def _clean(text: str, identities: tuple[str, ...]) -> str:
+def _clean(text: str, tokenizer: PiiTokenizer) -> str:
+    """TM-2: replace customer identities with opaque per-run tokens before any LLM call."""
     if not isinstance(text, str) or len(text) > 4000:
         raise ProposalError("invalid input length or type")
-    for identity in identities:
-        if identity:
-            text = re.sub(re.escape(identity), "[customer]", text, flags=re.IGNORECASE)
+    try:
+        text = tokenizer.tokenize(text, contact_check=CONTACT)
+    except PrivacyError as error:
+        raise ProposalError(str(error)) from error
     if CONTACT.search(text):
         raise ProposalError("contact identifier in model input")
     return text
@@ -171,6 +177,10 @@ class ProposalService:
         run = self.runs.get_run(run_id)
         if run.trigger_ref != f"{customer_id}:{cart_id}":
             raise ProposalError("run does not match customer and cart")
+        if run.trigger_type == "erp" and not self.settings.erp_enabled:
+            raise ProposalError("ERP proposals are not enabled")
+        if run.trigger_type != "erp" and not self.settings.synthetic_only:
+            raise ProposalError("synthetic proposals are not enabled")
         self.runs.transition(run_id, RunState.RECEIVED, RunState.VALIDATING_INPUT, actor="system")
         try:
             if language not in {"en", "ar"} or not request.strip():
@@ -194,8 +204,8 @@ class ProposalService:
                 for line in cart.lines
             ):
                 raise ProposalError("cart quantities or prices are invalid")
-            identities = (cart.partner_name, cart.partner_email)
-            query = _clean(request, identities)
+            tokenizer = PiiTokenizer.for_cart(cart)
+            query = _clean(request, tokenizer)
             policies = self.retriever.search(query, language)
             total, cost = cart_to_proposal_inputs(cart)
             payload: dict[str, object] = {
@@ -206,14 +216,14 @@ class ProposalService:
                     "eligible_total": str(total),
                     "items": [
                         {
-                            "name": _clean(line.name, identities),
+                            "name": _clean(line.name, tokenizer),
                             "quantity": str(line.quantity),
                             "unit_price": str(line.unit_price),
                         }
                         for line in cart.lines
                     ],
                 },
-                "policies": [_clean(policy.text, identities) for policy in policies],
+                "policies": [_clean(policy.text, tokenizer) for policy in policies],
             }
             self.runs.transition(
                 run_id, RunState.LOADING_CONTEXT, RunState.GENERATING_PROPOSAL, actor="system"
@@ -262,9 +272,13 @@ class ProposalService:
             answer = _validate_output(result.text)
             message = answer["customer_message"]
             if isinstance(message, str):
-                cleaned = _clean(message, identities)
-                if cleaned != message:
+                if has_unknown_tokens(message, tokenizer.issued()):
+                    raise ProposalError("provider output contains an unknown PII token")
+                # Issued tokens may stay; any raw identity or contact pattern fails closed.
+                if tokenizer.mask(message) != message:
                     raise ProposalError("provider output contains customer identity")
+                if CONTACT.search(message):
+                    raise ProposalError("provider output contains a contact identifier")
             if answer["price_claim"] is not None and (
                 answer["price_claim"] != total or answer["currency"] != cart.currency
             ):
@@ -315,6 +329,7 @@ class ProposalService:
                 ],
                 cart,
                 execution_channel,
+                tokenizer.token_map(),
             )
             if decision.outcome is Outcome.REJECT or answer["action"] != "draft_message":
                 self.runs.transition(
@@ -347,9 +362,12 @@ class ProposalService:
         sources: list[dict[str, str]],
         cart: AbandonedCart,
         execution_channel: Literal["telegram", "mailpit"] | None,
+        pii_tokens: dict[str, object],
     ) -> None:
         record = asdict(proposal)
         record["action"] = answer["action"]
+        # Token -> field reference only; raw values are reloaded from Odoo at dispatch.
+        record["pii_tokens"] = pii_tokens
         record["policy_sources"] = sources
         record["cart_snapshot"] = cart_snapshot(cart)
         if execution_channel is not None:
