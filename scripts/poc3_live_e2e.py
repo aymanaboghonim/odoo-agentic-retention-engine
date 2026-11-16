@@ -284,9 +284,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "approve-api":
         if args.run_id is None or not args.snapshot_hash:
             raise ValueError("--run-id and --snapshot-hash are required for approve-api")
-        token = os.environ.get("APPROVAL_TOKEN", "")
+        token = os.environ.get("APPROVAL_ACCESS_TOKEN", "")
         if not token:
-            raise ValueError("APPROVAL_TOKEN must be set for approve-api")
+            raise ValueError("APPROVAL_ACCESS_TOKEN must be set for approve-api")
         api_result = approve_via_api(
             api_url=args.api_url,
             token=token,

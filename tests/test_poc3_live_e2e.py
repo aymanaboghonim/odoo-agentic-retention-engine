@@ -82,11 +82,11 @@ def test_poc3_live_e2e_approve_api_requires_token_and_run_id(
 ) -> None:
     from scripts.poc3_live_e2e import main
 
-    monkeypatch.delenv("APPROVAL_TOKEN", raising=False)
+    monkeypatch.delenv("APPROVAL_ACCESS_TOKEN", raising=False)
     with pytest.raises(ValueError, match="--run-id and --snapshot-hash"):
         main(["approve-api"])
 
-    with pytest.raises(ValueError, match="APPROVAL_TOKEN"):
+    with pytest.raises(ValueError, match="APPROVAL_ACCESS_TOKEN"):
         main(
             [
                 "approve-api",

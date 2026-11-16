@@ -6,32 +6,43 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from email.message import Message
+from pathlib import Path
 from typing import Iterator
 
 import pytest
 import sqlalchemy as sa
 from fastapi.testclient import TestClient
 
-from engine.approval_api import Operator, create_app
+from engine.approval_api import create_app
 from engine.approval_cli import main as cli
+from engine.auth import TokenVerifier
 from engine.config import normalize_database_url
-from engine.db import ApprovalConflict, RunRepository, create_engine, upgrade_schema
+from engine.db import (
+    ApprovalConflict,
+    ApprovalExpired,
+    RunRepository,
+    create_engine,
+    upgrade_schema,
+)
 from engine.gate_ledger import InMemoryGateLedger
 from engine.policy import Gate, GateConfig, GateRejected, OfferProposal, as_dict
 from engine.runs import RunState
+from scripts.dev_oidc import DevIssuer
 
 URL = os.environ.get("TEST_DATABASE_URL", "")
 if not URL and os.environ.get("REQUIRE_DB_TESTS") == "1":
     raise RuntimeError("REQUIRE_DB_TESTS=1 but TEST_DATABASE_URL is not set")
 
-TOKEN = "synthetic-token-" + "x" * 32
+ISSUER = DevIssuer(Path(tempfile.mkdtemp(prefix="dev-oidc-")))
+TOKEN = ISSUER.token("operator", ["approver"])
 
 
 @pytest.fixture
@@ -106,17 +117,7 @@ def token_for(repo: RunRepository, run_id: uuid.UUID) -> str:
 
 
 def client(repo: RunRepository, *, host: str = "127.0.0.1") -> TestClient:
-    return TestClient(create_app(repo, Operator("operator", TOKEN)), client=(host, 1234))
-
-
-def test_approval_config_fails_closed() -> None:
-    for env in (
-        {},
-        {"APPROVAL_OPERATOR": "alice", "APPROVAL_TOKEN": "short"},
-        {"APPROVAL_OPERATOR": "bad name", "APPROVAL_TOKEN": TOKEN},
-    ):
-        with pytest.raises(ValueError):
-            Operator.from_env(env)
+    return TestClient(create_app(repo, TokenVerifier(ISSUER.settings())), client=(host, 1234))
 
 
 def test_approval_authentication(db: sa.Engine, pending: uuid.UUID) -> None:
@@ -377,7 +378,7 @@ def test_approval_cli(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFix
             return Response()
 
     monkeypatch.setattr("engine.approval_cli.build_opener", lambda *_: Opener())
-    assert cli(["list"], {"APPROVAL_OPERATOR": "operator", "APPROVAL_TOKEN": TOKEN}) == 0
+    assert cli(["list"], {"APPROVAL_ACCESS_TOKEN": TOKEN}) == 0
     output = capsys.readouterr()
     assert '"ok": true' in output.out and TOKEN not in output.out + output.err
 
@@ -406,7 +407,7 @@ def test_approval_cli_to_api(
             return io.BytesIO(response.content)
 
     monkeypatch.setattr("engine.approval_cli.build_opener", lambda *_: Opener())
-    env = {"APPROVAL_OPERATOR": "operator", "APPROVAL_TOKEN": TOKEN}
+    env = {"APPROVAL_ACCESS_TOKEN": TOKEN}
     assert cli(["list"], env) == 0
     displayed = json.loads(capsys.readouterr().out)
     item = next(item for item in displayed if item["run_id"] == str(pending))
@@ -429,8 +430,8 @@ def test_local_api_and_cli_smoke(db: sa.Engine, pending: uuid.UUID) -> None:
         **os.environ,
         "PYTHONPATH": "src",
         "ENGINE_DATABASE_URL": URL,
-        "APPROVAL_OPERATOR": "operator",
-        "APPROVAL_TOKEN": TOKEN,
+        **ISSUER.env(),
+        "APPROVAL_ACCESS_TOKEN": TOKEN,
         "APPROVAL_API_PORT": str(port),
     }
     server = subprocess.Popen(
@@ -481,3 +482,116 @@ def test_local_api_and_cli_smoke(db: sa.Engine, pending: uuid.UUID) -> None:
     finally:
         server.terminate()
         server.wait(timeout=10)
+
+
+def _set_expiry(db: sa.Engine, run_id: uuid.UUID, sql_interval: str) -> None:
+    with db.begin() as conn:
+        conn.execute(
+            sa.text(
+                f"UPDATE approval_requests SET expires_at = now() + interval '{sql_interval}' "
+                "WHERE run_id=:id"
+            ),
+            {"id": run_id},
+        )
+
+
+def test_actor_is_subject_and_token_not_exposed(
+    db: sa.Engine,
+    pending: uuid.UUID,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """RBAC-7: the stored actor is the opaque `sub`; the token is never exposed or an argument."""
+    repo = RunRepository(db)
+    subject = "5f0c1a2e-subject-opaque"
+    token = ISSUER.token(subject, ["approver"])
+    response = client(repo).post(
+        f"/approvals/{pending}/decision",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"snapshot_hash": token_for(repo, pending), "decision": "approve"},
+    )
+    assert response.status_code == 200
+    assert repo.get_events(pending)[-1].actor == subject
+    with db.connect() as conn:
+        stored = conn.execute(
+            sa.text("SELECT actor FROM approval_requests WHERE run_id=:id"), {"id": pending}
+        ).scalar_one()
+    assert stored == subject
+    for text in (response.text, caplog.text, str(repo.get_events(pending))):
+        assert token not in text
+    # The CLI only reads the token from the environment; there is no token argument.
+    with pytest.raises(SystemExit):
+        cli(["list", "--token", token], {"APPROVAL_ACCESS_TOKEN": token})
+    assert token not in capsys.readouterr().out
+    assert cli(["list"], {}) == 1  # no token configured: fails closed
+
+
+def test_decision_after_expiry_is_rejected(db: sa.Engine, pending: uuid.UUID) -> None:
+    """AA-5: expires_at is mandatory (24 h default); an expired approval cannot be decided."""
+    repo = RunRepository(db)
+    with db.connect() as conn:
+        row = conn.execute(
+            sa.text("SELECT created_at, expires_at FROM approval_requests WHERE run_id=:id"),
+            {"id": pending},
+        ).one()
+    assert row.expires_at - row.created_at == timedelta(hours=24)
+    token = token_for(repo, pending)
+    _set_expiry(db, pending, "-1 minute")
+    with pytest.raises(ApprovalExpired):
+        repo.decide_approval(pending, token=token, decision="approve", actor="operator")
+    response = client(repo).post(
+        f"/approvals/{pending}/decision",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+        json={"snapshot_hash": token, "decision": "approve"},
+    )
+    assert response.status_code == 409
+    with db.connect() as conn:
+        decided = conn.execute(
+            sa.text("SELECT decision FROM approval_requests WHERE run_id=:id"), {"id": pending}
+        ).scalar_one()
+    assert decided is None and repo.get_run(pending).state is RunState.AWAITING_APPROVAL
+    assert all(event.actor != "operator" for event in repo.get_events(pending))
+    # The column is NOT NULL, and a non-positive TTL is refused.
+    with pytest.raises(sa.exc.IntegrityError), db.begin() as conn:
+        conn.execute(
+            sa.text("UPDATE approval_requests SET expires_at = NULL WHERE run_id=:id"),
+            {"id": pending},
+        )
+    with pytest.raises(ValueError, match="TTL"):
+        repo.request_approval(pending, gate_for_ttl(), ttl=timedelta(0))
+
+
+def gate_for_ttl() -> Gate:
+    return Gate(
+        GateConfig.from_env(
+            {
+                "GATE_TIMEZONE": "Asia/Riyadh",
+                "GATE_CURRENCY": "USD",
+                "GATE_DAILY_BUDGET": "100",
+                "GATE_CATEGORY_MIN_MARGINS": '{"decor":"0.2"}',
+            }
+        ),
+        InMemoryGateLedger(),
+    )
+
+
+def test_expired_pending_is_hidden_and_swept(db: sa.Engine, pending: uuid.UUID) -> None:
+    """AA-6: expired pending approvals are not listed and are swept to cancelled with audit."""
+    repo = RunRepository(db)
+    assert any(row["run_id"] == str(pending) for row in repo.pending_approvals())
+    assert repo.expire_approvals() == 0 or repo.get_run(pending).state is RunState.AWAITING_APPROVAL
+    _set_expiry(db, pending, "-1 minute")
+    assert all(row["run_id"] != str(pending) for row in repo.pending_approvals())
+    assert all(
+        row["run_id"] != str(pending)
+        for row in client(repo)
+        .get("/approvals", headers={"Authorization": f"Bearer {TOKEN}"})
+        .json()
+    )
+    assert repo.get_run(pending).state is RunState.AWAITING_APPROVAL  # listing never writes
+    assert repo.expire_approvals() >= 1
+    run = repo.get_run(pending)
+    assert run.state is RunState.CANCELLED and run.outcome == "approval_expired"
+    last = repo.get_events(pending)[-1]
+    assert (last.actor, last.detail) == ("system", {"reason": "approval_expired"})
+    assert repo.expire_approvals() == 0  # idempotent: nothing left to cancel

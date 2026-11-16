@@ -38,3 +38,6 @@ Thumbs.db
 
 # S2 raw debug traces (never commit)
 evals/llm/.debug/
+
+# Local dev OIDC key (scripts/dev_oidc.py); contains a private key
+.local/

@@ -18,8 +18,10 @@ def compose_config() -> dict[str, Any]:
         "FULL_STACK_ENGINE_DATABASE_URL": "postgresql://engine:test@engine-db:5432/engine",
         "FULL_STACK_ODOO_READONLY_DATABASE_URL": "postgresql://odoo_ro:test@odoo-db:5432/odoo",
         "FULL_STACK_INSTANCE_ID": str(uuid.uuid4()),
-        "APPROVAL_OPERATOR": "test",
-        "APPROVAL_TOKEN": "test",
+        "OIDC_ISSUER": "https://dev-oidc.example.test",
+        "OIDC_CLIENT_ID": "dev-client",
+        "OIDC_ROLES_CLAIM": "cognito:groups",
+        "FULL_STACK_OIDC_DIR": "/tmp",
     }
     result = subprocess.run(
         [

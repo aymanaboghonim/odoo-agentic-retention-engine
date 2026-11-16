@@ -15,7 +15,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
 from engine.config import EngineConfig
-from engine.db import create_engine
+from engine.db import RunRepository, create_engine
 from engine.odoo import OdooReader
 from engine.privacy import CONSENT_CHANNELS, ConsentChannel, PrivacySettings
 from engine.synthetic_scan import ErpCartScanner, SyntheticCartScanner
@@ -156,11 +156,25 @@ def main(argv: list[str] | None = None) -> None:
         signal.signal(sig, lambda _signal, _frame: stop.set())
     try:
         scanner = build_scanner(settings, engine, reader)
+        repo = RunRepository(engine)
+
+        def expire_approvals() -> None:
+            # Spec AA-6: pending approvals past expires_at are cancelled with an audit event.
+            cancelled = repo.expire_approvals()
+            if cancelled:
+                logging.info("stage=expire-approvals cancelled=%d", cancelled)
+
         if args.once:
+            expire_approvals()
             scanned, created = scanner.scan_page(now=datetime.now(UTC))
             logging.info("stage=scan status=completed scanned=%d created=%d", scanned, created)
         else:
-            run_scheduled_scans(scanner, stop=stop, interval_seconds=settings.interval_seconds)
+            run_scheduled_scans(
+                scanner,
+                stop=stop,
+                interval_seconds=settings.interval_seconds,
+                maintenance=expire_approvals,
+            )
     finally:
         engine.dispose()
 

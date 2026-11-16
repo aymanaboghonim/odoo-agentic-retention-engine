@@ -483,3 +483,96 @@ def test_coupon_mismatch_never_dispatches(db: sa.Engine) -> None:
         assert RunRepository(db).get_run(run_id).state is RunState.FAILED
     finally:
         _clean(db, run_id)
+
+
+def _expire_approval(engine: sa.Engine, run_id: uuid.UUID) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "UPDATE approval_requests SET expires_at = now() - interval '1 minute' "
+                "WHERE run_id=:id"
+            ),
+            {"id": run_id},
+        )
+
+
+def test_execution_rejects_expired_approval(db: sa.Engine) -> None:
+    """AA-7: an expired human approval stops execution before any claim or effect."""
+    created: list[uuid.UUID] = []
+    try:
+        _expired_approval_cases(db, created)
+    finally:
+        for run_id in created:
+            _clean(db, run_id)
+
+
+def _expired_approval_cases(db: sa.Engine, created: list[uuid.UUID]) -> None:
+    destination = TestDestination("mailpit", MAILPIT_REVIEW_RECIPIENT, confirmed=True)
+
+    # (a) Expired before execution starts: rejected without a claim, coupon, or message.
+    run_id, gate, cart = _create_run(db, discount="12")
+    created.append(run_id)
+    _expire_approval(db, run_id)
+    coupons, dispatcher = Coupons(), Dispatcher()
+    with pytest.raises(ExecutionError, match="expired"):
+        _service(db, gate, Carts(cart), coupons, dispatcher).execute(
+            run_id, destination=destination
+        )
+    run = RunRepository(db).get_run(run_id)
+    assert run.state is RunState.REJECTED and run.outcome == "approval_expired"
+    assert coupons.calls == 0 and dispatcher.calls == []
+    with db.connect() as conn:
+        assert (
+            conn.execute(
+                sa.text("SELECT count(*) FROM execution_claims WHERE run_id=:id"), {"id": run_id}
+            ).scalar_one()
+            == 0
+        )
+
+    # (b) Expires after the pre-claim check, before the claim: still no side effect.
+    run_id, gate, cart = _create_run(db, discount="12")
+    created.append(run_id)
+
+    class ExpiresDuringClaim(Carts):
+        def get_abandoned_cart(self, order_id: int, *, now: datetime) -> AbandonedCart | None:
+            found = super().get_abandoned_cart(order_id, now=now)
+            if self.calls == 1:
+                _expire_approval(db, run_id)
+            return found
+
+    coupons, dispatcher = Coupons(), Dispatcher()
+    with pytest.raises(ExecutionError, match="expired"):
+        _service(db, gate, ExpiresDuringClaim(cart), coupons, dispatcher).execute(
+            run_id, destination=destination
+        )
+    assert RunRepository(db).get_run(run_id).state in {RunState.REJECTED, RunState.FAILED}
+    assert coupons.calls == 0 and dispatcher.calls == []
+
+    # (c) Expires after the pre-coupon check: the message is never sent and the run fails.
+    run_id, gate, cart = _create_run(db, discount="12")
+    created.append(run_id)
+
+    class ExpiresBeforeMessage(Carts):
+        def get_abandoned_cart(self, order_id: int, *, now: datetime) -> AbandonedCart | None:
+            found = super().get_abandoned_cart(order_id, now=now)
+            if self.calls == 2:
+                _expire_approval(db, run_id)
+            return found
+
+    coupons, dispatcher = Coupons(), Dispatcher()
+    with pytest.raises(ExecutionError, match="expired"):
+        _service(db, gate, ExpiresBeforeMessage(cart), coupons, dispatcher).execute(
+            run_id, destination=destination
+        )
+    run = RunRepository(db).get_run(run_id)
+    assert run.state is RunState.FAILED and run.failure_reason == "approval_expired"
+    assert dispatcher.calls == []
+
+    # An unexpired approval still executes (the check does not break the normal path).
+    run_id, gate, cart = _create_run(db, discount="12")
+    created.append(run_id)
+    coupons, dispatcher = Coupons(), Dispatcher()
+    result = _service(db, gate, Carts(cart), coupons, dispatcher).execute(
+        run_id, destination=destination
+    )
+    assert result.status == "completed" and len(dispatcher.calls) == 1
