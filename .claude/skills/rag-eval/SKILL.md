@@ -1,3 +1,8 @@
+---
+name: rag-eval
+description: 'Use when creating or changing a retrieval corpus, relevance labels (qrels), a retrieval benchmark, or its report: bilingual English/Arabic queries, hard negatives, Recall@k, latency, embedding model pinning. Gives the labeling, reporting, and hermetic-CI rules for RAG evaluation in this repo.'
+---
+
 # RAG evaluation
 
 Use this skill when creating or changing a retrieval corpus, relevance labels, retrieval benchmark, or its report.

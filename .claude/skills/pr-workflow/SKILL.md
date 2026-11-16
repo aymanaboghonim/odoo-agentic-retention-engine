@@ -1,6 +1,6 @@
 ---
 name: pr-workflow
-description: 'Use when starting, committing, opening a PR for, merging, or cleaning up after any change in this repo. Covers issue, branch name, commit message with Refs, PR with Closes, squash merge, local cleanup, and the no-push-to-main rule.'
+description: 'Use when the owner says commit, push, open a PR, merge, or clean up a branch, and when starting any change. Covers the issue, branch name <issue>-short-slug, commit message with Refs #N, PR body with Closes #N, squash merge, local cleanup, and the never-push-to-main rule.'
 ---
 
 # PR workflow
