@@ -12,7 +12,10 @@ import argparse
 import hashlib
 import json
 import os
+import socket
+import urllib.error
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -27,7 +30,7 @@ from engine.gate_ledger import InMemoryGateLedger
 from engine.odoo import OdooReader
 from engine.policy import Gate, GateConfig
 from engine.proposal import ProposalSettings
-from engine.proposal_provider import MODEL, VERSION, OpenAIClient
+from engine.proposal_provider import MODEL, VERSION, OpenAIClient, ProviderError, ProviderResult
 from engine.retrieval import (
     MODEL_FILES,
     MODEL_ID,
@@ -54,6 +57,44 @@ from scripts.s2_llm_eval import GoldenDataset, load_dataset, load_reviews
 
 # Large enough that the daily budget never decides a case; each case is judged on its own merits.
 RELEASE_DAILY_BUDGET = Decimal("100000")
+
+
+def is_timeout(error: ProviderError) -> bool:
+    cause: object = error.__cause__
+    if isinstance(cause, urllib.error.URLError):
+        cause = cause.reason
+    return isinstance(cause, TimeoutError | socket.timeout)
+
+
+class RetryOnTimeout:
+    """Evaluation-only: one extra attempt per provider call, and only after a timeout.
+
+    A timed-out call may still have been billed, so a retry can cost one more call; the
+    aggregate ceiling covers it. Any other provider error is not retried. The production
+    proposal path is unchanged.
+    """
+
+    def __init__(self, provider: OpenAIClient) -> None:
+        self._provider = provider
+        self.retries = 0
+
+    def count_tokens(self, payload: Mapping[str, object]) -> int:
+        try:
+            return self._provider.count_tokens(payload)
+        except ProviderError as error:
+            if not is_timeout(error):
+                raise
+            self.retries += 1
+            return self._provider.count_tokens(payload)
+
+    def generate(self, payload: Mapping[str, object], output_limit: int) -> ProviderResult:
+        try:
+            return self._provider.generate(payload, output_limit)
+        except ProviderError as error:
+            if not is_timeout(error):
+                raise
+            self.retries += 1
+            return self._provider.generate(payload, output_limit)
 
 
 def validate_release_gate_config(gate: GateConfig) -> None:
@@ -202,7 +243,7 @@ def main() -> None:
         f"by_language={summary['included_by_language']} excluded={summary['excluded']}",
         flush=True,
     )
-    provider = OpenAIClient(os.environ.get("OPENAI_API_KEY", ""))
+    provider = RetryOnTimeout(OpenAIClient(os.environ.get("OPENAI_API_KEY", "")))
     reader = OdooReader(worker.odoo_url)
     from huggingface_hub import snapshot_download  # type: ignore[import-not-found]
 
@@ -255,6 +296,8 @@ def main() -> None:
                     profile=RELEASE_PROFILE,
                     build_cart=release_fixture_cart,
                 )
+            result["provider_timeout_retries"] = provider.retries
+            provider.retries = 0
             results.append(result)
             (partial / f"{index:02d}.json").write_text(
                 json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

@@ -26,7 +26,7 @@ from engine.odoo import AbandonedCart, CartLine, cart_to_proposal_inputs
 from engine.policy import Gate, GateConfig, OfferProposal, Outcome, Reason, evaluate
 from engine.proposal import ProposalError, ProposalService, ProposalSettings
 from engine.proposal_budget import ReviewBudget
-from engine.proposal_provider import MODEL, VERSION, ProviderResult
+from engine.proposal_provider import MODEL, VERSION, ProviderError, ProviderResult
 from engine.retrieval import SearchResult
 from engine.runs import RunState
 from scripts.poc2_evaluation_live import contract_digest
@@ -42,10 +42,12 @@ from scripts.release_gate_cases import (
 )
 from scripts.release_gate_eval import (
     RELEASE_DAILY_BUDGET,
+    RetryOnTimeout,
     validate_release_gate_config,
     verify_smoke,
 )
 from scripts.release_gate_gates import (
+    REPORT_PREFIX,
     evaluate_gates,
     g1_violation,
     g2_violation,
@@ -434,7 +436,7 @@ def test_eval_run_records_versions(
         publish_release_report(tmp_path, "other", report)
     with pytest.raises(ValueError, match="writable"):
         publish_release_report(tmp_path / "missing", "smoke", report)
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["release-gate-87-evaluation"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [f"{REPORT_PREFIX}-evaluation"]
     # A failing result is stated plainly and not hidden by the layout.
     failing = make_report(inventory, dataset, "evaluation")
     failing["gates"]["passed"] = False
@@ -466,15 +468,15 @@ def test_smoke_gate_and_driver_validators(
     rate_settings = ProposalSettings.from_env(
         {
             "PROPOSAL_SYNTHETIC_ONLY": "YES",
-            "PROPOSAL_BUDGET_USD": "2",
+            "PROPOSAL_BUDGET_USD": "1.99",
             "PROPOSAL_INPUT_TOKEN_LIMIT": "4000",
             "PROPOSAL_OUTPUT_TOKEN_LIMIT": "8192",
             "PROPOSAL_REVIEW_ID": RELEASE_REVIEW_ID,
-            "PROPOSAL_REVIEW_BUDGET_USD": "2",
+            "PROPOSAL_REVIEW_BUDGET_USD": "1.99",
         }
     )
     validate_settings(rate_settings, RELEASE_PROFILE)
-    for review, limit in ((RELEASE_REVIEW_ID, "1"), ("poc2-69-evaluation", "2")):
+    for review, limit in ((RELEASE_REVIEW_ID, "2"), ("poc2-69-evaluation", "1.99")):
         wrong = replace(rate_settings, review_budget=ReviewBudget(review, Decimal(limit)))
         with pytest.raises(ValueError, match="aggregate budget"):
             validate_settings(wrong, RELEASE_PROFILE)
@@ -595,3 +597,39 @@ def test_message_price_matches_odoo_value(db: sa.Engine) -> None:
                 ):
                     conn.execute(sa.text(f"DELETE FROM {table} WHERE run_id=:r"), {"r": run_id})
                 conn.execute(sa.text("DELETE FROM runs WHERE id=:r"), {"r": run_id})
+
+
+class _FlakyProvider:
+    def __init__(self, failures: list[ProviderError]) -> None:
+        self.failures = failures
+        self.calls = 0
+
+    def count_tokens(self, payload: Mapping[str, object]) -> int:
+        return 1
+
+    def generate(self, payload: Mapping[str, object], output_limit: int) -> ProviderResult:
+        self.calls += 1
+        if self.failures:
+            raise self.failures.pop(0)
+        return ProviderResult("{}", 1, 1, True)
+
+
+def _timeout_error() -> ProviderError:
+    error = ProviderError("provider transport or response error")
+    error.__cause__ = TimeoutError("read timed out")
+    return error
+
+
+def test_evaluation_retries_a_provider_timeout_once_and_nothing_else() -> None:
+    once = _FlakyProvider([_timeout_error()])
+    wrapper = RetryOnTimeout(once)  # type: ignore[arg-type]
+    wrapper.generate({}, 1)
+    assert (once.calls, wrapper.retries) == (2, 1)
+    twice = _FlakyProvider([_timeout_error(), _timeout_error()])
+    with pytest.raises(ProviderError):
+        RetryOnTimeout(twice).generate({}, 1)  # type: ignore[arg-type]
+    assert twice.calls == 2
+    other = _FlakyProvider([ProviderError("provider HTTP 429")])
+    with pytest.raises(ProviderError):
+        RetryOnTimeout(other).generate({}, 1)  # type: ignore[arg-type]
+    assert other.calls == 1

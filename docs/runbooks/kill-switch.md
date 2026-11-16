@@ -64,4 +64,6 @@ Reports are written to `evals/release/results/release-gate-87-{smoke,evaluation}
 
 Verified on the isolated stack on 2026-11-16: `halted` and `fallback_fixed_rule` behave as described above (scan skipped, propose refused, fixed proposal with no model key and zero model calls, LLM-made proposal held, completed after admin re-enable). See the spec for the details.
 
-Not verified: the full 62-case evaluation (it stopped at case 12 on a provider timeout; no report, so no G1 to G5 result and no baseline), and the breaker against a real provider failure. A failed evaluation run leaves its durable runs behind, so a rerun is refused until the owner decides how to handle them (new prefix or an explicit cleanup).
+Evaluation (2026-11-16, prefix `release-gate-87-v2`): completed 62/62 and did **not** pass. G1 to G3 had 0 violations; G4 (English contract validity 95.24%) and G5 (action conformance 87.88% Arabic, 88.89% English) are below their thresholds. See the spec and `evals/release/results/release-gate-87-v2-evaluation/`. The first attempt (`release-gate-87-v1`) stopped on a provider timeout; a failed evaluation leaves its durable runs and an unreconciled call, so a rerun needs a new prefix and review ID, and the evaluation retries a timeout once.
+
+Not verified: the breaker against a real provider failure. Breaker numbers are not set; the baselines above (P50 2.6 s, P95 5.2 s, max 33 s, failure rate 1.6% over 62 calls) are the input for the owner.
