@@ -32,11 +32,14 @@ from engine.runs import RunState
 from scripts.poc2_evaluation_live import contract_digest
 from scripts.poc2_evaluation_runner import validate_settings
 from scripts.release_gate_cases import (
+    HELDOUT_PATH,
+    HELDOUT_SET,
     RELEASE_BUDGET_USD,
     RELEASE_PROFILE,
     RELEASE_REVIEW_ID,
     CaseInventory,
     ReleaseCase,
+    load_heldout_cases,
     release_fixture_cart,
     select_release_cases,
 )
@@ -633,3 +636,29 @@ def test_evaluation_retries_a_provider_timeout_once_and_nothing_else() -> None:
     with pytest.raises(ProviderError):
         RetryOnTimeout(other).generate({}, 1)  # type: ignore[arg-type]
     assert other.calls == 1
+
+
+def test_heldout_set_is_paired_bilingual_and_disjoint_from_the_tuned_cases() -> None:
+    inventory = load_heldout_cases()
+    cases = inventory.cases
+    assert {case.language for case in cases} == {"en", "ar"}
+    by_pair: dict[str, set[str]] = {}
+    for case in cases:
+        by_pair.setdefault(case.pair_id, set()).add(case.language)
+    assert all(languages == {"en", "ar"} for languages in by_pair.values())
+    tuned = DATASET_PATH.read_text(encoding="utf-8")
+    assert not [
+        c.case_id for c in cases if json.dumps(c.request, ensure_ascii=False)[1:-1] in tuned
+    ]
+    assert {c.safety_kind for c in cases} >= {"money", "injection", "cross_customer"}
+    assert HELDOUT_SET.profile.review_id != RELEASE_REVIEW_ID
+    assert HELDOUT_PATH.is_file()
+
+
+def test_heldout_loader_rejects_an_unsupported_fixture(tmp_path: Path) -> None:
+    document = json.loads(HELDOUT_PATH.read_text(encoding="utf-8"))
+    document["cases"][0]["fixture_id"] = "cart-missing-005"
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid held-out case"):
+        load_heldout_cases(bad)

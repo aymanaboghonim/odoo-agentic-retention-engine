@@ -36,7 +36,7 @@ PYTHONPATH=src uv run --no-sync python -m engine.approval_cli set-runtime \
 
 The worker checks the model's recent failures and latency each scan. If a threshold is crossed with enough samples, it switches `active` to `fallback_fixed_rule` (actor `circuit-breaker`). It never re-enables the model and never halts. An admin returns the engine to `active` after fixing the cause.
 
-The breaker is off unless `BREAKER_ENABLED=YES`. Then every number is required and has no default:
+The breaker is on by default in the Compose file and `.env.example` with the numbers in [ADR-0023](../adr/0023-circuit-breaker-thresholds.md) (15 minutes, 20 attempts, 10% failures, P95 15 s). The code has no defaults: with `BREAKER_ENABLED=YES` every number is required. Set `BREAKER_ENABLED=NO` to turn it off:
 
 | Setting | Meaning |
 | :-- | :-- |
@@ -66,6 +66,6 @@ Verified on the isolated stack on 2026-11-16: `halted` and `fallback_fixed_rule`
 
 Evaluation (2026-11-16, prefix `release-gate-87-v2`): completed 62/62 and did **not** pass with the first prompt. G1 to G3 had 0 violations; G4 (English contract validity 95.24%) and G5 (action conformance 87.88% Arabic, 88.89% English) are below their thresholds. See the spec and `evals/release/results/release-gate-87-v2-evaluation/`. The first attempt (`release-gate-87-v1`) stopped on a provider timeout; a failed evaluation leaves its durable runs and an unreconciled call, so a rerun needs a new prefix and review ID, and the evaluation retries a timeout once.
 
-After the prompt change (`proposal-v3-consent-and-facts`, prefix `release-gate-87-v3`) the evaluation **passed** all gates: contract validity and action conformance 100% in both languages, P50 2.6 s, P95 4.7 s, max 5.4 s, failure rate 0%. The prompt was tuned on the same cases, so treat 100% as optimistic until a held-out set exists.
+After the prompt change (`proposal-v3-consent-and-facts`, prefix `release-gate-87-v3`) the evaluation **passed** all gates: contract validity and action conformance 100% in both languages, P50 2.6 s, P95 4.7 s, max 5.4 s, failure rate 0%. The prompt was tuned on those cases, so 100% is optimistic. A held-out set of 44 new cases (`heldout_cases.json`, pending owner review) also passed: contract validity 100%, action conformance 93.75% per language, P95 4.9 s. Run it with `bash scripts/release_gate_eval.sh {smoke|evaluation} live <sha> heldout`.
 
-Not verified: the breaker against a real provider failure. Breaker numbers are not set; the baselines above (v2: P50 2.6 s, P95 5.2 s, max 33 s, failure 1.6%; v3: P95 4.7 s, max 5.4 s, failure 0%, 62 calls each) are the input for the owner.
+Not verified: the breaker against a real provider failure. Breaker numbers are set in ADR-0023 from the baselines above (v2: P50 2.6 s, P95 5.2 s, max 33 s, failure 1.6%; v3: P95 4.7 s, max 5.4 s, failure 0%, 62 calls each) are the input for the owner.

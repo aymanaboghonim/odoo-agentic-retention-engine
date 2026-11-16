@@ -42,17 +42,17 @@ from engine.retrieval import (
 from scripts.poc2_evaluation_live import contract_digest
 from scripts.poc2_evaluation_runner import evaluate_case, validate_settings, validate_unattempted
 from scripts.release_gate_cases import (
+    CASE_SETS,
     CATEGORY,
-    RELEASE_BUDGET_USD,
-    RELEASE_PREFIX,
-    RELEASE_PROFILE,
-    RELEASE_REVIEW_ID,
+    REVIEWED_SET,
     CaseInventory,
+    CaseSet,
     ReleaseCase,
+    load_heldout_cases,
     release_fixture_cart,
     select_release_cases,
 )
-from scripts.release_gate_gates import REPORT_PREFIX, evaluate_gates, publish_release_report
+from scripts.release_gate_gates import evaluate_gates, publish_release_report
 from scripts.s2_llm_eval import GoldenDataset, load_dataset, load_reviews
 
 # Large enough that the daily budget never decides a case; each case is judged on its own merits.
@@ -107,7 +107,7 @@ def validate_release_gate_config(gate: GateConfig) -> None:
         raise ValueError("the fixed synthetic release-gate financial configuration is required")
 
 
-def budget_totals(engine: Engine) -> tuple[Decimal, Decimal]:
+def budget_totals(engine: Engine, review_id: str) -> tuple[Decimal, Decimal]:
     with engine.connect() as conn:
         reserved, actual = conn.execute(
             sa.text(
@@ -115,17 +115,21 @@ def budget_totals(engine: Engine) -> tuple[Decimal, Decimal]:
                 "COALESCE(actual_usd, reserved_usd))), 0), "
                 "COALESCE(SUM(actual_usd), 0) FROM proposal_calls WHERE review_id=:review"
             ),
-            {"review": RELEASE_REVIEW_ID},
+            {"review": review_id},
         ).one()
     return reserved, actual
 
 
 def verify_smoke(
-    parent: Path, dataset: GoldenDataset, cases: tuple[ReleaseCase, ...], digest: str | None
+    parent: Path,
+    dataset: GoldenDataset,
+    cases: tuple[ReleaseCase, ...],
+    digest: str | None,
+    case_set: CaseSet = REVIEWED_SET,
 ) -> dict[str, object]:
     if not digest or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
         raise ValueError("the owner-reviewed smoke report SHA-256 is required")
-    raw = (parent / f"{REPORT_PREFIX}-smoke" / "raw.json").read_bytes()
+    raw = (parent / f"{case_set.report_prefix}-smoke" / "raw.json").read_bytes()
     if hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError("smoke report does not match the reviewed SHA-256")
     report = json.loads(raw)
@@ -136,7 +140,7 @@ def verify_smoke(
         or report.get("model") != MODEL
         or report.get("prompt_version") != VERSION
         or report.get("contract_sha256") != contract_digest(cases)
-        or report.get("review_id") != RELEASE_REVIEW_ID
+        or report.get("review_id") != case_set.profile.review_id
         or report.get("expected_case_ids") != [cases[0].case_id]
         or not isinstance(report.get("cases"), list)
         or len(report["cases"]) != 1
@@ -148,7 +152,12 @@ def verify_smoke(
     return smoke_case
 
 
-def verify_smoke_run(engine: Engine, case: ReleaseCase, result: dict[str, object]) -> None:
+def verify_smoke_run(
+    engine: Engine,
+    case: ReleaseCase,
+    result: dict[str, object],
+    case_set: CaseSet = REVIEWED_SET,
+) -> None:
     try:
         run_id = uuid.UUID(str(result["run_id"]))
     except (KeyError, ValueError) as error:
@@ -163,8 +172,8 @@ def verify_smoke_run(engine: Engine, case: ReleaseCase, result: dict[str, object
             ),
             {
                 "run": run_id,
-                "key": f"{RELEASE_PREFIX}:smoke:{case.case_id}",
-                "review": RELEASE_REVIEW_ID,
+                "key": f"{case_set.profile.prefix}:smoke:{case.case_id}",
+                "review": case_set.profile.review_id,
             },
         ).first()
     if (
@@ -188,21 +197,22 @@ def preflight(
     phase: str,
     parent: Path,
     smoke_digest: str | None,
+    case_set: CaseSet = REVIEWED_SET,
 ) -> tuple[ReleaseCase, ...]:
     """Read-only checks. Returns the cases this phase will run."""
-    validate_settings(settings, RELEASE_PROFILE)
+    validate_settings(settings, case_set.profile)
     validate_release_gate_config(gate)
     cases = inventory.cases[:1] if phase == "smoke" else inventory.cases
     if not parent.is_dir() or not os.access(parent, os.W_OK):
         raise ValueError("report directory must exist and be writable")
-    if (parent / f"{REPORT_PREFIX}-{phase}").exists() or (
-        parent / f".{REPORT_PREFIX}-{phase}-partial"
+    if (parent / f"{case_set.report_prefix}-{phase}").exists() or (
+        parent / f".{case_set.report_prefix}-{phase}-partial"
     ).exists():
         raise FileExistsError("a complete or partial report already exists; inspect it first")
     if phase == "evaluation":
-        smoke = verify_smoke(parent, dataset, inventory.cases, smoke_digest)
-        verify_smoke_run(engine, inventory.cases[0], smoke)
-    validate_unattempted(engine, cases, phase=phase, profile=RELEASE_PROFILE)
+        smoke = verify_smoke(parent, dataset, inventory.cases, smoke_digest, case_set)
+        verify_smoke_run(engine, inventory.cases[0], smoke, case_set)
+    validate_unattempted(engine, cases, phase=phase, profile=case_set.profile)
     with engine.connect() as conn:
         languages = set(
             conn.execute(
@@ -216,9 +226,9 @@ def preflight(
         ).scalar_one()
     if not {"en", "ar"}.issubset(languages) or mismatch:
         raise ValueError("the pinned policy index must contain English and Arabic only")
-    reserved, _ = budget_totals(engine)
+    reserved, _ = budget_totals(engine, case_set.profile.review_id)
     required = settings.rate.estimate(settings.input_tokens, settings.output_tokens) * len(cases)
-    if reserved + required > RELEASE_BUDGET_USD:
+    if reserved + required > case_set.profile.budget_limit:
         raise ValueError("the aggregate review budget cannot reserve all planned calls")
     return cases
 
@@ -228,6 +238,7 @@ def main() -> None:
     parser.add_argument("--phase", choices=("smoke", "evaluation"), required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--approved-smoke-sha256")
+    parser.add_argument("--case-set", choices=sorted(CASE_SETS), default=REVIEWED_SET.name)
     parser.add_argument("--execute-live", action="store_true")
     args = parser.parse_args()
 
@@ -236,7 +247,12 @@ def main() -> None:
     settings = ProposalSettings.from_env(os.environ)
     gate_config = GateConfig.from_env(os.environ)
     dataset = load_dataset()
-    inventory = select_release_cases(dataset, load_reviews(dataset))
+    case_set = CASE_SETS[args.case_set]
+    inventory = (
+        load_heldout_cases()
+        if case_set.name == "heldout"
+        else select_release_cases(dataset, load_reviews(dataset))
+    )
     summary = inventory.summary()
     print(
         f"stage=inventory included={summary['included']} "
@@ -268,6 +284,7 @@ def main() -> None:
                 phase=args.phase,
                 parent=args.output_dir,
                 smoke_digest=args.approved_smoke_sha256,
+                case_set=case_set,
             )
         print(
             "stage=preflight status=passed; provider access, inference, output quality and "
@@ -276,7 +293,7 @@ def main() -> None:
         )
         if not args.execute_live:
             return
-        partial = args.output_dir / f".{REPORT_PREFIX}-{args.phase}-partial"
+        partial = args.output_dir / f".{case_set.report_prefix}-{args.phase}-partial"
         partial.mkdir()
         with progress("release-eval-model-load"):
             retriever = PostgresRetriever(engine, LocalE5Embedder())
@@ -293,7 +310,7 @@ def main() -> None:
                     retriever=retriever,
                     gate=gate,
                     settings=settings,
-                    profile=RELEASE_PROFILE,
+                    profile=case_set.profile,
                     build_cart=release_fixture_cart,
                 )
             result["provider_timeout_retries"] = provider.retries
@@ -303,7 +320,7 @@ def main() -> None:
                 json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
             )
             print(f"stage=evaluation completed={index}/{len(cases)}", flush=True)
-        reserved, actual = budget_totals(engine)
+        reserved, actual = budget_totals(engine, case_set.profile.review_id)
         report: dict[str, object] = {
             "phase": args.phase,
             "completed_at": datetime.now(UTC).isoformat(),
@@ -312,8 +329,9 @@ def main() -> None:
             "model": MODEL,
             "prompt_version": VERSION,
             "contract_sha256": contract_digest(inventory.cases),
-            "review_id": RELEASE_REVIEW_ID,
-            "budget_ceiling_usd": str(RELEASE_BUDGET_USD),
+            "review_id": case_set.profile.review_id,
+            "case_set": case_set.name,
+            "budget_ceiling_usd": str(case_set.profile.budget_limit),
             "input_token_limit": settings.input_tokens,
             "output_token_limit": settings.output_tokens,
             "rate_provenance": settings.rate.provenance,
@@ -325,7 +343,13 @@ def main() -> None:
         }
         if args.phase == "evaluation":
             report["gates"] = evaluate_gates(cases, results)  # type: ignore[arg-type]
-        destination = publish_release_report(args.output_dir, args.phase, report)
+        destination = publish_release_report(
+            args.output_dir,
+            args.phase,
+            report,
+            report_prefix=case_set.report_prefix,
+            review_id=case_set.profile.review_id,
+        )
         for index in range(1, len(cases) + 1):
             (partial / f"{index:02d}.json").unlink()
         partial.rmdir()

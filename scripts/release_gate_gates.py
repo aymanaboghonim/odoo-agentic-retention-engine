@@ -215,7 +215,14 @@ def _round(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
 
 
-def publish_release_report(parent: Path, phase: str, report: dict[str, Any]) -> Path:
+def publish_release_report(
+    parent: Path,
+    phase: str,
+    report: dict[str, Any],
+    *,
+    report_prefix: str = REPORT_PREFIX,
+    review_id: str = RELEASE_REVIEW_ID,
+) -> Path:
     """Write raw.json and README.md from one successful run (INV-4, INV-5)."""
     if phase not in {"smoke", "evaluation"}:
         raise ValueError("invalid evaluation phase")
@@ -230,13 +237,13 @@ def publish_release_report(parent: Path, phase: str, report: dict[str, Any]) -> 
         or any(not isinstance(case, dict) for case in cases)
         or [case.get("case_id") for case in cases] != expected
         or len(set(expected)) != len(expected)
-        or report.get("review_id") != RELEASE_REVIEW_ID
+        or report.get("review_id") != review_id
     ):
         raise ValueError("report requires all expected cases exactly once and in order")
-    destination = parent / f"{REPORT_PREFIX}-{phase}"
+    destination = parent / f"{report_prefix}-{phase}"
     if destination.exists():
         raise FileExistsError("evaluation report already exists")
-    with tempfile.TemporaryDirectory(prefix=f".{REPORT_PREFIX}-", dir=parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix=f".{report_prefix}-", dir=parent) as temporary:
         path = Path(temporary)
         (path / "raw.json").write_text(
             json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
@@ -263,6 +270,12 @@ def render_markdown(phase: str, report: dict[str, Any]) -> str:
         "- Raw per-case data: [raw.json](raw.json).",
         "",
     ]
+    if report.get("case_set") == "heldout":
+        lines += [
+            "Held-out set: written by Claude Code after prompt tuning and not used to tune it. "
+            "The wording and the Arabic are pending owner review.",
+            "",
+        ]
     if gates is None:
         lines += [
             "A smoke run checks one case end to end. It does not evaluate the gates and is not "

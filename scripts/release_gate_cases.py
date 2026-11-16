@@ -7,9 +7,11 @@ the report states exactly what was and was not evaluated. No new cases are autho
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from engine.odoo import AbandonedCart, CartLine
@@ -25,6 +27,16 @@ RELEASE_BUDGET_USD = Decimal("1.95")
 RELEASE_PROFILE = EvaluationProfile(
     "issue 87", RELEASE_REVIEW_ID, RELEASE_PREFIX, RELEASE_BUDGET_USD, "release-gate-evaluation"
 )
+HELDOUT_REVIEW_ID = "release-gate-87-heldout-v1"
+HELDOUT_BUDGET_USD = Decimal("1.90")  # all review IDs together stay under the owner's USD 2.00
+HELDOUT_PROFILE = EvaluationProfile(
+    "issue 87 held-out",
+    HELDOUT_REVIEW_ID,
+    HELDOUT_REVIEW_ID,
+    HELDOUT_BUDGET_USD,
+    "release-gate-evaluation",
+)
+HELDOUT_PATH = Path(__file__).resolve().parents[1] / "evals" / "release" / "heldout_cases.json"
 CATEGORY = "Furniture / Office"
 
 # Fixtures whose cart the runtime payload fully represents (name, quantity, unit price, PII).
@@ -189,3 +201,59 @@ def release_fixture_cart(dataset: GoldenDataset, case: RuntimeCase) -> Abandoned
         email_blacklisted=False,
         abandoned_delay_hours=10.0,
     )
+
+
+@dataclass(frozen=True)
+class CaseSet:
+    """Which case inventory is evaluated, under which review ID, budget, and report name."""
+
+    name: str
+    profile: EvaluationProfile
+    report_prefix: str
+
+
+REVIEWED_SET = CaseSet("reviewed", RELEASE_PROFILE, "release-gate-87-v3")
+HELDOUT_SET = CaseSet("heldout", HELDOUT_PROFILE, "release-gate-87-heldout-v1")
+CASE_SETS = {REVIEWED_SET.name: REVIEWED_SET, HELDOUT_SET.name: HELDOUT_SET}
+
+
+def load_heldout_cases(path: Path = HELDOUT_PATH) -> CaseInventory:
+    """Held-out cases: authored after prompt tuning, never shown to the prompt author."""
+    document = json.loads(path.read_text(encoding="utf-8"))
+    records = document.get("cases") if isinstance(document, dict) else None
+    if not isinstance(records, list) or not records:
+        raise ValueError("the held-out case file has no cases")
+    actions = {"draft_message", "ask_clarification", "refuse", "no_action", None}
+    cases: list[ReleaseCase] = []
+    for record in records:
+        if (
+            not isinstance(record, dict)
+            or record.get("language") not in {"en", "ar"}
+            or record.get("fixture_id") not in SUPPORTED_FIXTURES
+            or record.get("expected_action") not in actions
+            or not isinstance(record.get("request"), str)
+            or not record["request"].strip()
+            or not isinstance(record.get("check_price"), bool)
+            or record.get("safety_kind") not in {None, "money", "injection", "cross_customer"}
+        ):
+            raise ValueError(f"invalid held-out case: {record!r:.80}")
+        cases.append(
+            ReleaseCase(
+                case_id=str(record["case_id"]),
+                language=record["language"],
+                dialect=None,
+                fixture_id=record["fixture_id"],
+                request=record["request"],
+                expected_action=record["expected_action"],
+                check_price=record["check_price"],
+                category=str(record["category"]),
+                pair_id=str(record["pair_id"]),
+                safety_kind=record["safety_kind"],
+            )
+        )
+    if len({case.case_id for case in cases}) != len(cases):
+        raise ValueError("held-out case IDs must be unique")
+    for language in ("en", "ar"):
+        if not any(case.language == language for case in cases):
+            raise ValueError("the held-out set needs both languages")
+    return CaseInventory(tuple(cases), {})
