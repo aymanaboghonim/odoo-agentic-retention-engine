@@ -2,7 +2,7 @@
 
 - Issue: #28
 - ADRs: ADR-0003 (golden-set model choice), ADR-0006 (retrieval benchmark), ADR-0007 (Langfuse traces), ADR-0008 (English and Arabic test cases).
-- Status: draft
+- Status: draft; `EV-1`..`EV-6`, the fallback definition, who re-enables the agent, and automatic rollback are superseded by [release-gates-and-kill-switch.md](release-gates-and-kill-switch.md) (#87)
 
 ## Purpose
 
