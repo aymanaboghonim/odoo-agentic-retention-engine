@@ -18,7 +18,7 @@ Project: an agentic AI layer on top of Odoo (abandoned carts, retention). Read [
 - Never commit secrets. All data is synthetic. The agent runtime never writes directly to the Odoo database: it reads with a read-only database role, and runtime state changes go through the supported Odoo API/worker path. A local setup fixture may create synthetic data through Odoo's supported API only in the isolated local development instance. Never seed through SQL or target a real/shared Odoo instance.
 - The LLM never decides money. Discount limits are enforced in code and tested.
 - Long-running or side-effecting commands follow the project-wide preflight, progress, failure, and report rules in `docs/process.md`; do not launch the full operation before its documented preflight.
-- Plan mode does not edit repo files. Only Agent mode does.
+- Plan mode does not edit repo files. Edits, commits, and PRs happen only after the plan is approved.
 - Do not invent facts or results. Say "unknown" and add it to the open questions.
 - Docs are in English, simple words, technical terms kept as they are. Arabic only for customer-facing UI and messages, test data and optional summaries.
 
@@ -30,11 +30,13 @@ Project: an agentic AI layer on top of Odoo (abandoned carts, retention). Read [
 
 ## Skills
 
-Load the skill that matches the task, from `.github/skills/`:
+Skills live in `.claude/skills/`. Invoke the one that matches the task with the `Skill` tool:
 
 - `pr-workflow`: issue, branch, commit, PR, merge, cleanup.
 - `adr`: write or supersede an architecture decision.
 - `spec-writing`: write a feature spec with invariants.
 - `verify-facts`: check a volatile fact and record it.
+- `rag-eval`: retrieval corpus, labels, benchmark, and report rules.
+- `local-test-db`: throwaway PostgreSQL for `pytest` and `make ci`.
 
-More skills (Odoo adapter, RAG eval, infra and deploy, release) are added when the first issue needs them.
+More skills (Odoo adapter, infra and deploy, release) are added when the first issue needs them. Claude Code reads this file through `CLAUDE.md`; path-scoped rules are in `.claude/rules/`.

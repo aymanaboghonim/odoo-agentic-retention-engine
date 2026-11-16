@@ -63,6 +63,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: agent-config
+        name: check Claude Code agent config (skills, CLAUDE.md, settings)
+        entry: uv run --no-sync python scripts/check_agent_config.py
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: pytest-if-tests-exist
         name: pytest (when tests exist)
         entry: bash scripts/run_pytest.sh

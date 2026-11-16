@@ -1,6 +1,6 @@
 ---
 name: adr
-description: 'Use when making, recording, changing or superseding an architecture decision (database, framework, channel, model, hosting, process). Creates a numbered ADR in docs/adr with context, decision, alternatives and consequences.'
+description: 'Use when a change makes, records, changes, or supersedes an architecture decision (database, framework, channel, model, hosting, tooling, process), or when the owner asks for an ADR. Creates a numbered ADR in docs/adr with context, decision, alternatives, and consequences; never edits an accepted ADR.'
 ---
 
 # Architecture decision record (ADR)

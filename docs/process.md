@@ -9,13 +9,12 @@ Rule: if it is not written in a file in this repo, it does not exist. Chat and a
 3. **CI-local parity.** `make ci` runs locally exactly what GitHub Actions runs.
 4. **Risk-based testing.** Test money, data leaks, prompt injection, idempotency, and integration contracts. No dogmatic TDD. Behavioral tests are hermetic: they do not call live service APIs or paid LLMs. CI may download pinned development tools and container images.
 5. **Just-in-time planning.** Only the current milestone has detailed issues. Later phases stay as short checklists in STATUS.md.
-6. **Built-in modes as roles, one skill set.** Use the VS Code Copilot modes as they are:
-   - Plan: planning only. It is read-only. It can write only to the agent memory file, never to files in the repo (no code, no docs).
-   - Agent: execution. It is the only mode that edits repo files, creates issues and opens PRs.
-   - Ask: questions and chat.
+6. **Claude Code modes as roles, one skill set.** Claude Code is the working harness ([ADR-0021](adr/0021-claude-code-agent-harness.md)).
+   - Plan mode: planning only. It is read-only. It can write only its plan file, which lives outside the repo, never files in the repo (no code, no docs).
+   - Normal mode (after the plan is approved): the only mode that edits repo files, creates issues, and opens PRs. The owner decides when to push and merge.
 
-   A plan from Plan mode is not durable until Agent mode writes it into the repo (STATUS, specs, issues).
-   Rules live in one `AGENTS.md`. Domain knowledge (infra, testing, RAG eval, release) lives in focused skill files that load on demand.
+   A plan is not durable until it is written into the repo (STATUS, specs, issues).
+   Rules live in one `AGENTS.md`, which `CLAUDE.md` imports. Domain knowledge and procedures (PR workflow, ADRs, specs, facts, RAG eval, local test database) live in focused skills in `.claude/skills/`, invoked with the `Skill` tool. File-specific lessons live in path-scoped rules in `.claude/rules/`. `scripts/check_agent_config.py` keeps these consistent in CI.
    Custom agents are deferred (see below). Do not create one agent per domain.
 7. **Verify volatile facts.** Prices, model names, limits and versions come from official docs, with URL and date, in [facts-register.md](facts-register.md).
 
@@ -23,10 +22,10 @@ Rule: if it is not written in a file in this repo, it does not exist. Chat and a
 
 Not needed now. Add one only when it needs different tool permissions or a different job. Candidates:
 
-- Read-only reviewer: checks a PR against the specs and ADRs and cannot edit.
+- Read-only reviewer: checks a PR against the specs and ADRs and cannot edit. The built-in `code-review` skill covers this for now.
 - Release agent: allowed to run `gh` release commands that other modes are not.
 
-Revisit at the POC exit review (Phase 3).
+Revisit when the MVP adds a dedicated release workflow (decision at POC exit, kept by ADR-0021).
 
 ## Branching and merging (GitHub flow)
 

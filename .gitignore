@@ -41,3 +41,6 @@ evals/llm/.debug/
 
 # Local dev OIDC key (scripts/dev_oidc.py); contains a private key
 .local/
+
+# Personal Claude Code instructions: while this exists Claude stops reading AGENTS.md (F-060)
+CLAUDE.local.md
