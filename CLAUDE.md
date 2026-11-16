@@ -7,7 +7,8 @@ The rules above are in `AGENTS.md` (imported). These notes only say how Claude C
 ## Workflow
 
 - Plan mode never edits repo files. A plan is not durable until it is written into the repo (STATUS, spec, issue); plan files live outside the repo.
-- Invoke skills with the `Skill` tool: `pr-workflow`, `adr`, `spec-writing`, `verify-facts`, `rag-eval`, `local-test-db`. If a newly added skill is reported unknown, run `/reload-skills`.
+- Invoke skills with the `Skill` tool (the list is in `AGENTS.md`). If a newly added skill is reported unknown, run `/reload-skills`.
+- Set `model` explicitly on read-only exploration subagents (for example `haiku` or `sonnet`) unless the task needs deeper reasoning.
 - Push, open a PR, or merge only when the owner says so. The owner merges.
 - Path-scoped rules in `.claude/rules/` load when you touch `tests/`, `src/engine/`, or `docs/`.
 
