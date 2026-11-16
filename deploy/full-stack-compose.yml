@@ -96,9 +96,15 @@ services:
         condition: service_completed_successfully
     environment:
       ENGINE_DATABASE_URL: ${FULL_STACK_ENGINE_DATABASE_URL:?Set FULL_STACK_ENGINE_DATABASE_URL}
-      APPROVAL_OPERATOR: ${APPROVAL_OPERATOR:?Set APPROVAL_OPERATOR}
-      APPROVAL_TOKEN: ${APPROVAL_TOKEN:?Set APPROVAL_TOKEN}
+      # #86: OIDC/JWKS verification; local dev uses a generated key (scripts/dev_oidc.py).
+      OIDC_ISSUER: ${OIDC_ISSUER:?Set OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Set OIDC_CLIENT_ID}
+      OIDC_ROLES_CLAIM: ${OIDC_ROLES_CLAIM:?Set OIDC_ROLES_CLAIM}
+      OIDC_JWKS_FILE: /run/oidc/jwks.json
+      APPROVAL_TTL_HOURS: ${APPROVAL_TTL_HOURS:-}
       APPROVAL_API_PORT: "8080"
+    volumes:
+      - ${FULL_STACK_OIDC_DIR:?Set FULL_STACK_OIDC_DIR}:/run/oidc:ro
     command: ["python", "-m", "engine.approval_api"]
     networks: [private]
 
@@ -134,6 +140,7 @@ services:
       ODOO_DB_NAME: odoo
       ODOO_API_KEY: ${FULL_STACK_ODOO_API_KEY:-}
       # Q12 (#85): ERP proposal/execution stay off unless explicitly set.
+      APPROVAL_TTL_HOURS: ${APPROVAL_TTL_HOURS:-}
       PROPOSAL_ERP_MODE: ${PROPOSAL_ERP_MODE:-}
       EXECUTION_ERP_MODE: ${EXECUTION_ERP_MODE:-}
       PRIVACY_RETENTION_DAYS: ${PRIVACY_RETENTION_DAYS:-}

@@ -47,6 +47,7 @@ from engine.odoo import (
 )
 from engine.policy import Gate, GateConfig, OfferProposal, Outcome, as_dict
 from engine.privacy import AllowlistGuard, PiiTokenizer, PrivacySettings, consent_channel
+from engine.proposal import approval_ttl_from_env
 from engine.runs import RunState
 
 Channel = Literal["telegram", "mailpit"]
@@ -235,7 +236,7 @@ def _fixed_proposal(
     if decision.outcome is Outcome.REJECT:
         repo.transition(run_id, RunState.EVALUATING_POLICY, RunState.REJECTED, actor="erp-operator")
     elif decision.outcome is Outcome.NEEDS_APPROVAL:
-        repo.request_approval(run_id, gate)
+        repo.request_approval(run_id, gate, ttl=approval_ttl_from_env(live.env))
 
 
 def propose(live: _Live, args: argparse.Namespace) -> None:

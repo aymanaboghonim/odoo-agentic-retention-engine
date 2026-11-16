@@ -15,7 +15,7 @@ from sqlalchemy import Engine
 from engine.approval_data import offer_from_record, snapshot_hash
 from engine.channels import EmailPort, TelegramMessageSender
 from engine.coupon_code import coupon_code_for_run
-from engine.db import ApprovalConflict, ExecutionConflict, RunRepository
+from engine.db import ApprovalConflict, ApprovalExpired, ExecutionConflict, RunRepository
 from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, GateApproval, GateRejected, OfferProposal
 from engine.privacy import (
@@ -44,6 +44,10 @@ class ExecutionHeld(ExecutionError):
 
 class KnownNotSent(ExecutionError):
     """A port proves it failed before the external effect could be accepted."""
+
+
+class ApprovalExpiredError(ExecutionError):
+    """The human approval passed its `expires_at`; nothing was claimed or sent (spec AA-7)."""
 
 
 class PrivacyRejected(ExecutionError):
@@ -322,11 +326,29 @@ class ExecutionService:
             self._rehydrate(record.proposal, proposal.customer_message, cart)
         return recipient
 
+    def _reject_expired(self, run_id: uuid.UUID) -> ApprovalExpiredError:
+        """Record that an expired approval stopped this run, from whichever state it is in."""
+        current = self._runs.get_run(run_id)
+        if current.state is RunState.EVALUATING_POLICY:
+            self._runs.transition(
+                run_id,
+                RunState.EVALUATING_POLICY,
+                RunState.REJECTED,
+                actor="worker",
+                detail={"reason": "approval_expired"},
+                outcome="approval_expired",
+            )
+        else:
+            self._runs.fail(run_id, reason="approval_expired", actor="worker")
+        return ApprovalExpiredError("human approval has expired")
+
     def _execute(
         self, run_id: uuid.UUID, *, test_destination: TestDestination | None
     ) -> ExecutionResult:
         try:
             record = self._runs.get_execution_record(run_id)
+        except ApprovalExpired as error:
+            raise self._reject_expired(run_id) from error
         except ExecutionConflict as error:
             raise ExecutionError("proposal or human approval is not ready for execution") from error
         if record.state is not RunState.EVALUATING_POLICY:
@@ -388,13 +410,16 @@ class ExecutionService:
             if test_destination is not None
             else cast(RecipientDestination, recipient).destination_hash
         )
-        self._runs.authorize_execution(run_id, context_hash=record.context_hash)
         binding_hash = snapshot_hash(
             {"context_hash": record.context_hash, "destination_hash": destination_hash}
         )
-        claim_id = self._runs.claim_execution(
-            run_id, binding_hash=binding_hash, context_hash=record.context_hash
-        )
+        try:
+            self._runs.authorize_execution(run_id, context_hash=record.context_hash)
+            claim_id = self._runs.claim_execution(
+                run_id, binding_hash=binding_hash, context_hash=record.context_hash
+            )
+        except ApprovalExpired as error:
+            raise self._reject_expired(run_id) from error
         message = proposal.customer_message
         if message is None or not message.strip():
             self._runs.fail(run_id, reason="missing_approved_message", actor="worker")
@@ -472,6 +497,8 @@ class ExecutionService:
         moment = now or datetime.now(UTC)
         try:
             record = self._runs.get_execution_record(run_id)
+        except ApprovalExpired as error:
+            raise ApprovalExpiredError("human approval has expired") from error
         except ExecutionConflict as error:
             raise ExecutionError("approved proposal changed during execution") from error
         if record.state is not RunState.EXECUTING or record.context_hash != context_hash:
@@ -500,6 +527,8 @@ class ExecutionService:
         if record.human_approved:
             try:
                 approval_fingerprint = self._runs.current_human_approval(run_id)
+            except ApprovalExpired as error:
+                raise ApprovalExpiredError("human approval has expired") from error
             except ApprovalConflict as error:
                 raise ExecutionError("human approval is no longer valid") from error
             if approval_fingerprint != proposal.fingerprint():
@@ -518,8 +547,13 @@ class ExecutionService:
             return self._check_before_effect(
                 run_id, context_hash, stored_proposal, proposal, approval
             )
-        except ExecutionError:
-            self._runs.fail(run_id, reason="execution_revalidation_failed", actor="worker")
+        except ExecutionError as error:
+            reason = (
+                "approval_expired"
+                if isinstance(error, ApprovalExpiredError)
+                else "execution_revalidation_failed"
+            )
+            self._runs.fail(run_id, reason=reason, actor="worker")
             raise
 
     @staticmethod

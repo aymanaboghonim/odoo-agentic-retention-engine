@@ -6,7 +6,7 @@
   [ADR-0019](../adr/0019-aws-ecs-on-ec2-cloud-runtime.md),
   [ADR-0020](../adr/0020-aws-cloudfront-s3-edge-and-backups.md)
 - Facts: [F-057](../facts-register.md) (PyJWT, cryptography), [F-058](../facts-register.md) (Cognito JWTs), [F-059](../facts-register.md) (CloudFront origin headers)
-- Status: draft (decisions from the plan approved by the owner on 2026-11-16; owner to mark `agreed`)
+- Status: agreed (owner, 2026-11-16)
 
 ## Purpose
 
@@ -25,7 +25,7 @@ Out of scope: Cognito and CloudFront Terraform (`#88`), the admin kill-switch en
 ## Decisions and reasons
 
 - **Verify standard JWTs with PyJWT** (`PyJWKClient` for cached JWKS and `kid` rotation). Only `RS256` is accepted: Cognito signs with RS256, and a fixed algorithm list blocks `none` and HS/RS confusion (F-058).
-- **Verify access tokens.** Required claims: `exp`, `iss`, `sub`, `token_use == "access"`, and `client_id` equal to the configured app client. `aud` is checked instead when it is present and a resource server is configured. Expiry is checked offline; revocation is not detectable offline, so access-token lifetime must stay short (F-058).
+- **Verify access tokens.** Required claims: `exp`, `iss`, `sub`, `token_use == "access"`, and `client_id` equal to the configured app client. `client_id` is always checked; when `OIDC_AUDIENCE` is set, `aud` must also match (a resource-bound Cognito token needs it). Expiry is checked offline; revocation is not detectable offline, so access-token lifetime must stay short (F-058).
 - **Roles come from one configured claim** (`OIDC_ROLES_CLAIM`, a list of strings). `viewer` < `approver` < `admin`; a higher role includes the lower ones. Unknown, missing, or malformed values grant nothing. The claim name is configuration because `cognito:groups` is not yet verified on a real token (open question).
 - **Actor is the token `sub`.** It is an opaque ID, so no name or email is stored (consistent with [Q12](privacy-consent-retention.md)).
 - **Remove the static token.** One auth path, fail closed. Local dev and CI use a generated RSA key and a JWKS file (`OIDC_JWKS_FILE`). That file mode is refused when origin verification is on, so it cannot reach the cloud path.
@@ -47,7 +47,7 @@ Out of scope: Cognito and CloudFront Terraform (`#88`), the admin kill-switch en
 | RBAC-7 | The stored actor is the token `sub`; tokens never appear in logs, responses, events, or CLI arguments. | `test_actor_is_subject_and_token_not_exposed` |
 | AA-5 | `approval_requests.expires_at` is mandatory; deciding after expiry fails with 409 and writes nothing. | `test_decision_after_expiry_is_rejected` |
 | AA-6 | Expired pending approvals are not listed and are swept to `cancelled` with an audit event. | `test_expired_pending_is_hidden_and_swept` |
-| AA-7 | The worker refuses an expired human approval before the claim and again before the coupon and the message; the run ends rejected with reason `approval_expired` and no side effect occurs. | `test_execution_rejects_expired_approval` |
+| AA-7 | The worker refuses an expired human approval before the claim (run `rejected`, outcome `approval_expired`) and again before the coupon and before the message (run `failed`, reason `approval_expired`, because an executing run can only fail). Expiry before the coupon creates no coupon and no message; expiry after the coupon but before the message sends no message. | `test_execution_rejects_expired_approval` |
 
 Existing tests for `AA-2`..`AA-4` are updated to mint JWTs instead of using the static token.
 
@@ -55,7 +55,7 @@ Existing tests for `AA-2`..`AA-4` are updated to mint JWTs instead of using the 
 
 - **Given** a valid access token with role `approver` and a pending, unexpired approval, **when** the operator posts the exact `snapshot_hash` and a decision, **then** the decision is recorded with the token `sub` as actor and the run returns to `evaluating_policy` (approve) or `rejected` (reject).
 - **Given** a token signed by another key, or an `alg=none` token, **when** any endpoint is called, **then** the response is 401 and nothing is read or written.
-- **Given** an approval approved yesterday whose `expires_at` has now passed, **when** the worker executes the run, **then** execution is refused before any claim or effect and the run is rejected with `approval_expired`.
+- **Given** an approval approved yesterday whose `expires_at` has now passed, **when** the worker executes the run, **then** execution is refused before any claim or effect and the run is rejected with outcome `approval_expired`.
 - **Abuse case:** a viewer posting a decision gets 403; a request that skips CloudFront and omits `X-Origin-Verify` gets 403 even with a valid token.
 
 ## Risks

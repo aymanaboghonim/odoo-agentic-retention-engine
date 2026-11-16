@@ -4,6 +4,7 @@ import logging
 import math
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -18,13 +19,19 @@ class ScanPage(Protocol):
 
 
 def run_scheduled_scans(
-    scanner: ScanPage, *, stop: threading.Event, interval_seconds: float
+    scanner: ScanPage,
+    *,
+    stop: threading.Event,
+    interval_seconds: float,
+    maintenance: Callable[[], None] | None = None,
 ) -> None:
     """Run one bounded scan page per interval until stopped; failures propagate."""
     if not math.isfinite(interval_seconds) or interval_seconds <= 0:
         raise ValueError("scan interval must be finite and positive")
     while not stop.is_set():
         started = time.monotonic()
+        if maintenance is not None:
+            maintenance()
         scanned, created = scanner.scan_page(now=datetime.now(UTC))
         LOG.info("stage=scan status=completed scanned=%d created=%d", scanned, created)
         next_scan = started + interval_seconds

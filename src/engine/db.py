@@ -85,6 +85,7 @@ approval_requests = sa.Table(
     sa.Column("actor", sa.Text(), nullable=True),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False, index=True),
 )
 
 execution_claims = sa.Table(
@@ -128,6 +129,14 @@ class ApprovalConflict(Exception):
 
 class ExecutionConflict(Exception):
     """A claim or external effect cannot safely be started or changed."""
+
+
+class ApprovalExpired(ApprovalConflict, ExecutionConflict):
+    """The approval request passed its `expires_at` (spec AA-5, AA-7)."""
+
+
+# Owner decision 2026-11-16 (spec operator-rbac-and-expiring-approvals.md).
+DEFAULT_APPROVAL_TTL = timedelta(hours=24)
 
 
 @dataclass(frozen=True)
@@ -298,8 +307,12 @@ class RunRepository:
             for r in rows
         ]
 
-    def request_approval(self, run_id: uuid.UUID, gate: Gate) -> None:
+    def request_approval(
+        self, run_id: uuid.UUID, gate: Gate, *, ttl: timedelta = DEFAULT_APPROVAL_TTL
+    ) -> None:
         """Evaluate and persist one approval request with its state and audit."""
+        if not isinstance(ttl, timedelta) or ttl <= timedelta(0):
+            raise ValueError("approval TTL must be a positive duration")
         now = datetime.now(UTC)
         with self._engine.begin() as conn:
             run = conn.execute(sa.select(runs).where(runs.c.id == run_id).with_for_update()).first()
@@ -340,7 +353,11 @@ class RunRepository:
             )
             conn.execute(
                 approval_requests.insert().values(
-                    run_id=run_id, snapshot=snapshot, snapshot_hash=token, created_at=now
+                    run_id=run_id,
+                    snapshot=snapshot,
+                    snapshot_hash=token,
+                    created_at=now,
+                    expires_at=now + ttl,
                 )
             )
             conn.execute(
@@ -358,12 +375,13 @@ class RunRepository:
                     from_state=RunState.EVALUATING_POLICY.value,
                     to_state=RunState.AWAITING_APPROVAL.value,
                     actor="system",
-                    detail={"snapshot_hash": token},
+                    detail={"snapshot_hash": token, "expires_at": (now + ttl).isoformat()},
                     at=now,
                 )
             )
 
     def pending_approvals(self) -> list[dict[str, Any]]:
+        now = datetime.now(UTC)
         with self._engine.connect() as conn:
             rows = conn.execute(
                 sa.select(
@@ -374,6 +392,7 @@ class RunRepository:
                 .join(runs, runs.c.id == approval_requests.c.run_id)
                 .where(
                     approval_requests.c.decision.is_(None),
+                    approval_requests.c.expires_at > now,
                     runs.c.state == RunState.AWAITING_APPROVAL.value,
                 )
                 .order_by(approval_requests.c.created_at, approval_requests.c.run_id)
@@ -411,6 +430,8 @@ class RunRepository:
                 or proposal is None
             ):
                 raise ApprovalConflict("approval is not pending")
+            if request.expires_at <= now:
+                raise ApprovalExpired("approval has expired")
             current = {
                 "schema_version": proposal.schema_version,
                 "fingerprint": proposal.fingerprint,
@@ -458,6 +479,53 @@ class RunRepository:
             )
         return _to_run(row)
 
+    def expire_approvals(self, *, now: datetime | None = None, limit: int = 500) -> int:
+        """Cancel pending approvals past `expires_at` (spec AA-6); returns the number cancelled."""
+        moment = now or datetime.now(UTC)
+        if moment.tzinfo is None or not 1 <= limit <= 10_000:
+            raise ValueError("sweep time must be timezone-aware and limit must be bounded")
+        cancelled = 0
+        with self._engine.begin() as conn:
+            ids = list(
+                conn.execute(
+                    sa.select(approval_requests.c.run_id)
+                    .join(runs, runs.c.id == approval_requests.c.run_id)
+                    .where(
+                        approval_requests.c.decision.is_(None),
+                        approval_requests.c.expires_at <= moment,
+                        runs.c.state == RunState.AWAITING_APPROVAL.value,
+                    )
+                    .order_by(approval_requests.c.expires_at, approval_requests.c.run_id)
+                    .limit(limit)
+                    .with_for_update(of=runs, skip_locked=True)
+                ).scalars()
+            )
+            for run_id in ids:
+                row = conn.execute(
+                    runs.update()
+                    .where(runs.c.id == run_id, runs.c.state == RunState.AWAITING_APPROVAL.value)
+                    .values(
+                        state=RunState.CANCELLED.value,
+                        outcome="approval_expired",
+                        updated_at=moment,
+                    )
+                    .returning(runs.c.id)
+                ).first()
+                if row is None:
+                    continue
+                conn.execute(
+                    run_events.insert().values(
+                        run_id=run_id,
+                        from_state=RunState.AWAITING_APPROVAL.value,
+                        to_state=RunState.CANCELLED.value,
+                        actor="system",
+                        detail={"reason": "approval_expired"},
+                        at=moment,
+                    )
+                )
+                cancelled += 1
+        return cancelled
+
     def current_human_approval(self, run_id: uuid.UUID) -> str | None:
         """Return the approved gate fingerprint only while the stored snapshot still matches."""
         with self._engine.connect() as conn:
@@ -467,6 +535,7 @@ class RunRepository:
                     approval_requests.c.snapshot,
                     approval_requests.c.snapshot_hash,
                     approval_requests.c.decision,
+                    approval_requests.c.expires_at,
                     agent_proposals.c.schema_version,
                     agent_proposals.c.fingerprint,
                     agent_proposals.c.proposal,
@@ -487,6 +556,8 @@ class RunRepository:
             }
         ):
             return None
+        if row.expires_at <= datetime.now(UTC):
+            raise ApprovalExpired("approval has expired")
         current = {
             "schema_version": row.schema_version,
             "fingerprint": row.fingerprint,
@@ -702,6 +773,8 @@ class RunRepository:
         if outcome == Outcome.NEEDS_APPROVAL.value:
             if approval is None or approval.decision != "approve":
                 raise ExecutionConflict("human approval is not present")
+            if approval.expires_at <= datetime.now(UTC):
+                raise ApprovalExpired("approval has expired")
             if (
                 snapshot_hash(approval.snapshot) != approval.snapshot_hash
                 or snapshot_hash(current) != approval.snapshot_hash

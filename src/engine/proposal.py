@@ -6,14 +6,14 @@ import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Literal, Protocol
 
 from sqlalchemy import Engine
 
 from engine.coupon_code import coupon_code_for_run
-from engine.db import RunRepository
+from engine.db import DEFAULT_APPROVAL_TTL, RunRepository
 from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, OfferProposal, Outcome, as_dict
 from engine.privacy import PiiTokenizer, PrivacyError, has_unknown_tokens
@@ -46,10 +46,14 @@ class ProposalSettings:
     review_budget: ReviewBudget | None = None
     # Q12: ERP runs are allowed only when explicitly enabled; PII is always tokenized.
     erp_enabled: bool = False
+    # #86: how long a human approval stays valid (spec operator-rbac-and-expiring-approvals).
+    approval_ttl: timedelta = DEFAULT_APPROVAL_TTL
 
     def __post_init__(self) -> None:
         if self.synthetic_only is not True and self.erp_enabled is not True:
             raise ValueError("synthetic-only mode must be explicitly enabled")
+        if not timedelta(hours=1) <= self.approval_ttl <= timedelta(hours=168):
+            raise ValueError("approval TTL must be between 1 and 168 hours")
         if (
             not isinstance(self.input_tokens, int)
             or isinstance(self.input_tokens, bool)
@@ -93,7 +97,16 @@ class ProposalSettings:
             ),
             review_budget=review_budget,
             erp_enabled=env.get("PROPOSAL_ERP_MODE") == "YES",
+            approval_ttl=approval_ttl_from_env(env),
         )
+
+
+def approval_ttl_from_env(env: Mapping[str, str]) -> timedelta:
+    raw = env.get("APPROVAL_TTL_HOURS", "").strip()
+    try:
+        return timedelta(hours=int(raw)) if raw else DEFAULT_APPROVAL_TTL
+    except ValueError as error:
+        raise ValueError("APPROVAL_TTL_HOURS must be an integer") from error
 
 
 def _clean(text: str, tokenizer: PiiTokenizer) -> str:
@@ -340,7 +353,7 @@ class ProposalService:
                     detail={"reason": "gate_or_non_dispatch_action"},
                 )
             elif decision.outcome is Outcome.NEEDS_APPROVAL:
-                self.runs.request_approval(run_id, self.gate)
+                self.runs.request_approval(run_id, self.gate, ttl=self.settings.approval_ttl)
             LOG.info("proposal run=%s status=validated", run_id)
         except Exception as error:
             if isinstance(error, (ProposalError, BudgetError)):
