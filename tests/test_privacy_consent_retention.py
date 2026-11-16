@@ -51,6 +51,7 @@ from engine.proposal_budget import Rate
 from engine.proposal_provider import SYSTEM, OpenAIClient, ProviderResult
 from engine.retrieval import SearchResult
 from engine.runs import RunState
+from engine.runtime_state import EngineHalted, RuntimeGuard, RuntimeSnapshot, RuntimeState
 from engine.synthetic_scan import ErpCartScanner
 from scripts import erp_minimal_fixtures
 
@@ -975,6 +976,10 @@ class FakeLive:
         self.recipients = Recipients()
         self.coupons = Coupons()
         self._gate = gate()
+        self.runtime_state = RuntimeState.ACTIVE
+        self.runtime = RuntimeGuard(
+            lambda: RuntimeSnapshot(self.runtime_state, "test", "test", datetime.now(UTC), 1)
+        )
 
     def gate(self) -> Any:
         return self._gate
@@ -988,6 +993,7 @@ class FakeLive:
             Unused(),
             ExecutionSettings(False, erp_enabled=True),
             erp=ErpExecution(PRIVACY, ALLOW, self.recipients, lambda: None),
+            runtime=self.runtime,
         )
 
 
@@ -1084,3 +1090,45 @@ def test_mailpit_private_service_host_is_opt_in_and_private_only() -> None:
         MailpitEmailAdapter("mailpit", allow_private_service=True)
     with pytest.raises(ChannelError):
         MailpitEmailAdapter("smtp.example.com", allow_private_service=True)
+
+
+def test_erp_cli_obeys_the_runtime_state_without_a_model_key(
+    live: tuple[FakeLive, uuid.UUID], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """#87 live-check behavior: halted refuses; fallback proposes with no key and no model."""
+    fake, run_id = live
+    model = cli_args(run_id=run_id, channel="mailpit", language="en", mode="model", request="hi")
+    fake.env = {
+        "PROPOSAL_ERP_MODE": "YES",
+        "PROPOSAL_BUDGET_USD": "1",
+        "PROPOSAL_INPUT_TOKEN_LIMIT": "4000",
+        "PROPOSAL_OUTPUT_TOKEN_LIMIT": "8192",
+        "PROPOSAL_REVIEW_ID": "test-review",
+        "PROPOSAL_REVIEW_BUDGET_USD": "1",
+    }  # note: no OPENAI_API_KEY at all
+    fake.runtime_state = RuntimeState.HALTED
+    with pytest.raises(EngineHalted):
+        erp_cli.propose(fake, model)  # type: ignore[arg-type]
+    assert RunRepository(fake.engine).get_run(run_id).state is RunState.RECEIVED
+    fake.runtime_state = RuntimeState.FALLBACK
+    erp_cli.propose(fake, model)  # type: ignore[arg-type]
+    shown = capsys.readouterr().out
+    assert "state=evaluating_policy" in shown and "privacy_preview=passed" in shown
+    with fake.engine.connect() as conn:
+        schema = conn.execute(
+            sa.text("SELECT schema_version FROM agent_proposals WHERE run_id=:r"), {"r": run_id}
+        ).scalar_one()
+        budgets = conn.execute(
+            sa.text("SELECT count(*) FROM proposal_budget WHERE run_id=:r"), {"r": run_id}
+        ).scalar_one()
+    assert schema == "fixed-rule-v1" and budgets == 0
+    # Execution obeys the same state: held while halted, allowed for the fixed-rule proposal.
+    digest = shown.split("destination_hash=")[1].split()[0]
+    confirm = cli_args(run_id=run_id, confirm_run_id=run_id, confirm_destination=digest)
+    fake.runtime_state = RuntimeState.HALTED
+    with pytest.raises(ExecutionError, match="halted"):
+        erp_cli.execute(fake, confirm)  # type: ignore[arg-type]
+    assert fake.recipients.sent == []
+    fake.runtime_state = RuntimeState.FALLBACK
+    erp_cli.execute(fake, confirm)  # type: ignore[arg-type]
+    assert len(fake.recipients.sent) == 1

@@ -16,11 +16,11 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import sqlalchemy as sa
 
@@ -33,7 +33,7 @@ from engine.execution import (
     ExecutionService,
     ExecutionSettings,
 )
-from engine.fixed_rule import build_fixed_offer
+from engine.fixed_rule import FIXED_SCHEMA, build_fixed_offer
 from engine.full_stack_worker import WorkerSettings
 from engine.gate_ledger import PostgresGateLedger
 from engine.odoo import (
@@ -48,9 +48,9 @@ from engine.policy import Gate, GateConfig, Outcome, as_dict
 from engine.privacy import AllowlistGuard, PiiTokenizer, PrivacySettings, consent_channel
 from engine.proposal import approval_ttl_from_env
 from engine.runs import RunState
+from engine.runtime_state import EngineHalted, RuntimeGuard, RuntimeStateRepository
 
 Channel = Literal["telegram", "mailpit"]
-FIXED_SCHEMA = "erp-fixed-v1"
 # Fixed templates use only the always-issued name token; rehydrated at dispatch.
 FIXED_MESSAGES: Mapping[str, str] = {
     "en": "Hello {{PII_NAME_1}}, your cart is still waiting for you.",
@@ -95,6 +95,8 @@ class _Live:
         self.env = env
         # Compose service name of the isolated Mailpit sink (private network only).
         self.mailpit_host = env.get("ERP_MAILPIT_SMTP_HOST", "mailpit").strip() or "mailpit"
+        # #87: the operator CLI obeys the same runtime state as the worker (fails closed).
+        self.runtime = RuntimeGuard(RuntimeStateRepository(self.engine))
 
     def gate(self) -> Gate:
         return Gate(self.gate_config, PostgresGateLedger(self.engine))
@@ -120,6 +122,7 @@ class _Live:
             OdooCouponCreator(JsonTwoClient(self.odoo), self.odoo),
             _NoSyntheticDispatch(),
             settings,
+            runtime=self.runtime,
             erp=ErpExecution(
                 self.privacy,
                 self.allowlist,
@@ -230,7 +233,40 @@ def _fixed_proposal(
         repo.request_approval(run_id, gate, ttl=approval_ttl_from_env(live.env))
 
 
+class _LazyProvider:
+    """Builds the model client only when a call is made, so fallback needs no API key."""
+
+    def __init__(self, factory: Callable[[], Any]) -> None:
+        self._factory = factory
+        self._client: Any = None
+
+    def _get(self) -> Any:
+        if self._client is None:
+            self._client = self._factory()
+        return self._client
+
+    def count_tokens(self, payload: Mapping[str, object]) -> int:
+        return int(self._get().count_tokens(payload))
+
+    def generate(self, payload: Mapping[str, object], output_limit: int) -> Any:
+        return self._get().generate(payload, output_limit)
+
+
+class _LazyRetriever:
+    """Loads the embedding model only when retrieval runs (never in fallback)."""
+
+    def __init__(self, factory: Callable[[], Any]) -> None:
+        self._factory = factory
+        self._retriever: Any = None
+
+    def search(self, query: str, language: str) -> Any:
+        if self._retriever is None:
+            self._retriever = self._factory()
+        return self._retriever.search(query, language)
+
+
 def propose(live: _Live, args: argparse.Namespace) -> None:
+    live.runtime.require_not_halted()  # KS-3: nothing is proposed while halted
     customer, order = _erp_run(live, args.run_id)
     cart = live.reader.get_abandoned_cart(order, now=datetime.now(UTC))
     if cart is None or cart.partner_id != customer:
@@ -243,6 +279,8 @@ def propose(live: _Live, args: argparse.Namespace) -> None:
             from engine.proposal_provider import OpenAIClient
             from engine.retrieval import LocalE5Embedder, PostgresRetriever
 
+            api_key = live.env.get("OPENAI_API_KEY", "")
+
             settings = ProposalSettings.from_env(live.env)
             if not settings.erp_enabled or settings.review_budget is None:
                 raise ValueError(
@@ -251,10 +289,11 @@ def propose(live: _Live, args: argparse.Namespace) -> None:
             ProposalService(
                 live.engine,
                 live.reader,
-                PostgresRetriever(live.engine, LocalE5Embedder()),
-                OpenAIClient(live.env.get("OPENAI_API_KEY", "")),
+                _LazyRetriever(lambda: PostgresRetriever(live.engine, LocalE5Embedder())),
+                _LazyProvider(lambda: OpenAIClient(api_key)),
                 live.gate(),
                 settings,
+                runtime=live.runtime,
             ).generate(
                 args.run_id,
                 customer_id=customer,
@@ -340,7 +379,7 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
             args.command
         ](live, args)
         return 0
-    except (ValueError, OSError, ExecutionError) as error:
+    except (ValueError, OSError, ExecutionError, EngineHalted) as error:
         print(f"stage={args.command} status=failed reason={error}", file=sys.stderr, flush=True)
         return 1
     finally:

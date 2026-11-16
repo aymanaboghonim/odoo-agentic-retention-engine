@@ -311,7 +311,9 @@ def render_markdown(phase: str, report: dict[str, Any]) -> str:
             "result still leaves a wide upper bound (about 3/N), so read it as a necessary check, "
             "not proof of safety. The owner sets the breaker numbers from the baselines above.",
         ]
-    lines += ["", "## Inventory", ""]
+    if lines[-1] != "":
+        lines.append("")
+    lines += ["## Inventory", ""]
     lines.append(
         f"- Included {inventory.get('included')} reviewed English/MSA cases "
         f"{inventory.get('included_by_language')}; excluded: {inventory.get('excluded')}."

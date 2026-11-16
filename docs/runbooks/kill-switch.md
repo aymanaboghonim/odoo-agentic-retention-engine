@@ -60,6 +60,8 @@ bash scripts/release_gate_eval.sh evaluation live <sha256 of the reviewed smoke 
 
 Reports are written to `evals/release/results/release-gate-87-{smoke,evaluation}/` (`raw.json` and `README.md`) only after the whole run succeeds. Preflight does not check provider access, model output quality, or delivery. The stages print progress with elapsed time; a failed run names the stage and keeps any earlier report.
 
-## Not verified yet
+## Verified live, and not yet
 
-The live evaluation and a live halt/fallback check on the isolated Compose stack have not been run; the behavior is covered by hermetic tests. Do both only with the owner's approval.
+Verified on the isolated stack on 2026-11-16: `halted` and `fallback_fixed_rule` behave as described above (scan skipped, propose refused, fixed proposal with no model key and zero model calls, LLM-made proposal held, completed after admin re-enable). See the spec for the details.
+
+Not verified: the full 62-case evaluation (it stopped at case 12 on a provider timeout; no report, so no G1 to G5 result and no baseline), and the breaker against a real provider failure. A failed evaluation run leaves its durable runs behind, so a rerun is refused until the owner decides how to handle them (new prefix or an explicit cleanup).
