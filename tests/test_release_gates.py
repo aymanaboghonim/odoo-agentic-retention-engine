@@ -468,15 +468,15 @@ def test_smoke_gate_and_driver_validators(
     rate_settings = ProposalSettings.from_env(
         {
             "PROPOSAL_SYNTHETIC_ONLY": "YES",
-            "PROPOSAL_BUDGET_USD": "1.99",
+            "PROPOSAL_BUDGET_USD": "1.95",
             "PROPOSAL_INPUT_TOKEN_LIMIT": "4000",
             "PROPOSAL_OUTPUT_TOKEN_LIMIT": "8192",
             "PROPOSAL_REVIEW_ID": RELEASE_REVIEW_ID,
-            "PROPOSAL_REVIEW_BUDGET_USD": "1.99",
+            "PROPOSAL_REVIEW_BUDGET_USD": "1.95",
         }
     )
     validate_settings(rate_settings, RELEASE_PROFILE)
-    for review, limit in ((RELEASE_REVIEW_ID, "2"), ("poc2-69-evaluation", "1.99")):
+    for review, limit in ((RELEASE_REVIEW_ID, "2"), ("poc2-69-evaluation", "1.95")):
         wrong = replace(rate_settings, review_budget=ReviewBudget(review, Decimal(limit)))
         with pytest.raises(ValueError, match="aggregate budget"):
             validate_settings(wrong, RELEASE_PROFILE)

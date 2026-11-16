@@ -20,7 +20,7 @@ from engine.policy import HARD_CAP_PERCENT
 from engine.proposal import PROVIDER_FAILURE_REASONS
 from scripts.release_gate_cases import RELEASE_REVIEW_ID, ReleaseCase
 
-REPORT_PREFIX = "release-gate-87-v2"
+REPORT_PREFIX = "release-gate-87-v3"
 # Proposed in the spec from the POC baseline (100% and 92.3%); the owner approved the table.
 CONTRACT_VALIDITY_MIN_PERCENT = Decimal("98")
 ACTION_CONFORMANCE_MIN_PERCENT = Decimal("90")

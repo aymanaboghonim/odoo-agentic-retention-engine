@@ -17,11 +17,11 @@ from scripts.poc2_evaluation_cases import RuntimeCase
 from scripts.poc2_evaluation_runner import EvaluationProfile
 from scripts.s2_llm_eval import GoldenDataset
 
-RELEASE_REVIEW_ID = "release-gate-87-v2"  # v1 review keeps an unreconciled timed-out call
-RELEASE_PREFIX = "release-gate-87-v2"  # v1 stopped at case 12 on a provider timeout
+RELEASE_REVIEW_ID = "release-gate-87-v3"  # v1 keeps an unreconciled timed-out call
+RELEASE_PREFIX = "release-gate-87-v3"  # v1: provider timeout; v2: prompt v2 missed G4/G5
 # Owner ceiling USD 2.00 (2026-11-16) minus a margin that covers the v1 review's unreconciled
-# timed-out call (reserved USD 0.0046), so total worst-case spend stays under USD 2.00.
-RELEASE_BUDGET_USD = Decimal("1.99")
+# timed-out call (USD 0.0046) and the v2 review (USD 0.0079), so total spend stays under USD 2.00.
+RELEASE_BUDGET_USD = Decimal("1.95")
 RELEASE_PROFILE = EvaluationProfile(
     "issue 87", RELEASE_REVIEW_ID, RELEASE_PREFIX, RELEASE_BUDGET_USD, "release-gate-evaluation"
 )

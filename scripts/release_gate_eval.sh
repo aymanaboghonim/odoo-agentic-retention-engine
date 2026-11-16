@@ -49,11 +49,11 @@ exec "${compose[@]}" run --rm --no-deps -T --pull never -u "$(id -u):$(id -g)" \
   -e ODOO_API_KEY= \
   -e FULL_STACK_CAPACITY_PROPOSAL= \
   -e PROPOSAL_SYNTHETIC_ONLY=YES \
-  -e PROPOSAL_BUDGET_USD=1.99 \
+  -e PROPOSAL_BUDGET_USD=1.95 \
   -e PROPOSAL_INPUT_TOKEN_LIMIT=4000 \
   -e PROPOSAL_OUTPUT_TOKEN_LIMIT=8192 \
-  -e PROPOSAL_REVIEW_ID=release-gate-87-v2 \
-  -e PROPOSAL_REVIEW_BUDGET_USD=1.99 \
+  -e PROPOSAL_REVIEW_ID=release-gate-87-v3 \
+  -e PROPOSAL_REVIEW_BUDGET_USD=1.95 \
   -e GATE_TIMEZONE=Asia/Riyadh \
   -e GATE_CURRENCY=USD \
   -e GATE_DAILY_BUDGET=100000 \
