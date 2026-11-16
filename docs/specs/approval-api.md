@@ -5,7 +5,7 @@
 - ADRs: [ADR-0002](../adr/0002-modular-monolith.md),
   [ADR-0012](../adr/0012-worker-owned-agent-execution.md),
   [ADR-0018](../adr/0018-financial-safety-gate-decisions.md)
-- Status: agreed (owner, 2026-11-07)
+- Status: agreed (owner, 2026-11-07); superseded in part by [operator RBAC and expiring approvals](operator-rbac-and-expiring-approvals.md) (#86): the static token, loopback-only access, and no-expiry decisions, and invariant AA-1
 
 ## Purpose
 
