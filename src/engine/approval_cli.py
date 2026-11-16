@@ -19,13 +19,23 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] = os.environ)
     parser = argparse.ArgumentParser(
         description="Review proposal approvals (token from APPROVAL_ACCESS_TOKEN)"
     )
-    parser.add_argument("command", choices=("list", "approve", "reject"))
+    parser.add_argument("command", choices=("list", "approve", "reject", "runtime", "set-runtime"))
     parser.add_argument("--run-id", type=uuid.UUID)
     parser.add_argument("--snapshot-hash")
+    parser.add_argument(
+        "--state",
+        choices=("active", "fallback_fixed_rule", "halted"),
+        help="set-runtime: the new engine state (admin only)",
+    )
+    parser.add_argument("--reason", help="set-runtime: a short non-PII reason")
+    parser.add_argument("--expected-version", type=int, help="set-runtime: optional version guard")
     args = parser.parse_args(argv)
-    if args.command == "list":
-        if args.run_id or args.snapshot_hash:
-            parser.error("list does not take a run ID or snapshot hash")
+    if args.command in {"list", "runtime"}:
+        if args.run_id or args.snapshot_hash or args.state or args.reason:
+            parser.error(f"{args.command} takes no run, hash, state, or reason arguments")
+    elif args.command == "set-runtime":
+        if not args.state or not args.reason or args.run_id or args.snapshot_hash:
+            parser.error("set-runtime requires --state and --reason only")
     elif not args.run_id or not args.snapshot_hash:
         parser.error("decisions require --run-id and --snapshot-hash")
     try:
@@ -35,9 +45,18 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] = os.environ)
         port = int(env.get("APPROVAL_API_PORT", "8080"))
         if not 1 <= port <= 65535:
             raise ValueError("APPROVAL_API_PORT must be a valid port")
-        url = f"http://127.0.0.1:{port}/approvals"
+        base = f"http://127.0.0.1:{port}"
+        url = f"{base}/approvals"
         data = None
-        if args.command != "list":
+        if args.command == "runtime":
+            url = f"{base}/runtime"
+        elif args.command == "set-runtime":
+            url = f"{base}/runtime/state"
+            body: dict[str, object] = {"state": args.state, "reason": args.reason}
+            if args.expected_version is not None:
+                body["expected_version"] = args.expected_version
+            data = json.dumps(body).encode()
+        elif args.command != "list":
             url += f"/{args.run_id}/decision"
             data = json.dumps(
                 {"snapshot_hash": args.snapshot_hash, "decision": args.command}

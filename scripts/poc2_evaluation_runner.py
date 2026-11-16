@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -23,6 +24,22 @@ EVALUATION_PREFIX = "poc2-69-evaluation-v1"
 
 
 @dataclass(frozen=True)
+class EvaluationProfile:
+    """The fixed identity and budget of one evaluation (POC-2 is the default; #87 adds one)."""
+
+    label: str
+    review_id: str
+    prefix: str
+    budget_limit: Decimal
+    actor: str
+
+
+POC2_PROFILE = EvaluationProfile(
+    "issue 69", REVIEW_ID, EVALUATION_PREFIX, Decimal("1"), "poc2-evaluation"
+)
+
+
+@dataclass(frozen=True)
 class FixtureCart:
     cart: AbandonedCart
 
@@ -34,12 +51,17 @@ class CapturingProvider:
     def __init__(self, provider: LLMClient) -> None:
         self._provider = provider
         self.result: ProviderResult | None = None
+        self.elapsed_seconds: float | None = None
 
     def count_tokens(self, payload: Mapping[str, object]) -> int:
         return self._provider.count_tokens(payload)
 
     def generate(self, payload: Mapping[str, object], output_limit: int) -> ProviderResult:
-        self.result = self._provider.generate(payload, output_limit)
+        started = time.monotonic()
+        try:
+            self.result = self._provider.generate(payload, output_limit)
+        finally:
+            self.elapsed_seconds = time.monotonic() - started
         return self.result
 
 
@@ -83,25 +105,35 @@ def fixture_cart(dataset: GoldenDataset, case: RuntimeCase) -> AbandonedCart:
     )
 
 
-def validate_settings(settings: ProposalSettings) -> None:
+def validate_settings(
+    settings: ProposalSettings, profile: EvaluationProfile = POC2_PROFILE
+) -> None:
     review = settings.review_budget
     if (
         review is None
-        or review.review_id != REVIEW_ID
-        or review.limit_usd != Decimal("1")
+        or review.review_id != profile.review_id
+        or review.limit_usd != profile.budget_limit
         or settings.budget_usd > review.limit_usd
         or settings.input_tokens != 4000
         or settings.output_tokens != 8192
     ):
-        raise ValueError("issue 69 requires its fixed aggregate budget and approved token limits")
+        raise ValueError(
+            f"{profile.label} requires its fixed aggregate budget and approved token limits"
+        )
     if settings.rate.estimate(settings.input_tokens, settings.output_tokens) > settings.budget_usd:
         raise ValueError("per-run budget cannot reserve the approved token limits")
 
 
-def validate_unattempted(engine: Engine, cases: Sequence[RuntimeCase], *, phase: str) -> None:
+def validate_unattempted(
+    engine: Engine,
+    cases: Sequence[RuntimeCase],
+    *,
+    phase: str,
+    profile: EvaluationProfile = POC2_PROFILE,
+) -> None:
     if phase not in {"smoke", "evaluation"}:
         raise ValueError("invalid evaluation phase")
-    keys = [f"{EVALUATION_PREFIX}:{phase}:{case.case_id}" for case in cases]
+    keys = [f"{profile.prefix}:{phase}:{case.case_id}" for case in cases]
     with engine.connect() as conn:
         existing = (
             conn.execute(
@@ -116,7 +148,7 @@ def validate_unattempted(engine: Engine, cases: Sequence[RuntimeCase], *, phase:
                 "SELECT COUNT(*) FROM proposal_calls "
                 "WHERE review_id=:review AND status IN ('reserved', 'unknown')"
             ),
-            {"review": REVIEW_ID},
+            {"review": profile.review_id},
         ).scalar_one()
     if existing:
         raise ValueError("evaluation case already attempted; inspect the durable run")
@@ -134,17 +166,19 @@ def evaluate_case(
     retriever: Retriever,
     gate: Gate,
     settings: ProposalSettings,
+    profile: EvaluationProfile = POC2_PROFILE,
+    build_cart: Callable[[GoldenDataset, RuntimeCase], AbandonedCart] = fixture_cart,
 ) -> dict[str, object]:
-    validate_settings(settings)
+    validate_settings(settings, profile)
     if phase not in {"smoke", "evaluation"}:
         raise ValueError("invalid evaluation phase")
-    validate_unattempted(engine, [case], phase=phase)
-    cart = fixture_cart(dataset, case)
+    validate_unattempted(engine, [case], phase=phase, profile=profile)
+    cart = build_cart(dataset, case)
     run, created = RunRepository(engine).create_run(
         trigger_type="synthetic",
         trigger_ref="1:1",
-        idempotency_key=f"{EVALUATION_PREFIX}:{phase}:{case.case_id}",
-        actor="poc2-evaluation",
+        idempotency_key=f"{profile.prefix}:{phase}:{case.case_id}",
+        actor=profile.actor,
     )
     if not created:
         raise ValueError(f"case {case.case_id} was already attempted")
@@ -221,6 +255,7 @@ def evaluate_case(
         "price_currency": currency if isinstance(currency, str) else None,
         "proposed_discount_percent": str(discount) if isinstance(discount, Decimal) else None,
         "contract_pass": error is None,
+        "generation_seconds": capture.elapsed_seconds,
         "error": error,
         "proposal": proposal,
         "gate_result": gate_result,

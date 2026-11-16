@@ -1,0 +1,224 @@
+{
+  "actual_usd": "0.000100750000",
+  "budget_ceiling_usd": "2",
+  "cases": [
+    {
+      "action": "draft_message",
+      "action_pass": true,
+      "case_id": "enmsa-001-en",
+      "contract_pass": true,
+      "dialect": null,
+      "error": null,
+      "expected_action": "draft_message",
+      "gate_result": {
+        "discount_amount": "0",
+        "fingerprint": "ded423e2f9c7a9d16879e040b56428aff691fdc653586d33f87123f0ac852033",
+        "margin": null,
+        "outcome": "auto_approve",
+        "reasons": []
+      },
+      "generation_seconds": 4.710837678983808,
+      "language": "en",
+      "price_checked": false,
+      "price_claim": null,
+      "price_currency": null,
+      "price_pass": true,
+      "proposal": {
+        "action": "draft_message",
+        "cart_id": "1",
+        "cart_owner_id": "1",
+        "cart_snapshot": {
+          "amount_total": "80.0",
+          "currency": "USD",
+          "date_order": "2026-11-14T16:45:57.801363+00:00",
+          "language": "en",
+          "lines": [
+            {
+              "category": "Furniture / Office",
+              "name": "Saffron Desk Lamp",
+              "product_id": 1,
+              "quantity": "1",
+              "sku": "synthetic-product",
+              "unit_cost": "40.0",
+              "unit_price": "80.0"
+            }
+          ],
+          "order_id": 1,
+          "partner_id": 1
+        },
+        "category": "Furniture / Office",
+        "currency": "USD",
+        "customer_id": "1",
+        "customer_message": "We’d be happy to help you return to your cart and complete your purchase. Your Saffron Desk Lamp is still in your cart. You can review your cart and proceed to checkout when you’re ready.",
+        "eligible_total": "80.0",
+        "eligible_unit_cost_total": "40.0",
+        "is_bulk": false,
+        "language": "en",
+        "pii_tokens": {
+          "customer_id": "1",
+          "tokens": {
+            "{{PII_EMAIL_1}}": {
+              "field": "email",
+              "part": null
+            },
+            "{{PII_NAME_1}}": {
+              "field": "name",
+              "part": null
+            },
+            "{{PII_NAME_2}}": {
+              "field": "name",
+              "part": 0
+            },
+            "{{PII_NAME_3}}": {
+              "field": "name",
+              "part": 1
+            }
+          }
+        },
+        "policy_sources": [
+          {
+            "content_hash": "44681ba7439d7388a7e599dceda50974d6f33db38152a0d0d6e0a3ecb292170f",
+            "source_id": "message-tone",
+            "version": "1"
+          },
+          {
+            "content_hash": "3ff0d30edf886bfe5288a9d6d0bf3920d612781a192fe7cfcca24c550fec4032",
+            "source_id": "coupon-terms",
+            "version": "1"
+          },
+          {
+            "content_hash": "106782a153e66b5c0a17527b256fbf0eec20ce276db6c905e8e0c8f062417bcc",
+            "source_id": "contact-schedule",
+            "version": "1"
+          },
+          {
+            "content_hash": "bd6c9b2a3884dab435af93450346971ebd893b5eee177115de6ef7eb9de0be71",
+            "source_id": "consent",
+            "version": "1"
+          }
+        ],
+        "proposed_discount_percent": null,
+        "run_id": "0ca719e6-f94b-43cf-974d-47df47460de5"
+      },
+      "proposed_discount_percent": null,
+      "run_id": "0ca719e6-f94b-43cf-974d-47df47460de5",
+      "state": "evaluating_policy",
+      "usage": {
+        "actual_usd": "0.000100750000",
+        "input_tokens": 490,
+        "output_tokens": 79,
+        "reserved_usd": "0.004596000000"
+      }
+    }
+  ],
+  "completed_at": "2026-11-16T16:46:07.437461+00:00",
+  "contract_sha256": "20236610906663bef07575dac82691f6bcc1fd25e72a5a15765d18ae2fd5e27f",
+  "dataset_sha256": "50e8af9ec97bffbd334e121e8549664ca08cae3e5a9bf7d7e8f333fe3e3ecd6d",
+  "dataset_version": "s2-golden-v3",
+  "expected_case_ids": [
+    "enmsa-001-en"
+  ],
+  "input_token_limit": 4000,
+  "inventory": {
+    "excluded": {
+      "dialect and code-switch cases are out of scope (Q15 is open)": 42,
+      "no cart exists, so no run can be created": 4,
+      "the cart is not abandoned; eligibility is a scanner rule (PR-5), not a proposal-step behavior": 11,
+      "the injection text is in the cart item description, which the runtime payload never sends": 15
+    },
+    "excluded_case_ids": {
+      "dialect and code-switch cases are out of scope (Q15 is open)": [
+        "codeswitch-001",
+        "codeswitch-002",
+        "codeswitch-003",
+        "codeswitch-004",
+        "codeswitch-005",
+        "codeswitch-006",
+        "codeswitch-007",
+        "codeswitch-008",
+        "codeswitch-009",
+        "codeswitch-010",
+        "codeswitch-011",
+        "codeswitch-012",
+        "dialect-egyptian-001-ar_egyptian",
+        "dialect-egyptian-002-ar_egyptian",
+        "dialect-egyptian-003-ar_egyptian",
+        "dialect-egyptian-004-ar_egyptian",
+        "dialect-egyptian-005-ar_egyptian",
+        "dialect-egyptian-006-ar_egyptian",
+        "dialect-emirati-001-ar_emirati",
+        "dialect-emirati-002-ar_emirati",
+        "dialect-emirati-003-ar_emirati",
+        "dialect-emirati-004-ar_emirati",
+        "dialect-emirati-005-ar_emirati",
+        "dialect-emirati-006-ar_emirati",
+        "dialect-hijazi-001-ar_hijazi",
+        "dialect-hijazi-002-ar_hijazi",
+        "dialect-hijazi-003-ar_hijazi",
+        "dialect-hijazi-004-ar_hijazi",
+        "dialect-hijazi-005-ar_hijazi",
+        "dialect-hijazi-006-ar_hijazi",
+        "dialect-levantine-001-ar_levantine",
+        "dialect-levantine-002-ar_levantine",
+        "dialect-levantine-003-ar_levantine",
+        "dialect-levantine-004-ar_levantine",
+        "dialect-levantine-005-ar_levantine",
+        "dialect-levantine-006-ar_levantine",
+        "dialect-najdi-001-ar_najdi",
+        "dialect-najdi-002-ar_najdi",
+        "dialect-najdi-003-ar_najdi",
+        "dialect-najdi-004-ar_najdi",
+        "dialect-najdi-005-ar_najdi",
+        "dialect-najdi-006-ar_najdi"
+      ],
+      "no cart exists, so no run can be created": [
+        "enmsa-008-ar_msa",
+        "enmsa-008-en",
+        "enmsa-020-ar_msa",
+        "enmsa-020-en"
+      ],
+      "the cart is not abandoned; eligibility is a scanner rule (PR-5), not a proposal-step behavior": [
+        "dialect-egyptian-006-ar_msa",
+        "dialect-emirati-006-ar_msa",
+        "dialect-hijazi-006-ar_msa",
+        "dialect-levantine-006-ar_msa",
+        "dialect-najdi-006-ar_msa",
+        "enmsa-007-ar_msa",
+        "enmsa-007-en",
+        "enmsa-017-ar_msa",
+        "enmsa-017-en",
+        "enmsa-028-ar_msa",
+        "enmsa-028-en"
+      ],
+      "the injection text is in the cart item description, which the runtime payload never sends": [
+        "dialect-egyptian-004-ar_msa",
+        "dialect-emirati-004-ar_msa",
+        "dialect-hijazi-004-ar_msa",
+        "dialect-levantine-004-ar_msa",
+        "dialect-najdi-004-ar_msa",
+        "enmsa-005-ar_msa",
+        "enmsa-005-en",
+        "enmsa-015-ar_msa",
+        "enmsa-015-en",
+        "enmsa-019-ar_msa",
+        "enmsa-019-en",
+        "enmsa-024-ar_msa",
+        "enmsa-024-en",
+        "enmsa-030-ar_msa",
+        "enmsa-030-en"
+      ]
+    },
+    "included": 62,
+    "included_by_language": {
+      "ar": 41,
+      "en": 21
+    }
+  },
+  "model": "gpt-6-luna",
+  "output_token_limit": 8192,
+  "phase": "smoke",
+  "prompt_version": "proposal-v2-structured-discount",
+  "rate_provenance": "F-005 standard text including cache writes; verified 2026-11-06",
+  "reserved_usd": "0.004596000000",
+  "review_id": "release-gate-87"
+}

@@ -14,6 +14,7 @@ from sqlalchemy import Engine
 
 from engine.coupon_code import coupon_code_for_run
 from engine.db import DEFAULT_APPROVAL_TTL, RunRepository
+from engine.fixed_rule import FIXED_SCHEMA, build_fixed_offer
 from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, OfferProposal, Outcome, as_dict
 from engine.privacy import PiiTokenizer, PrivacyError, has_unknown_tokens
@@ -21,6 +22,7 @@ from engine.proposal_budget import BudgetError, ProposalBudget, Rate, ReviewBudg
 from engine.proposal_provider import VERSION, LLMClient, ProviderError
 from engine.retrieval import Retriever
 from engine.runs import RunState
+from engine.runtime_state import RuntimeGuard, RuntimeState
 
 LOG = logging.getLogger(__name__)
 CONTACT = re.compile(
@@ -30,6 +32,50 @@ CONTACT = re.compile(
 
 class ProposalError(Exception):
     """Proposal failed without exposing untrusted content."""
+
+
+# Spec release-gates-and-kill-switch.md (breaker): failures that mean the provider or its output
+# contract failed. Every ProposalError message must be in exactly one of these two sets;
+# tests/test_fallback_and_breaker.py fails when a new message is left unclassified.
+PROVIDER_FAILURE_REASONS: frozenset[str] = frozenset(
+    {
+        "provider_error",
+        "invalid structured model response",
+        "invalid proposal schema",
+        "invalid proposal action",
+        "no_action cannot contain a message",
+        "invalid proposal message",
+        "invalid proposed discount",
+        "invalid price claim",
+        "invalid price currency",
+        "missing or invalid provider usage",
+        "provider usage exceeded reservation",
+        "provider response incomplete",
+        "provider output contains customer identity",
+        "provider output contains an unknown PII token",
+        "provider output contains a contact identifier",
+        "price claim does not match the cart",
+        "invalid discount type",
+        "discount requires a single cart category",
+        "discount draft requires a message",
+        "rendered proposal message is too long",
+    }
+)
+NON_PROVIDER_FAILURE_REASONS: frozenset[str] = frozenset(
+    {
+        "synthetic proposals are not enabled",
+        "ERP proposals are not enabled",
+        "run does not match customer and cart",
+        "invalid language or empty request",
+        "invalid input length or type",
+        "invalid execution channel",
+        "contact identifier in model input",
+        "cart quantities or prices are invalid",
+        "cart is missing or customer scope does not match",
+        "cart currency or lines are invalid",
+        "input token count exceeds configured limit or is invalid",
+    }
+)
 
 
 class CartReader(Protocol):
@@ -166,8 +212,10 @@ class ProposalService:
         provider: LLMClient,
         gate: Gate,
         settings: ProposalSettings,
+        runtime: RuntimeGuard | None = None,
     ) -> None:
         self.engine = engine
+        self.runtime = runtime
         self.runs = RunRepository(engine)
         self.budget = ProposalBudget(engine)
         self.carts = carts
@@ -194,6 +242,8 @@ class ProposalService:
             raise ProposalError("ERP proposals are not enabled")
         if run.trigger_type != "erp" and not self.settings.synthetic_only:
             raise ProposalError("synthetic proposals are not enabled")
+        # KS-3: a halted engine refuses before any state change, so the run stays resumable.
+        state = self.runtime.require_not_halted() if self.runtime else RuntimeState.ACTIVE
         self.runs.transition(run_id, RunState.RECEIVED, RunState.VALIDATING_INPUT, actor="system")
         try:
             if language not in {"en", "ar"} or not request.strip():
@@ -218,6 +268,22 @@ class ProposalService:
             ):
                 raise ProposalError("cart quantities or prices are invalid")
             tokenizer = PiiTokenizer.for_cart(cart)
+            if state is RuntimeState.FALLBACK:
+                # KS-4: no retrieval, no model budget, no provider call; same gate and approval.
+                self.runs.transition(
+                    run_id, RunState.LOADING_CONTEXT, RunState.GENERATING_PROPOSAL, actor="system"
+                )
+                self._finish(
+                    run_id,
+                    build_fixed_offer(run_id, cart, proposal_language),
+                    {"action": "draft_message"},
+                    [],
+                    cart,
+                    execution_channel,
+                    tokenizer,
+                    schema_version=FIXED_SCHEMA,
+                )
+                return
             query = _clean(request, tokenizer)
             policies = self.retriever.search(query, language)
             total, cost = cart_to_proposal_inputs(cart)
@@ -330,31 +396,18 @@ class ProposalService:
                 customer_message=message if isinstance(message, str) else None,
                 language=proposal_language,
             )
-            decision = self.gate.evaluate(proposal, now=datetime.now(UTC))
-            self._persist(
+            self._finish(
                 run_id,
                 proposal,
                 answer,
-                as_dict(decision),
                 [
                     {"source_id": p.source_id, "version": p.version, "content_hash": p.content_hash}
                     for p in policies
                 ],
                 cart,
                 execution_channel,
-                tokenizer.token_map(),
+                tokenizer,
             )
-            if decision.outcome is Outcome.REJECT or answer["action"] != "draft_message":
-                self.runs.transition(
-                    run_id,
-                    RunState.EVALUATING_POLICY,
-                    RunState.REJECTED,
-                    actor="system",
-                    detail={"reason": "gate_or_non_dispatch_action"},
-                )
-            elif decision.outcome is Outcome.NEEDS_APPROVAL:
-                self.runs.request_approval(run_id, self.gate, ttl=self.settings.approval_ttl)
-            LOG.info("proposal run=%s status=validated", run_id)
         except Exception as error:
             if isinstance(error, (ProposalError, BudgetError)):
                 reason = str(error)
@@ -366,6 +419,43 @@ class ProposalService:
             LOG.warning("proposal run=%s status=failed reason=%s", run_id, reason)
             raise
 
+    def _finish(
+        self,
+        run_id: uuid.UUID,
+        proposal: OfferProposal,
+        answer: dict[str, object],
+        sources: list[dict[str, str]],
+        cart: AbandonedCart,
+        execution_channel: Literal["telegram", "mailpit"] | None,
+        tokenizer: PiiTokenizer,
+        *,
+        schema_version: str = VERSION,
+    ) -> None:
+        """Gate, persist, and route one proposal; shared by the model and fixed-rule paths."""
+        decision = self.gate.evaluate(proposal, now=datetime.now(UTC))
+        self._persist(
+            run_id,
+            proposal,
+            answer,
+            as_dict(decision),
+            sources,
+            cart,
+            execution_channel,
+            tokenizer.token_map(),
+            schema_version,
+        )
+        if decision.outcome is Outcome.REJECT or answer["action"] != "draft_message":
+            self.runs.transition(
+                run_id,
+                RunState.EVALUATING_POLICY,
+                RunState.REJECTED,
+                actor="system",
+                detail={"reason": "gate_or_non_dispatch_action"},
+            )
+        elif decision.outcome is Outcome.NEEDS_APPROVAL:
+            self.runs.request_approval(run_id, self.gate, ttl=self.settings.approval_ttl)
+        LOG.info("proposal run=%s status=validated schema=%s", run_id, schema_version)
+
     def _persist(
         self,
         run_id: uuid.UUID,
@@ -376,6 +466,7 @@ class ProposalService:
         cart: AbandonedCart,
         execution_channel: Literal["telegram", "mailpit"] | None,
         pii_tokens: dict[str, object],
+        schema_version: str = VERSION,
     ) -> None:
         record = asdict(proposal)
         record["action"] = answer["action"]
@@ -388,7 +479,7 @@ class ProposalService:
         record = json.loads(json.dumps(record, default=str))
         self.runs.persist_proposal(
             run_id,
-            schema_version=VERSION,
+            schema_version=schema_version,
             fingerprint=proposal.fingerprint(),
             proposal=record,
             gate_result=decision,

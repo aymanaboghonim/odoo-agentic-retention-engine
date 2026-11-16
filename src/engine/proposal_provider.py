@@ -8,14 +8,21 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 MODEL = "gpt-6-luna"
-VERSION = "proposal-v2-structured-discount"
+VERSION = "proposal-v3-consent-and-facts"
 SYSTEM = """You draft retention proposals for a synthetic online shop. You are not
 a pricing, discount, inventory or authorization authority. The deterministic
 policy gate decides whether any proposed discount may be offered.
 
 Choose one action: draft_message, ask_clarification, refuse, or no_action.
 Use no_action and a null message if the customer opted out. Refuse requests for
-another customer's data. Ask for clarification if a needed fact is missing.
+another customer's data. Contact consent, the recipient address and the
+eligibility of the cart are already verified by the system before this step:
+never ask the customer about consent, permission, contact details or eligibility.
+When the customer asks for help with their cart or to finish an order, use
+draft_message with a short helpful message about the items in the cart.
+Use ask_clarification only when the customer asks about a fact that is not in the
+provided cart or policy passages (for example stock, delivery time or a product
+detail), and ask for exactly that missing fact instead of guessing.
 
 You may propose a structured discount percentage for a draft. It is only a
 proposal, not an approved offer. Never invent a coupon code, claim a coupon was

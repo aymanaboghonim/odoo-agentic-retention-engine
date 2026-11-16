@@ -14,12 +14,14 @@ from sqlalchemy import Engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
+from engine.breaker import BreakerSettings, run_breaker
 from engine.config import EngineConfig
 from engine.db import RunRepository, create_engine
 from engine.odoo import OdooReader
 from engine.privacy import CONSENT_CHANNELS, ConsentChannel, PrivacySettings
+from engine.runtime_state import RuntimeGuard, RuntimeStateRepository
 from engine.synthetic_scan import ErpCartScanner, SyntheticCartScanner
-from engine.worker import ScanPage, run_scheduled_scans
+from engine.worker import GuardedScan, ScanPage, run_scheduled_scans
 
 LOG = logging.getLogger(__name__)
 
@@ -145,6 +147,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     settings = WorkerSettings.from_env(os.environ)
+    breaker_settings = BreakerSettings.from_env(os.environ)  # None = off; invalid fails closed
     reader = OdooReader(settings.odoo_url)
     if settings.scan_mode == "erp":
         reader.verify_readonly_role()
@@ -155,17 +158,21 @@ def main(argv: list[str] | None = None) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda _signal, _frame: stop.set())
     try:
-        scanner = build_scanner(settings, engine, reader)
+        runtime = RuntimeStateRepository(engine)
+        # KS-3: a halted (or unreadable) runtime state creates no runs.
+        scanner = GuardedScan(build_scanner(settings, engine, reader), RuntimeGuard(runtime))
         repo = RunRepository(engine)
 
-        def expire_approvals() -> None:
+        def maintenance() -> None:
             # Spec AA-6: pending approvals past expires_at are cancelled with an audit event.
             cancelled = repo.expire_approvals()
             if cancelled:
                 logging.info("stage=expire-approvals cancelled=%d", cancelled)
+            # Spec KS-5: may trip active to fallback_fixed_rule; never re-enables.
+            run_breaker(engine, runtime, breaker_settings, now=datetime.now(UTC))
 
         if args.once:
-            expire_approvals()
+            maintenance()
             scanned, created = scanner.scan_page(now=datetime.now(UTC))
             logging.info("stage=scan status=completed scanned=%d created=%d", scanned, created)
         else:
@@ -173,7 +180,7 @@ def main(argv: list[str] | None = None) -> None:
                 scanner,
                 stop=stop,
                 interval_seconds=settings.interval_seconds,
-                maintenance=expire_approvals,
+                maintenance=maintenance,
             )
     finally:
         engine.dispose()
