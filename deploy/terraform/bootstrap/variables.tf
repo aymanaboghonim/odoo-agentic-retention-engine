@@ -25,6 +25,18 @@ variable "github_repository" {
   default     = "aymanaboghonim/odoo-agentic-retention-engine"
 }
 
+variable "github_owner_id" {
+  description = "Numeric GitHub owner id (public; immutable subject claims, F-068)."
+  type        = string
+  default     = "62246708"
+}
+
+variable "github_repository_id" {
+  description = "Numeric GitHub repository id (public; immutable subject claims, F-068)."
+  type        = string
+  default     = "1423559255"
+}
+
 variable "github_environment" {
   description = "GitHub environment that gates deploys (owner is a required reviewer)."
   type        = string
