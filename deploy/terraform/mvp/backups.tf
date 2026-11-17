@@ -33,9 +33,12 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "backups" {
 resource "aws_s3_bucket_lifecycle_configuration" "backups" {
   bucket = aws_s3_bucket.backups.id
   rule {
-    id     = "expire"
+    # Only backups/ expires; models/ holds the pinned embedding model (#97, F-072).
+    id     = "expire-backups"
     status = "Enabled"
-    filter {}
+    filter {
+      prefix = "backups/"
+    }
     expiration {
       days = 30
     }

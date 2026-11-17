@@ -1,0 +1,70 @@
+name: Deploy AWS MVP
+
+# Manual only (#97). Runs in the protected `aws-mvp` environment (owner is the required
+# reviewer) and assumes the bootstrap deploy role through GitHub OIDC (F-068): no stored
+# AWS keys. It pushes images and rolls out task definitions; it never runs Terraform.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-aws-mvp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, mirror, and roll out
+    runs-on: ubuntu-24.04
+    environment: aws-mvp
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b
+        with:
+          version: 0.13.5
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # ADR-0026 / F-072: the host cannot reach the model CDN (IPv4 only), so the pinned
+      # model is staged once in S3 from here. manifest.sha256 is written last, so its
+      # presence means a complete, verified upload; the step is then skipped.
+      - name: Stage the pinned embedding model in S3 (skipped when present)
+        env:
+          BACKUPS_BUCKET: ${{ vars.AWS_BACKUPS_BUCKET }}
+        run: |
+          uv sync --locked --no-default-groups --group engine
+          key=$(uv run --no-sync python -c 'from scripts.aws_mvp import _model_constants, model_snapshot_key; r, v, _ = _model_constants(); print(model_snapshot_key(r, v))')
+          if aws s3api head-object --bucket "$BACKUPS_BUCKET" --key "$key/manifest.sha256" >/dev/null 2>&1; then
+            echo "model already staged at $key"
+          else
+            uv run --no-sync python -m scripts.aws_mvp model-upload --bucket "$BACKUPS_BUCKET" --apply
+          fi
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Mirror pinned third-party images (same digests)
+        run: bash scripts/aws_mvp_mirror_images.sh "${{ steps.ecr.outputs.registry }}"
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          file: deploy/full-stack.Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.ecr.outputs.registry }}/aorte-mvp/engine:${{ github.sha }}
+      - name: Register task definitions and roll out
+        run: bash scripts/aws_mvp_rollout.sh "${{ github.sha }}"

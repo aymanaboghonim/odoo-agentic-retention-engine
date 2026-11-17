@@ -63,17 +63,6 @@ variable "engine_image_tag" {
   default     = "bootstrap"
 }
 
-variable "third_party_image_digests" {
-  description = "Pinned digests mirrored into ECR; same digests as deploy/full-stack-compose.yml."
-  type        = map(string)
-  default = {
-    postgres = "sha256:64b99032e218b66b1d1a6334995056e1aa57f50a0c522cc856e72dff0e4b0d63"
-    odoo     = "sha256:27f920e002c43a1af7022a68f3cc17db71a2f9f3348800cb050721ce54893e49"
-    pgvector = "sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c"
-    mailpit  = "sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231"
-  }
-}
-
 variable "log_retention_days" {
   description = "CloudWatch Logs retention (F-067 pricing)."
   type        = number

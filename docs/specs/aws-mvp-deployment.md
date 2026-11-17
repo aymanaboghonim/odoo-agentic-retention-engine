@@ -42,7 +42,19 @@ OpenTelemetry export (Tier 2), real customer data (`Q12`), `terraform apply` fro
 | INF-8 | Cleanup is dry-run by default. `--apply` needs `--confirm <account-id>`, plus the reviewed destroy plan id unless `--sweep-only`. Cleanup reaches 100% of the project: every resource type on the INF-1 allowlist has a delete path, and a full sweep ends with `status --expect-clean` exit 0. Resources not tagged or named for the project are reported, never deleted. Status reports every billable type in ADR-0019 decision 4 and the account-wide risks (Elastic IP, NAT, load balancer, unattached volume, snapshot). All AWS tooling refuses the root identity. | `tests/test_aws_mvp_tooling.py::test_cleanup_covers_every_allowed_type`, `::test_full_sweep_reaches_clean_and_spares_unrelated`, `::test_full_cleanup_with_terraform_then_sweep`, `::test_cleanup_dry_run_makes_no_changes`, `::test_cleanup_apply_requires_matching_confirm_and_plan_id`, `::test_status_expect_clean_counts_account_billables`, `::test_refuses_root_and_default_credentials`, `::test_bootstrap_cleanup_refused_while_mvp_exists` |
 | INF-9 | With `APPROVAL_API_ROOT_PATH` unset, approval API routes are unchanged. With it set, routes serve only under the prefix. | `tests/test_approval.py::test_root_path_prefix` |
 
-## Terraform safety workflow
+## Live smoke (#97)
+
+`scripts/aws_mvp_smoke.py` checks the deployed stack and writes `summary.md` and `results.json` from the same run. Its logic is tested hermetically in `tests/test_aws_mvp_smoke.py`.
+
+| ID | Must be true on the live stack | Check |
+| :-- | :-- | :-- |
+| SM-1 | HTTPS through CloudFront serves the UI; plain HTTP redirects to HTTPS. | `sm1_edge` |
+| SM-2 | The host has no public IPv4, and its only ingress rule is the API port from the CloudFront prefix list. | `sm2_no_public_path` |
+| SM-3 | On the host, a request without `X-Origin-Verify` gets 403; through CloudFront without a token it gets 401. | `sm3_origin_guard` (SSM command, `--apply`) |
+| SM-4 | A `viewer` token may read approvals but not decide; an `approver` token passes the role check. | `sm4_rbac` (Cognito tokens from `scripts/cognito_login.py`) |
+| SM-5 | `odoo_ro` is read-only and `website_sale_loyalty` is installed. | `sm5_odoo` (`erp_minimal_fixtures --preflight-only` as a one-off task, `--apply`) |
+
+The end-to-end retention flow runs step by step ([runbook](../runbooks/aws-mvp.md)), because `erp_cli execute` needs an exact human confirmation of the run id and destination hash.
 
 `terraform plan` is the dry run. `scripts/tf_safe.sh <root> plan|apply|destroy-plan` enforces:
 

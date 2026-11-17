@@ -11,8 +11,9 @@ resource "aws_instance" "host" {
   vpc_security_group_ids      = [aws_security_group.host.id]
   iam_instance_profile        = aws_iam_instance_profile.instance.name
   associate_public_ip_address = false
-  ipv6_address_count          = 1
-  enable_primary_ipv6         = true
+  # One IPv6 address for egress (ADR-0024). Not marked primary: AWS reports
+  # enable_primary_ipv6 as false after create, which drifted on every plan (#97).
+  ipv6_address_count = 1
   user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
     cluster = aws_ecs_cluster.main.name
     region  = var.region
