@@ -70,6 +70,37 @@ resource "aws_iam_role_policy" "ecs_exec_secrets" {
   policy = data.aws_iam_policy_document.ecs_exec_secrets.json
 }
 
+# Proposal task only: read the pinned embedding model under models/ in the backups bucket
+# (F-072: the model CDN is IPv4-only, so it is staged in S3 and read over dual-stack).
+resource "aws_iam_role" "task_model" {
+  name               = "${var.name_prefix}-task-model"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_trust.json
+}
+
+data "aws_iam_policy_document" "task_model" {
+  statement {
+    sid       = "ReadModelObjects"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.backups.arn}/models/*"]
+  }
+  statement {
+    sid       = "ListModelPrefix"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.backups.arn]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["models/*"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "task_model" {
+  name   = "read-model"
+  role   = aws_iam_role.task_model.id
+  policy = data.aws_iam_policy_document.task_model.json
+}
+
 # No policies: the engine does not call AWS APIs. Containers get these empty credentials.
 resource "aws_iam_role" "task" {
   name               = "${var.name_prefix}-task"

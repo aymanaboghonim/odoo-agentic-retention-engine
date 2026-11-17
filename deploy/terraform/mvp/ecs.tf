@@ -28,6 +28,11 @@ locals {
   }
 
   # OIDC/JWKS from Cognito (#86 spec, F-058, F-066): access tokens carry cognito:groups.
+  # F-072: models/hub/... in the backups bucket mirrors the Hugging Face cache layout that
+  # engine.retrieval reads offline; manifest.sha256 is written by scripts/aws_mvp_model_upload.py.
+  model_snapshot    = "hub/models--Qdrant--multilingual-e5-large-onnx/snapshots/ac6781cd1cf88b8306a536d7c9d18a5bd57cc14b"
+  model_sync_script = "set -eu; aws s3 sync --only-show-errors s3://${aws_s3_bucket.backups.bucket}/models/hub/ /model-cache/hub/ && cd /model-cache/${local.model_snapshot} && sha256sum -c --quiet manifest.sha256 && echo model-sync ok"
+
   oidc_issuer = "https://cognito-idp.${var.region}.amazonaws.com/${aws_cognito_user_pool.operators.id}"
 
   common_engine_env = merge(var.breaker_settings, var.engine_settings, {
@@ -151,7 +156,8 @@ locals {
       essential         = false
       memoryReservation = 64
       portMappings = [
-        { containerPort = 1025, hostPort = 11025, protocol = "tcp" },
+        # The Mailpit adapter uses port 1025; the proposal task reaches it via docker0.
+        { containerPort = 1025, hostPort = 1025, protocol = "tcp" },
         { containerPort = 8025, hostPort = 18025, protocol = "tcp" },
       ]
       logConfiguration = local.log_config
@@ -202,9 +208,23 @@ resource "aws_ecs_task_definition" "proposal" {
   network_mode             = "bridge"
   requires_compatibilities = ["EC2"]
   execution_role_arn       = aws_iam_role.ecs_exec.arn
-  task_role_arn            = aws_iam_role.task.arn
+  task_role_arn            = aws_iam_role.task_model.arn
 
   container_definitions = jsonencode([{
+    # F-072: copy the pinned embedding model from S3 (dual-stack) and verify its hashes.
+    name              = "model-sync"
+    image             = local.images.aws_cli
+    essential         = false
+    memoryReservation = 128
+    entryPoint        = ["sh", "-c"]
+    command           = [local.model_sync_script]
+    environment = [
+      { name = "AWS_USE_DUALSTACK_ENDPOINT", value = "true" },
+      { name = "AWS_REGION", value = var.region },
+    ]
+    mountPoints      = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = false }]
+    logConfiguration = merge(local.log_config, { options = merge(local.log_config.options, { "awslogs-stream-prefix" = "model-sync" }) })
+    }, {
     name              = "proposal"
     image             = local.images.engine
     essential         = true
@@ -217,6 +237,9 @@ resource "aws_ecs_task_definition" "proposal" {
         { name = "ODOO_DB_NAME", value = "odoo" },
         { name = "HF_HOME", value = "/model-cache" },
         { name = "HF_HUB_OFFLINE", value = "1" },
+        # Container names resolve to the docker0 gateway; the Odoo client needs the host allowed.
+        { name = "ODOO_ALLOWED_HOSTS", value = "odoo" },
+        { name = "ERP_MAILPIT_SMTP_HOST", value = "mailpit" },
       ],
     )
     secrets = [
@@ -226,20 +249,24 @@ resource "aws_ecs_task_definition" "proposal" {
       { name = "OPENAI_API_KEY", valueFrom = "${local.param_arn}/openai-api-key" },
       { name = "TELEGRAM_BOT_TOKEN", valueFrom = "${local.param_arn}/telegram-bot-token" },
       { name = "ODOO_API_KEY", valueFrom = "${local.param_arn}/odoo-api-key" },
+      { name = "ERP_TELEGRAM_CHAT_ID", valueFrom = "${local.param_arn}/telegram-chat-id" },
+      { name = "TELEGRAM_ALLOWLIST_CHAT_IDS", valueFrom = "${local.param_arn}/telegram-chat-id" },
     ]
     extraHosts = [
       { hostname = "engine-db", ipAddress = "172.17.0.1" },
       { hostname = "odoo-db", ipAddress = "172.17.0.1" },
       { hostname = "odoo", ipAddress = "172.17.0.1" },
+      { hostname = "mailpit", ipAddress = "172.17.0.1" },
     ]
     mountPoints      = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = true }]
+    dependsOn        = [{ containerName = "model-sync", condition = "SUCCESS" }]
     logConfiguration = merge(local.log_config, { options = merge(local.log_config.options, { "awslogs-stream-prefix" = "proposal" }) })
   }])
 
   volume {
     name = "model-cache"
     docker_volume_configuration {
-      scope         = "shared" # filled with the pinned embedding model in #97
+      scope         = "shared" # filled by model-sync; kept across runs
       autoprovision = true
       driver        = "local"
     }

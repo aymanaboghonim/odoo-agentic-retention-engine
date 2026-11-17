@@ -55,6 +55,71 @@ aws sts get-caller-identity --profile aws-mvp --query Arn --output text
 
    The same works for `telegram-bot-token` and `odoo-api-key`. Without `--from-file` the script prompts with hidden input. The value goes to a private temp file (mode 600) that is deleted after the call.
 
+## Live deploy and smoke (#97)
+
+Owner decisions (2026-11-17): the model comes through the S3 backups bucket; channels are Mailpit and the dedicated Telegram test chat; at most one model proposal with a USD 0.50 cap; the stack stays about 48 hours for cost measurement, then full cleanup. Steps marked **owner** are hand-offs. Every Terraform change goes through `tf_safe.sh` plan, review, and `--confirm`.
+
+1. Bootstrap root (First deploy, step 1). Then create the GitHub environment `aws-mvp` with the owner as required reviewer, and set its variable `AWS_DEPLOY_ROLE_ARN` to the `deploy_role_arn` output.
+2. MVP root with `core_desired_count = 0` (First deploy, step 2). **Owner:** confirm the AWS budget subscription email.
+3. Stage the embedding model. Hugging Face's file CDN is IPv4-only, so the host cannot download it (`F-072`). Run from a machine with IPv4; the upload is 2.26 GB:
+
+   ```bash
+   python -m scripts.aws_mvp model-upload --bucket "$(terraform -chdir=deploy/terraform/mvp output -raw backups_bucket)" --apply
+   ```
+
+4. Images. Run the workflow and approve it (**owner**):
+
+   ```bash
+   gh workflow run deploy-aws.yml
+   ```
+
+   It mirrors the pinned third-party images with the same digests (`deploy/aws-mvp-images.json`), pushes `aorte-mvp/engine:<git sha>`, and registers new task definitions.
+5. Secrets: `openai-api-key`, `telegram-bot-token`, and `telegram-chat-id` (**owner** provides the token and chat id) through `scripts/aws_mvp_secrets.sh`.
+6. Apply `core_desired_count = 1` through `tf_safe.sh`, then `scripts/aws_mvp_start.sh --apply --url <api_base_url>`.
+7. Odoo (**owner**): forward port 18069 with Session Manager, change the demo admin password, and create a named API key. Store it with `scripts/aws_mvp_secrets.sh odoo-api-key`.
+8. Operators (**owner**): create two users in the Cognito pool, one in `viewer` and one in `approver`. Sign in once per user to set up TOTP MFA, and keep each token in a mode-600 file:
+
+   ```bash
+   python scripts/cognito_login.py --domain "$(terraform -chdir=deploy/terraform/mvp output -raw cognito_login_domain)" \
+     --client-id "$(terraform -chdir=deploy/terraform/mvp output -raw cognito_client_id)" --out ~/.config/aorte/approver.token
+   ```
+
+9. One-off tasks: policies, then fixtures (the preflight first):
+
+   ```bash
+   python -m scripts.aws_mvp task --apply -- python -m scripts.ingest_policies
+   python -m scripts.aws_mvp task --apply -- python -m scripts.erp_minimal_fixtures --preflight-only
+   python -m scripts.aws_mvp task --apply -- python -m scripts.erp_minimal_fixtures --confirmed-synthetic
+   ```
+
+10. Smoke (SM-1..SM-5) with a report:
+
+    ```bash
+    python scripts/aws_mvp_smoke.py --apply --base-url <cloudfront_url> \
+      --viewer-token ~/.config/aorte/viewer.token --approver-token ~/.config/aorte/approver.token \
+      --out evals/aws-mvp/results/<run-id>
+    ```
+
+11. End-to-end retention flow. Same commands as [privacy-local.md](privacy-local.md), run as one-off tasks with `--env EXECUTION_ERP_MODE=YES`: worker `--once` with `SCAN_MODE=erp`, then `erp_cli preflight`, `propose` (one model proposal at most, USD 0.50 cap), `show`, and `execute`. `execute` needs the exact run id and destination hash from `show`; the **owner** confirms each delivery (Mailpit, then Telegram).
+12. Cost allocation tag (**owner** approves; billing setting). The `Project` key appears in Billing about a day after tagged resources exist, and activation applies only to cost from then on:
+
+    ```bash
+    aws ce list-cost-allocation-tags --region us-east-1 --tag-keys Project
+    aws ce update-cost-allocation-tags-status --region us-east-1 --cost-allocation-tags-status TagKey=Project,Status=Active
+    ```
+
+    Activating before the key appears fails with `Tag keys not found: Project` (seen 2026-11-17), so retry the next day. Then backfill from the apply start, so the whole measurement is tagged (one backfill request per 24 hours):
+
+    ```bash
+    aws ce start-cost-allocation-tag-backfill --region us-east-1 --backfill-from <apply-start, e.g. 2026-11-17T00:00:00Z>
+    ```
+
+    Until it is active, use account-wide cost. That is valid only while `status` finds nothing else billable in the account.
+
+13. Measure: RAM on the host (`docker stats` through Session Manager), ECR image sizes, and hours. After about 48 hours, read the daily cost in Cost Explorer, filtered by `Project=aorte-mvp` once active. Then run Cleanup and `status --expect-clean --include-bootstrap`.
+
+Status and cleanup do not use AWS Resource Groups or the tag search API: that API kept stale records after deletion (`F-070`), and some resources (the CloudFront service security group, Cognito groups and clients) are not tagged. The tools query each service API by tag and name instead, and sweep the whole account for untagged billables.
+
 ## Daily use
 
 ```bash

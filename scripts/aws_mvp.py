@@ -45,7 +45,7 @@ RATES = {
     "logs_gb_month": 0.03,  # F-067
 }
 GB = 1024**3
-EXTERNAL_SECRETS = ("openai-api-key", "telegram-bot-token", "odoo-api-key")
+EXTERNAL_SECRETS = ("openai-api-key", "telegram-bot-token", "telegram-chat-id", "odoo-api-key")
 MUTATING_VERBS = (
     "create-",
     "delete-",
@@ -119,7 +119,9 @@ class OpsError(Exception):
 
 
 def _default_runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(list(argv), capture_output=True, text=True, check=False, timeout=300)
+    # A 2.2 GB `s3 cp` needs far longer than an API call (#97: 300 s cut an upload).
+    timeout = 3600 if list(argv[1:3]) == ["s3", "cp"] else 300
+    return subprocess.run(list(argv), capture_output=True, text=True, check=False, timeout=timeout)
 
 
 def log(message: str) -> None:
@@ -179,12 +181,15 @@ class Aws:
 
 def preflight(aws: Aws) -> dict[str, str]:
     """INF-8: require a named profile and refuse the root identity before any other call."""
-    if not os.environ.get("AWS_PROFILE"):
+    in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    if not os.environ.get("AWS_PROFILE") and not in_ci:
         raise OpsError("set AWS_PROFILE (for example aws-mvp); refusing default credentials")
     ident = aws.read("sts", "get-caller-identity")
     arn = str(ident.get("Arn", ""))
     if arn.endswith(":root"):
         raise OpsError("refusing the root identity; use the Identity Center profile")
+    if not os.environ.get("AWS_PROFILE") and f":assumed-role/{PREFIX}-gha-deploy/" not in arn:
+        raise OpsError("without AWS_PROFILE only the GitHub OIDC deploy role is accepted")
     aws.account = str(ident.get("Account", ""))
     log(f"identity: {arn.rsplit('/', 1)[-1]} region {aws.region} account {ident.get('Account')}")
     return {"account": str(ident.get("Account", "")), "arn": arn}
@@ -540,8 +545,12 @@ def _instance(aws: Aws) -> dict[str, Any] | None:
 
 
 def _wait(
-    what: str, check: Callable[[], bool], timeout_s: int, sleep: Callable[[float], None]
+    what: str,
+    check: Callable[[], bool],
+    timeout_s: int,
+    sleep: Callable[[float], None] | None = None,
 ) -> None:
+    pause = sleep or time.sleep
     start = time.monotonic()
     while True:
         if check():
@@ -551,11 +560,11 @@ def _wait(
         if elapsed >= timeout_s:
             raise OpsError(f"timed out after {elapsed}s waiting for {what}")
         log(f"  waiting: {what} (+{elapsed}s)")
-        sleep(20)
+        pause(20)
 
 
 def cmd_shutdown(
-    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] = time.sleep
+    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] | None = None
 ) -> int:
     preflight(aws)
     inst = _instance(aws)
@@ -586,7 +595,7 @@ def cmd_shutdown(
 
 
 def cmd_start(
-    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] = time.sleep
+    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] | None = None
 ) -> int:
     preflight(aws)
     inst = _instance(aws)
@@ -732,7 +741,7 @@ def _sweep(
     aws: Aws,
     items: list[Item],
     include_bootstrap: bool,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
 ) -> list[str]:
     """Delete every project resource left after `terraform destroy`, in dependency order.
 
@@ -948,7 +957,7 @@ def _sweep(
     ]
 
 
-def _delete_distribution(aws: Aws, dist: str, sleep: Callable[[float], None]) -> None:
+def _delete_distribution(aws: Aws, dist: str, sleep: Callable[[float], None] | None) -> None:
     current = aws.read("cloudfront", "get-distribution-config", "--id", dist)
     config = current["DistributionConfig"]
     if config.get("Enabled"):
@@ -1088,7 +1097,7 @@ def _buckets_in(items: list[Item], root: str) -> list[Item]:
 
 
 def cmd_cleanup(
-    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] = time.sleep
+    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] | None = None
 ) -> int:
     ident = preflight(aws)
     root = "bootstrap" if args.bootstrap else "mvp"
@@ -1175,6 +1184,187 @@ def cmd_secrets(aws: Aws, args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- one-off tasks (#97)
+
+# Commands an operator may run as a one-off proposal task (the flow of docs/runbooks/privacy-local.md).
+TASK_MODULES = (
+    "engine.erp_cli",
+    "engine.full_stack_worker",
+    "scripts.erp_minimal_fixtures",
+    "scripts.ingest_policies",
+)
+
+
+def cmd_task(
+    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] | None = None
+) -> int:
+    """Run one command in a one-off proposal task, stream its logs, return its exit code."""
+    preflight(aws)
+    command = list(args.argv)
+    if command[:1] == ["--"]:
+        command = command[1:]
+    if len(command) < 3 or command[:2] != ["python", "-m"] or command[2] not in TASK_MODULES:
+        raise OpsError(
+            f"command must be 'python -m <module> ...' with module in {', '.join(TASK_MODULES)}"
+        )
+    env = []
+    for item in args.env or []:
+        name, sep, value = item.partition("=")
+        if not sep or not name.isupper() or "KEY" in name or "TOKEN" in name or "PASSWORD" in name:
+            raise OpsError(f"--env {name!r}: use NAME=value for non-secret settings only")
+        env.append({"name": name, "value": value})
+    overrides = {
+        "containerOverrides": [{"name": "proposal", "command": command, "environment": env}]
+    }
+    with _secret_file(json.dumps(overrides)) as path:
+        started = aws.change(
+            f"run one-off task: {' '.join(command)}",
+            "ecs",
+            "run-task",
+            "--cluster",
+            PREFIX,
+            "--task-definition",
+            f"{PREFIX}-proposal",
+            "--launch-type",
+            "EC2",
+            "--overrides",
+            f"file://{path}",
+        )
+    if not aws.apply:
+        return 0
+    tasks = (started or {}).get("tasks") or []
+    if not tasks:
+        raise OpsError(f"run-task started nothing: {(started or {}).get('failures')}")
+    arn = tasks[0]["taskArn"]
+    task_id = arn.rsplit("/", 1)[-1]
+    holder: dict[str, Any] = {}
+
+    def stopped() -> bool:
+        holder["task"] = aws.read("ecs", "describe-tasks", "--cluster", PREFIX, "--tasks", arn)[
+            "tasks"
+        ][0]
+        return holder["task"].get("lastStatus") == "STOPPED"
+
+    _wait(f"task {task_id} stopped", stopped, args.timeout, sleep)
+    for container in ("model-sync", "proposal"):
+        events = (
+            aws.try_read(
+                "logs",
+                "get-log-events",
+                "--log-group-name",
+                f"/{PREFIX}/ecs",
+                "--log-stream-name",
+                f"{container}/{container}/{task_id}",
+                "--start-from-head",
+            )
+            or {}
+        )
+        for event in events.get("events", []):
+            log(f"  [{container}] {event.get('message', '')}")
+    exits = {c["name"]: c.get("exitCode") for c in holder["task"].get("containers", [])}
+    log(
+        f"task {task_id}: exit codes {exits}; stop reason: {holder['task'].get('stoppedReason', '')}"
+    )
+    code = exits.get("proposal")
+    return code if isinstance(code, int) else 1
+
+
+HF_BASE = "https://huggingface.co"
+
+
+def _model_constants() -> tuple[str, str, list[str]]:
+    sys.path.insert(0, str(REPO / "src"))
+    from engine.retrieval import MODEL_FILES, MODEL_REPOSITORY, MODEL_REVISION
+
+    return MODEL_REPOSITORY, MODEL_REVISION, list(MODEL_FILES)
+
+
+def model_snapshot_key(repository: str, revision: str) -> str:
+    """S3 key prefix that mirrors the Hugging Face cache layout engine.retrieval reads."""
+    return f"models/hub/models--{repository.replace('/', '--')}/snapshots/{revision}"
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _fetch(url: str, target: Path, label: str) -> None:
+    started = time.monotonic()
+    last = started
+    with urllib.request.urlopen(url, timeout=60) as response, target.open("wb") as out:  # noqa: S310
+        total = int(response.headers.get("Content-Length") or 0)
+        done = 0
+        for chunk in iter(lambda: response.read(1 << 20), b""):
+            out.write(chunk)
+            done += len(chunk)
+            if time.monotonic() - last >= 15:
+                last = time.monotonic()
+                share = f" {done * 100 // total}%" if total else ""
+                log(f"  downloading {label}:{share} {done >> 20} MiB (+{int(last - started)}s)")
+    log(f"  downloaded {label}: {done >> 20} MiB (+{int(time.monotonic() - started)}s)")
+
+
+def cmd_model_upload(aws: Aws, args: argparse.Namespace) -> int:
+    """Stage the pinned embedding model in S3 for the IPv6-only host (F-072).
+
+    Runs on an operator machine with IPv4. Downloads the pinned revision, checks every Git
+    LFS file against the SHA-256 that Hugging Face publishes, writes manifest.sha256, and
+    uploads (dry run unless --apply). The model-sync container re-checks the manifest.
+    """
+    preflight(aws)
+    repository, revision, files = _model_constants()
+    bucket = args.bucket
+    if not bucket.startswith(f"{PREFIX}-backups-"):
+        raise OpsError(f"--bucket must be the {PREFIX} backups bucket (terraform output)")
+    key = model_snapshot_key(repository, revision)
+    tree_url = f"{HF_BASE}/api/models/{repository}/tree/{revision}"
+    with urllib.request.urlopen(tree_url, timeout=30) as response:  # noqa: S310
+        tree = {entry["path"]: entry for entry in json.load(response)}
+    missing = [name for name in files if name not in tree]
+    if missing:
+        raise OpsError(f"pinned revision lacks files: {missing}")
+    total = sum(int(tree[name].get("size", 0)) for name in files)
+    log(
+        f"model {repository}@{revision[:12]}: {len(files)} files, {total / 1e9:.2f} GB -> s3://{bucket}/{key}/"
+    )
+    with tempfile.TemporaryDirectory(prefix="aorte-model-") as tmp:
+        work = Path(tmp)
+        lines = []
+        for name in files:
+            target = work / name
+            _fetch(f"{HF_BASE}/{repository}/resolve/{revision}/{name}", target, name)
+            digest = _sha256(target)
+            expected = (tree[name].get("lfs") or {}).get("oid")
+            if expected and expected != digest:
+                raise OpsError(f"{name}: SHA-256 does not match the published LFS hash")
+            if target.stat().st_size != int(tree[name].get("size", -1)):
+                raise OpsError(f"{name}: size does not match the published size")
+            lines.append(f"{digest}  {name}\n")
+        (work / "manifest.sha256").write_text("".join(lines), encoding="utf-8")
+        log("  verified: LFS files match published SHA-256; all sizes match")
+        for name in [*files, "manifest.sha256"]:
+            aws.change(
+                f"upload {name} to s3://{bucket}/{key}/",
+                "s3",
+                "cp",
+                str(work / name),
+                f"s3://{bucket}/{key}/{name}",
+                "--only-show-errors",
+            )
+    log(
+        "model-upload: done"
+        if aws.apply
+        else f"model-upload dry run: {len(aws.would)} upload(s) would run"
+    )
+    return 0
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -1215,6 +1405,16 @@ def build_parser() -> argparse.ArgumentParser:
     secrets.add_argument("name", choices=EXTERNAL_SECRETS)
     secrets.add_argument("--from-file", help="read the value from this file (else prompt)")
     secrets.add_argument("--apply", action="store_true")
+    task = sub.add_parser(
+        "task", help="run a one-off proposal task (erp_cli, fixtures, worker, ingest)"
+    )
+    task.add_argument("--apply", action="store_true")
+    task.add_argument("--env", action="append", metavar="NAME=value", help="non-secret override")
+    task.add_argument("--timeout", type=int, default=1800)
+    task.add_argument("argv", nargs=argparse.REMAINDER, help="-- python -m <module> ...")
+    model = sub.add_parser("model-upload", help="stage the pinned embedding model in S3 (F-072)")
+    model.add_argument("--bucket", required=True, help="terraform output backups_bucket")
+    model.add_argument("--apply", action="store_true")
     return parser
 
 
@@ -1247,6 +1447,8 @@ def main(argv: list[str] | None = None, runner: Runner = _default_runner) -> int
             "start": cmd_start,
             "cleanup": cmd_cleanup,
             "secrets": cmd_secrets,
+            "model-upload": cmd_model_upload,
+            "task": cmd_task,
         }
         return handlers[args.command](aws, args)
     except OpsError as error:

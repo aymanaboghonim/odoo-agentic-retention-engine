@@ -187,12 +187,30 @@ data "aws_iam_policy_document" "deploy" {
       values   = ["${local.arn_prefix}:ecs:${local.region}:${local.account}:cluster/${local.mvp}"]
     }
   }
+  # #97 / ADR-0026: stage the pinned embedding model (F-072) from the workflow, which has
+  # IPv4 and datacenter bandwidth. Only models/ in the project's backups bucket.
+  statement {
+    sid       = "StageModelObjects"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${local.arn_prefix}:s3:::${local.mvp}-backups-*/models/*"]
+  }
+  statement {
+    sid       = "ListModelPrefix"
+    actions   = ["s3:ListBucket"]
+    resources = ["${local.arn_prefix}:s3:::${local.mvp}-backups-*"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["models/*"]
+    }
+  }
   statement {
     sid     = "PassOnlyTaskRoles"
     actions = ["iam:PassRole"]
     resources = [
       "${local.arn_prefix}:iam::${local.account}:role/${local.mvp}-ecs-exec",
       "${local.arn_prefix}:iam::${local.account}:role/${local.mvp}-task",
+      "${local.arn_prefix}:iam::${local.account}:role/${local.mvp}-task-model",
     ]
     condition {
       test     = "StringEquals"

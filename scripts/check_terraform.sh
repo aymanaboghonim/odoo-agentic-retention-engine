@@ -26,12 +26,20 @@ done
 }
 
 "$TF" fmt -check -recursive -diff "$TF_DIR"
+# Use a throwaway data dir per root: the operator's .terraform/ may point at the real S3
+# backend (tf_safe.sh), and this gate must never need AWS credentials. Providers come from
+# a shared plugin cache, checked against .terraform.lock.hcl.
+export TF_PLUGIN_CACHE_DIR="${TF_PLUGIN_CACHE_DIR:-$HOME/.terraform.d/plugin-cache}"
+mkdir -p "$TF_PLUGIN_CACHE_DIR"
+DATA_ROOT=$(mktemp -d)
+trap 'rm -rf "$DATA_ROOT"' EXIT
 for root in "${roots[@]}"; do
   echo "terraform: init/validate ${root#"$REPO"/}"
-  # CI and local runs share the provider cache; no backend, so no AWS access is needed.
+  export TF_DATA_DIR="$DATA_ROOT/$(basename "$root")"
   TF_IN_AUTOMATION=1 "$TF" -chdir="$root" init -backend=false -input=false -no-color >/dev/null
   "$TF" -chdir="$root" validate -no-color
 done
+unset TF_DATA_DIR
 
 policy_args=()
 for root in "${roots[@]}"; do policy_args+=(--source "$root"); done

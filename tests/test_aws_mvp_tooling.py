@@ -373,6 +373,8 @@ class FakeAccount:
 @pytest.fixture(autouse=True)
 def profile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AWS_PROFILE", "aws-mvp")
+    # CI runners set GITHUB_ACTIONS=true; tests opt in to the CI identity path explicitly.
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr(aws_mvp.time, "sleep", lambda _s: None)
 
 
@@ -602,3 +604,186 @@ def test_secrets_never_put_value_in_argv_or_output(
     assert seen_files and not Path(seen_files[0]).exists()  # temp file removed
     with pytest.raises(SystemExit):
         main(["secrets", "engine-db-password", "--from-file", str(source)], runner=FakeAccount())
+
+
+# ---------------------------------------------------------------- model upload (#97, F-072)
+
+
+def _fake_hf(monkeypatch: pytest.MonkeyPatch, tamper: str | None = None) -> None:
+    import hashlib
+    import io
+
+    _repo, _rev, files = aws_mvp._model_constants()
+    content = {name: f"synthetic {name}".encode() for name in files}
+    tree = [
+        {
+            "path": n,
+            "size": len(c),
+            "lfs": {"oid": hashlib.sha256(c).hexdigest()} if n.startswith("model") else None,
+        }
+        for n, c in content.items()
+    ]
+
+    class Response(io.BytesIO):
+        headers: dict[str, str] = {}
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    def urlopen(url: str, timeout: int = 0) -> Response:
+        if "/api/models/" in url:
+            return Response(json.dumps(tree).encode())
+        name = url.rsplit("/", 1)[-1]
+        body = b"tampered!" if name == tamper else content[name]
+        return Response(body)
+
+    monkeypatch.setattr(aws_mvp.urllib.request, "urlopen", urlopen)
+
+
+def test_model_upload_verifies_hashes_and_dry_run_uploads_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_hf(monkeypatch)
+    fake = FakeAccount()
+    assert main(["model-upload", "--bucket", "aorte-mvp-backups-1"], runner=fake) == 0
+    assert fake.mutations() == []
+    calls: list[list[str]] = []
+    fake2 = FakeAccount()
+
+    def runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return ok(list(argv)) if list(argv)[1:3] == ["s3", "cp"] else fake2(argv)
+
+    assert main(["model-upload", "--bucket", "aorte-mvp-backups-1", "--apply"], runner=runner) == 0
+    uploads = [c for c in calls if c[1:3] == ["s3", "cp"]]
+    assert uploads and uploads[-1][4].endswith("/manifest.sha256")
+    repo, rev, files = aws_mvp._model_constants()
+    assert len(uploads) == len(files) + 1
+    assert all(f"/{aws_mvp.model_snapshot_key(repo, rev)}/" in c[4] for c in uploads)
+
+
+def test_model_upload_rejects_tampered_file_and_wrong_bucket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_hf(monkeypatch, tamper="model.onnx_data")
+    fake = FakeAccount()
+    assert main(["model-upload", "--bucket", "aorte-mvp-backups-1", "--apply"], runner=fake) == 1
+    assert fake.mutations() == []
+    _fake_hf(monkeypatch)
+    assert main(["model-upload", "--bucket", "someone-else", "--apply"], runner=FakeAccount()) == 1
+
+
+def test_terraform_model_path_matches_engine() -> None:
+    repo, rev, _files = aws_mvp._model_constants()
+    ecs = (REPO / "deploy" / "terraform" / "mvp" / "ecs.tf").read_text(encoding="utf-8")
+    snapshot = aws_mvp.model_snapshot_key(repo, rev).removeprefix("models/")
+    assert f'model_snapshot    = "{snapshot}"' in ecs
+
+
+def test_image_list_matches_compose_digests() -> None:
+    images = json.loads((REPO / "deploy" / "aws-mvp-images.json").read_text(encoding="utf-8"))
+    compose = (REPO / "deploy" / "full-stack-compose.yml").read_text(encoding="utf-8")
+    for name in ("postgres", "odoo", "pgvector", "mailpit"):
+        source = images[name]["source"].removeprefix("docker.io/").removeprefix("library/")
+        assert f"image: {source}@{images[name]['digest']}" in compose, name
+    assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", v["digest"]) for v in images.values())
+
+
+def test_task_runs_allowed_modules_and_returns_exit_code() -> None:
+    fake = FakeAccount()
+    state = {"n": 0}
+
+    def runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        argv = list(argv)
+        if argv[1:3] == ["ecs", "run-task"]:
+            overrides = json.loads(
+                Path(opt(argv, "--overrides").removeprefix("file://")).read_text()
+            )
+            assert overrides["containerOverrides"][0]["command"][:3] == [
+                "python",
+                "-m",
+                "engine.erp_cli",
+            ]
+            return ok(argv, {"tasks": [{"taskArn": "arn:aws:ecs:task/aorte-mvp/abc123"}]})
+        if argv[1:3] == ["ecs", "describe-tasks"]:
+            state["n"] += 1
+            status = "STOPPED" if state["n"] > 1 else "RUNNING"
+            return ok(
+                argv,
+                {
+                    "tasks": [
+                        {
+                            "lastStatus": status,
+                            "containers": [
+                                {"name": "model-sync", "exitCode": 0},
+                                {"name": "proposal", "exitCode": 3},
+                            ],
+                        }
+                    ]
+                },
+            )
+        if argv[1:3] == ["logs", "get-log-events"]:
+            return ok(argv, {"events": [{"message": "preflight=ok"}]})
+        return fake(argv)
+
+    code = main(
+        [
+            "task",
+            "--apply",
+            "--env",
+            "EXECUTION_ERP_MODE=YES",
+            "--",
+            "python",
+            "-m",
+            "engine.erp_cli",
+            "preflight",
+        ],
+        runner=runner,
+    )
+    assert code == 3  # the container's exit code
+    assert (
+        main(["task", "--", "python", "-m", "engine.erp_cli", "preflight"], runner=fake) == 0
+    )  # dry run
+    assert fake.mutations() == []
+
+
+def test_task_rejects_other_commands_and_secret_env() -> None:
+    for argv in (
+        ["task", "--apply", "--", "sh", "-c", "env"],
+        ["task", "--apply", "--", "python", "-m", "os"],
+        [
+            "task",
+            "--apply",
+            "--env",
+            "OPENAI_API_KEY=x",
+            "--",
+            "python",
+            "-m",
+            "engine.erp_cli",
+            "preflight",
+        ],
+    ):
+        fake = FakeAccount()
+        assert main(argv, runner=fake) == 1
+        assert fake.mutations() == [] and not any(c[2] == "run-task" for c in fake.calls)
+
+
+def test_ci_accepts_only_the_oidc_deploy_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AWS_PROFILE")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    other = FakeAccount()  # an SSO admin session is not the deploy role
+    assert main(["status"], runner=other) == 1
+    deploy = FakeAccount()
+    deploy.arn = f"arn:aws:sts::{ACCOUNT}:assumed-role/aorte-mvp-gha-deploy/GitHubActions"
+    assert main(["status"], runner=deploy) == 0
+
+
+def test_long_s3_copies_get_a_long_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[int] = []
+    monkeypatch.setattr(aws_mvp.subprocess, "run", lambda argv, **kw: seen.append(kw["timeout"]))
+    aws_mvp._default_runner(["aws", "s3", "cp", "a", "s3://b/c"])
+    aws_mvp._default_runner(["aws", "ec2", "describe-instances"])
+    assert seen == [3600, 300]
