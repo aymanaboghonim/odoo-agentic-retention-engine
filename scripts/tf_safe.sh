@@ -101,7 +101,9 @@ make_plan() {
     >"$STATE_DIR/plan.txt" || fail "terraform plan failed (see $STATE_DIR/plan.txt)"
   "$TF" -chdir="$ROOT" show -json .tfsafe/plan.tfplan >"$PLAN_JSON"
   stage "plan policy check"
-  "${POLICY[@]}" --source "$ROOT" --plan "$PLAN_JSON" "${ALLOW[@]}" || {
+  local mode=()
+  [ "$ACTION" = destroy-plan ] && mode=(--destroy-plan)
+  "${POLICY[@]}" --source "$ROOT" --plan "$PLAN_JSON" "${ALLOW[@]}" "${mode[@]}" || {
     rm -f "$PLAN" "$PLAN_JSON"
     fail "plan policy check failed; plan discarded"
   }

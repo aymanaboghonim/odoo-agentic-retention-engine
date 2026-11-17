@@ -114,16 +114,6 @@ variable "cognito_callback_port" {
   default     = 8765
 }
 
-variable "cognito_deletion_protection" {
-  description = "ACTIVE except when the cleanup script plans a teardown (#96)."
-  type        = string
-  default     = "ACTIVE"
-  validation {
-    condition     = contains(["ACTIVE", "INACTIVE"], var.cognito_deletion_protection)
-    error_message = "ACTIVE or INACTIVE."
-  }
-}
-
 variable "secrets_version" {
   description = "Bump to rotate the generated SecureString values (value_wo_version)."
   type        = number
