@@ -25,10 +25,12 @@ provider "aws" {
 }
 
 locals {
-  arn_prefix = "arn:aws"
-  account    = var.account_id
-  region     = var.region
-  mvp        = var.name_prefix
+  arn_prefix   = "arn:aws"
+  account      = var.account_id
+  region       = var.region
+  mvp          = var.name_prefix
+  github_owner = split("/", var.github_repository)[0]
+  github_repo  = split("/", var.github_repository)[1]
 }
 
 # ---------------------------------------------------------------- state bucket
@@ -128,11 +130,13 @@ data "aws_iam_policy_document" "deploy_trust" {
       variable = "token.actions.githubusercontent.com:aud"
       values   = ["sts.amazonaws.com"]
     }
-    # Only the protected `aws-mvp` environment of this repository (owner approves each run).
+    # Only the protected `aws-mvp` environment of this repository. The repo uses GitHub's
+    # immutable subject claims (F-068): owner and repo IDs are part of `sub`, so a renamed or
+    # re-created repository with the same name cannot assume this role.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.github_environment}"]
+      values   = ["repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo}@${var.github_repository_id}:environment:${var.github_environment}"]
     }
   }
 }
