@@ -1,6 +1,6 @@
 # ADR-0019: 1st-party AWS ECS-on-EC2 cloud runtime
 
-- Status: accepted
+- Status: accepted; decision 3 (ephemeral public IPv4) superseded in part by ADR-0024
 - Date: 2026-11-15
 - Issue: #84
 

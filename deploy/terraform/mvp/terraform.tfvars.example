@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (gitignored). No secrets here; secrets go to SSM via
+# scripts/aws_mvp_secrets.sh (#96).
+account_id   = "000000000000"
+budget_email = "owner@example.test"
+# core_desired_count = 1   # after images are in ECR (#97)
+# stop_cron          = "cron(0 23 * * ? *)"
+# stop_timezone      = "Africa/Cairo"
