@@ -373,6 +373,8 @@ class FakeAccount:
 @pytest.fixture(autouse=True)
 def profile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AWS_PROFILE", "aws-mvp")
+    # CI runners set GITHUB_ACTIONS=true; tests opt in to the CI identity path explicitly.
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr(aws_mvp.time, "sleep", lambda _s: None)
 
 

@@ -57,6 +57,7 @@ def web(monkeypatch: pytest.MonkeyPatch) -> dict[tuple[str, str, str | None], in
         return 404, {}, ""
 
     monkeypatch.setenv("AWS_PROFILE", "aws-mvp")
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr(smoke, "http", http)
     return responses
 
