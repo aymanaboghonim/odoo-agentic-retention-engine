@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import secrets
 import uuid
 from collections.abc import Callable
 from typing import Literal
 
 import sqlalchemy as sa
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,6 +24,18 @@ from engine.runtime_state import (
 )
 
 ORIGIN_HEADER = "x-origin-verify"
+# INF-9: optional path prefix that the edge forwards (CloudFront sends `/api/*` unchanged).
+ROOT_PATH_PATTERN = re.compile(r"^(/[a-z0-9][a-z0-9-]{0,30}){1,3}$")
+
+
+def validate_root_path(value: str | None) -> str:
+    """Return a normalized route prefix; empty means routes at `/` (default, unchanged)."""
+    root_path = (value or "").strip()
+    if root_path and not ROOT_PATH_PATTERN.fullmatch(root_path):
+        raise ValueError(
+            "APPROVAL_API_ROOT_PATH must look like /api (lowercase, no trailing slash)"
+        )
+    return root_path
 
 
 class DecisionInput(BaseModel):
@@ -53,9 +66,12 @@ def create_app(
     *,
     origin_verify_secret: str | None = None,
     runtime: RuntimeStateRepository | None = None,
+    root_path: str = "",
 ) -> FastAPI:
     """Approval API: behind CloudFront with an origin secret, otherwise loopback only."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    router = APIRouter()
+    prefix = validate_root_path(root_path)
     expected_origin = origin_verify_secret.encode("ascii") if origin_verify_secret else None
 
     @app.middleware("http")
@@ -95,13 +111,13 @@ def create_app(
 
         return check
 
-    @app.get("/approvals")
+    @router.get("/approvals")
     def list_approvals(
         principal: Principal = Depends(require_role("viewer")),
     ) -> list[dict[str, object]]:
         return repo.pending_approvals()
 
-    @app.post("/approvals/{run_id}/decision")
+    @router.post("/approvals/{run_id}/decision")
     def decide(
         run_id: uuid.UUID,
         payload: DecisionInput,
@@ -122,13 +138,13 @@ def create_app(
 
     if runtime is not None:
 
-        @app.get("/runtime")
+        @router.get("/runtime")
         def read_runtime(
             principal: Principal = Depends(require_role("viewer")),
         ) -> dict[str, object]:
             return runtime.get().as_dict()
 
-        @app.post("/runtime/state")
+        @router.post("/runtime/state")
         def change_runtime(
             payload: RuntimeInput, principal: Principal = Depends(require_role("admin"))
         ) -> dict[str, object]:
@@ -150,6 +166,7 @@ def create_app(
                 ) from error
             return snapshot.as_dict()
 
+    app.include_router(router, prefix=prefix)
     return app
 
 
@@ -174,6 +191,7 @@ def main() -> None:
     if not 1 <= port <= 65535:
         raise ValueError("APPROVAL_API_PORT must be a valid port")
     host = _host(settings)
+    root_path = validate_root_path(os.environ.get("APPROVAL_API_ROOT_PATH"))
     engine = create_engine(config.database_url)
     try:
         with engine.connect() as conn:
@@ -184,6 +202,7 @@ def main() -> None:
                 verifier,
                 origin_verify_secret=settings.origin_verify_secret,
                 runtime=RuntimeStateRepository(engine),
+                root_path=root_path,
             ),
             host=host,
             port=port,

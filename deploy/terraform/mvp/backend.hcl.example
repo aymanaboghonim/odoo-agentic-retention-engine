@@ -1,0 +1,2 @@
+# Copy to backend.hcl (gitignored) with the bootstrap output `state_bucket`.
+bucket = "aorte-mvp-tfstate-REPLACE"

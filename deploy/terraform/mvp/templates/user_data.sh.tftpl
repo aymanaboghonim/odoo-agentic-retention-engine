@@ -1,0 +1,61 @@
+#!/bin/bash
+# ECS host boot (ADR-0024 decision 3; measured in F-070). Logs go to the serial console
+# (`aws ec2 get-console-output`) so boot problems are visible even when SSM is not.
+set -uo pipefail
+exec > >(tee -a /var/log/aorte-boot.log /dev/console) 2>&1
+log() { echo "AORTE-BOOT $(date -u +%H:%M:%S) $*"; }
+log "start"
+systemctl stop ecs || true
+
+# ECS agent: join the cluster, dual-stack AWS endpoints, task roles, graceful stop for PostgreSQL.
+cat >/etc/ecs/ecs.config <<EOF
+ECS_CLUSTER=${cluster}
+AWS_USE_DUALSTACK_ENDPOINT=true
+ECS_ENABLE_TASK_IAM_ROLE=true
+ECS_CONTAINER_STOP_TIMEOUT=60s
+EOF
+
+# Docker daemon (awslogs driver): dual-stack endpoints.
+mkdir -p /etc/systemd/system/docker.service.d
+cat >/etc/systemd/system/docker.service.d/dualstack.conf <<EOF
+[Service]
+Environment=AWS_USE_DUALSTACK_ENDPOINT=true
+EOF
+
+# SSM Agent: the documented config key (F-069); the environment variable alone does not work (F-070).
+C=/etc/amazon/ssm/amazon-ssm-agent.json
+[ -s "$C" ] || cp /etc/amazon/ssm/amazon-ssm-agent.json.template "$C"
+python3 - "$C" <<'PY'
+import json, sys
+path = sys.argv[1]
+config = json.load(open(path))
+config.setdefault("Agent", {}).update({"Region": "${region}", "UseDualStackEndpoint": True})
+json.dump(config, open(path, "w"), indent=2)
+PY
+
+# Docker IPv6 NAT66 on the default bridge. Docker 25 needs "experimental" for ip6tables (F-070).
+# Keep the original file and revert if Docker does not start, so the host never loses Docker.
+P=/etc/docker/daemon.json
+if [ -s "$P" ]; then cp "$P" /root/daemon.json.orig; else echo '{}' >/root/daemon.json.orig; fi
+python3 - <<'PY'
+import json
+config = json.load(open("/root/daemon.json.orig"))
+config.update({
+    "ipv6": True,
+    "fixed-cidr-v6": "fd00:a07e::/64",
+    "ip6tables": True,
+    "experimental": True,
+    "shutdown-timeout": 60,
+})
+json.dump(config, open("/etc/docker/daemon.json", "w"), indent=2)
+PY
+systemctl daemon-reload
+if ! systemctl restart docker; then
+  log "docker restart FAILED with IPv6 config; reverting: $(journalctl -u docker -n 8 --no-pager -o cat | tr '\n' ' ' | cut -c1-600)"
+  cp /root/daemon.json.orig "$P"
+  systemctl restart docker
+fi
+systemctl restart amazon-ssm-agent
+log "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null) ipv6-bridge $(docker network inspect bridge --format '{{.EnableIPv6}}' 2>/dev/null)"
+systemctl start --no-block ecs
+log "done"

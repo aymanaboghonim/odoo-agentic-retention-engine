@@ -135,6 +135,24 @@ def test_approval_authentication(db: sa.Engine, pending: uuid.UUID) -> None:
     )
 
 
+def test_root_path_prefix(db: sa.Engine, pending: uuid.UUID) -> None:
+    # INF-9: unset keeps routes at `/`; `/api` serves routes only under the prefix.
+    auth = {"Authorization": f"Bearer {TOKEN}"}
+    verifier = TokenVerifier(ISSUER.settings())
+    prefixed = TestClient(
+        create_app(RunRepository(db), verifier, root_path="/api"), client=("127.0.0.1", 1234)
+    )
+    response = prefixed.get("/api/approvals", headers=auth)
+    assert response.status_code == 200
+    assert any(row["run_id"] == str(pending) for row in response.json())
+    assert prefixed.get("/approvals", headers=auth).status_code == 404
+    assert prefixed.get("/api/approvals").status_code == 401
+    assert client(RunRepository(db)).get("/api/approvals", headers=auth).status_code == 404
+    for bad in ("api", "/api/", "/API", "/a b", "/../x", "/" + "a" * 40):
+        with pytest.raises(ValueError, match="APPROVAL_API_ROOT_PATH"):
+            create_app(RunRepository(db), verifier, root_path=bad)
+
+
 def test_approval_token_not_exposed(
     db: sa.Engine, pending: uuid.UUID, caplog: pytest.LogCaptureFixture
 ) -> None:

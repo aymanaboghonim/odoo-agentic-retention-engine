@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars (gitignored) and fill in. No secrets here.
+account_id = "000000000000"
+# region             = "us-east-1"
+# github_repository  = "owner/repo"
+# github_environment = "aws-mvp"

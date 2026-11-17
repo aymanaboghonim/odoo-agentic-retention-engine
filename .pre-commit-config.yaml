@@ -63,6 +63,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: terraform
+        name: terraform fmt, validate, and policy (INF-1..INF-7)
+        entry: bash scripts/check_terraform.sh
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: agent-config
         name: check Claude Code agent config (skills, CLAUDE.md, settings)
         entry: uv run --no-sync python scripts/check_agent_config.py

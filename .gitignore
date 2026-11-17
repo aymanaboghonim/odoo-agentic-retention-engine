@@ -44,3 +44,13 @@ evals/llm/.debug/
 
 # Personal Claude Code instructions: while this exists Claude stops reading AGENTS.md (F-060)
 CLAUDE.local.md
+
+# Terraform (#95): state, plans, provider cache, and local variables never enter git.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.tfsafe/
+terraform.tfvars
+backend.hcl
+crash.log
