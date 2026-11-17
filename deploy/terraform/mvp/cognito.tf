@@ -2,9 +2,11 @@
 # TOTP MFA required, groups viewer/approver/admin, PKCE public client for a loopback helper.
 
 resource "aws_cognito_user_pool" "operators" {
-  name                     = "${var.name_prefix}-operators"
-  user_pool_tier           = "LITE"
-  deletion_protection      = var.cognito_deletion_protection
+  name           = "${var.name_prefix}-operators"
+  user_pool_tier = "LITE"
+  # No deletion_protection: a delete would need a separate unprotect apply before every
+  # teardown. Deletes are guarded by tf_safe.sh instead: the policy check rejects a pool
+  # delete outside a destroy plan (INF-7) and the owner confirms the plan id.
   mfa_configuration        = "ON"
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]

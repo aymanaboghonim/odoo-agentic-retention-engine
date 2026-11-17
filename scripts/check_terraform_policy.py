@@ -31,8 +31,6 @@ ALLOWED_RESOURCE_TYPES = frozenset(
         "aws_cloudfront_distribution",
         "aws_cloudfront_origin_access_control",
         "aws_cloudfront_vpc_origin",
-        "aws_cloudwatch_event_rule",
-        "aws_cloudwatch_event_target",
         "aws_cloudwatch_log_group",
         "aws_cognito_user_group",
         "aws_cognito_user_pool",
@@ -53,8 +51,6 @@ ALLOWED_RESOURCE_TYPES = frozenset(
         "aws_iam_role_policy_attachment",
         "aws_instance",
         "aws_internet_gateway",
-        "aws_lambda_function",
-        "aws_lambda_permission",
         "aws_route",
         "aws_route_table",
         "aws_route_table_association",
@@ -427,7 +423,10 @@ def _inf6_nightly_stop(config: Config) -> list[Violation]:
 # ---------------------------------------------------------------- plan rules
 
 
-def check_plan(plan: dict[str, Any], allow_replace: set[str]) -> tuple[list[Violation], Counter]:
+def check_plan(
+    plan: dict[str, Any], allow_replace: set[str], destroy_plan: bool = False
+) -> tuple[list[Violation], Counter]:
+    """destroy_plan: deletes are the purpose (cleanup), but anything else fails (INF-7)."""
     violations: list[Violation] = []
     summary: Counter = Counter()
     for change in plan.get("resource_changes", []):
@@ -439,6 +438,10 @@ def check_plan(plan: dict[str, Any], allow_replace: set[str]) -> tuple[list[Viol
             continue
         kind = "replace" if {"create", "delete"} <= set(actions) else "/".join(actions)
         summary[kind] += 1
+        if destroy_plan:
+            if actions != ["delete"]:
+                violations.append(Violation("INF-7", address, f"destroy plan contains {kind}"))
+            continue
         if resource_type not in ALLOWED_RESOURCE_TYPES and "delete" not in actions:
             violations.append(Violation("INF-1", address, "type is not on the allowlist"))
         if (
@@ -492,6 +495,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", action="append", type=Path, default=[], help="root dir")
     parser.add_argument("--plan", type=Path, help="terraform show -json output")
     parser.add_argument("--allow-replace", action="append", default=[], metavar="ADDRESS")
+    parser.add_argument("--destroy-plan", action="store_true", help="expect only deletes")
     args = parser.parse_args(argv)
     if not args.source and not args.plan:
         parser.print_usage(sys.stderr)
@@ -503,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"source: checked {', '.join(str(p) for p in args.source)}")
     if args.plan:
         plan = json.loads(args.plan.read_text(encoding="utf-8"))
-        plan_violations, summary = check_plan(plan, set(args.allow_replace))
+        plan_violations, summary = check_plan(plan, set(args.allow_replace), args.destroy_plan)
         violations += plan_violations
         counts = ", ".join(f"{k}={v}" for k, v in sorted(summary.items())) or "no changes"
         print(f"plan: {counts}")

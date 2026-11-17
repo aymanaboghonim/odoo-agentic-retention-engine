@@ -309,3 +309,14 @@ def test_port_from_variable_default(tmp_path: Path) -> None:
     assert "INF-2 aws_security_group.host" in rules(tmp_path, text + variable.replace("PORT", "22"))
     no_default = text + 'variable "api_port" {\n  type = number\n}\n'
     assert "INF-2 aws_security_group.host" in rules(tmp_path, no_default)
+
+
+def test_destroy_plan_allows_only_deletes() -> None:
+    deletes = _plan(
+        _change("aws_cognito_user_pool.operators", ["delete"]),
+        _change("aws_s3_bucket.ui", ["delete"]),
+    )
+    violations, summary = check_plan(deletes, set(), destroy_plan=True)
+    assert violations == [] and summary["delete"] == 2
+    sneaky = _plan(_change("aws_s3_bucket.ui", ["delete"]), _change("aws_iam_role.x", ["create"]))
+    assert [v.rule for v in check_plan(sneaky, set(), destroy_plan=True)[0]] == ["INF-7"]
