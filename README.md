@@ -30,17 +30,18 @@ flowchart TD
     human -- "yes" --> act
     human -- "no" --> stop
 
-    classDef code fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
-    classDef model fill:#fef3c7,stroke:#b45309,color:#0f172a
-    classDef person fill:#dcfce7,stroke:#15803d,color:#0f172a
-    classDef halt fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    linkStyle default stroke:#64748b,stroke-width:2px
+    classDef code fill:#1d4ed8,stroke:#1e3a8a,color:#ffffff
+    classDef model fill:#b45309,stroke:#78350f,color:#ffffff
+    classDef person fill:#15803d,stroke:#14532d,color:#ffffff
+    classDef halt fill:#b91c1c,stroke:#7f1d1d,color:#ffffff
     class scan,context,gate,act code
     class llm model
     class human person
     class stop halt
 ```
 
-Yellow is the only LLM step, green is the human decision, and blue is deterministic code. Step 1 also skips carts inside the contact cooldown. Each run is a row in PostgreSQL with an explicit state machine. Every state change and its audit event are written in one transaction, so a crash or a repeated trigger can't send a second coupon or message.
+Orange is the only LLM step, green is the human decision, red is a stop, and blue is deterministic code. Step 1 also skips carts inside the contact cooldown. Each run is a row in PostgreSQL with an explicit state machine. Every state change and its audit event are written in one transaction, so a crash or a repeated trigger can't send a second coupon or message.
 
 ## Engineering practices
 
