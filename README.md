@@ -19,16 +19,16 @@ flowchart TD
     context["2. Load cart and policy context"]
     llm["3. LLM drafts offer and message"]
     gate{"4. Safety gate"}
-    human["Human approves"]
+    human["Human review"]
     stop["Rejected, nothing sent"]
     act["5. Recheck gate, then<br/>create coupon and send"]
 
     scan --> context --> llm --> gate
     gate -- "10% to 15%" --> human
-    gate -- "over 15% or rule fails" --> stop
+    gate -- "over 15%, or margin<br/>or budget fails" --> stop
     gate -- "up to 10%" --> act
-    human -- "yes" --> act
-    human -- "no" --> stop
+    human -- "approve" --> act
+    human -- "reject" --> stop
 
     linkStyle default stroke:#64748b,stroke-width:2px
     classDef code fill:#1d4ed8,stroke:#1e3a8a,color:#ffffff
@@ -41,7 +41,7 @@ flowchart TD
     class stop halt
 ```
 
-Orange is the only LLM step, green is the human decision, red is a stop, and blue is deterministic code. Step 1 also skips carts inside the contact cooldown. Each run is a row in PostgreSQL with an explicit state machine. Every state change and its audit event are written in one transaction, so a crash or a repeated trigger can't send a second coupon or message.
+Orange is the only LLM step, green is the human review, red is a stop, and blue is deterministic code. Step 1 also skips carts inside the contact cooldown. Each run is a row in PostgreSQL with an explicit state machine. Every state change and its audit event are written in one transaction, so a crash or a repeated trigger can't send a second coupon or message.
 
 ## Engineering practices
 
@@ -77,9 +77,9 @@ Held-out test set (44 cases, 22 English and 22 Arabic), written after prompt tun
 | Output matches the JSON schema | 44 | 44/44 |
 | Model chose the expected action | 32 | 30/32 (93.75%) |
 
-These sets are small. With 8 cases, 0 violations still allows a true rate of up to 37.5% (95% upper bound), so the gates are a minimum check, not proof. Latency P95 was 4.9 s per call, and the 44 calls cost about USD 0.006 in total.
+These sets are small. With 8 cases, 0 violations still allows a true rate of up to 37.5% (95% upper bound), so the gates are a minimum check, not proof. Generation P95 was 4.9 s per call, and the 44 calls had an estimated cost of USD 0.006 in total.
 
-Retrieval combines PostgreSQL full-text search and `pgvector` with rank fusion. On a 32-query bilingual benchmark, Recall@5 is 1.000 and search P95 is 7.45 ms ([benchmark](evals/retrieval/results/s3-benchmark.md)).
+Retrieval combines PostgreSQL full-text search and `pgvector` with reciprocal rank fusion (80:20). On 80 bilingual queries over 34 policy documents, Recall@5 is 0.919, and P95 latency is 2.2 ms for search, or 180 ms including the query embedding ([benchmark](evals/retrieval/results/s3-benchmark.md), [ADR-0015](docs/adr/0015-postgresql-retrieval-store.md)).
 
 ## Deployment
 
