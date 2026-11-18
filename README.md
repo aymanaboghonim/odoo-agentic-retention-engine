@@ -15,32 +15,32 @@ An engine that runs beside Odoo and follows up on abandoned carts. For each cart
 
 ```mermaid
 flowchart TD
-    scan["1. Find abandoned carts"]
-    check["2. Check consent, blacklist, cooldown"]
-    context["3. Load cart and policy context"]
-    llm["4. LLM drafts offer and message"]
-    gate{"5. Safety gate"}
-    human["Human approves or rejects"]
-    recheck["6. Recheck the gate"]
-    act["7. Create coupon, send message"]
+    scan["1. Find abandoned carts<br/>with consent, not blacklisted"]
+    context["2. Load cart and policy context"]
+    llm["3. LLM drafts offer and message"]
+    gate{"4. Safety gate"}
+    human["Human approves"]
     stop["Rejected, nothing sent"]
+    act["5. Recheck gate, then<br/>create coupon and send"]
 
-    scan --> check --> context --> llm --> gate
-    gate -- "up to 10%" --> recheck
+    scan --> context --> llm --> gate
     gate -- "10% to 15%" --> human
     gate -- "over 15% or rule fails" --> stop
-    human -- "approved" --> recheck
-    recheck --> act
+    gate -- "up to 10%" --> act
+    human -- "yes" --> act
+    human -- "no" --> stop
 
     classDef code fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
     classDef model fill:#fef3c7,stroke:#b45309,color:#0f172a
-    classDef other fill:#f1f5f9,stroke:#64748b,color:#0f172a
-    class scan,check,context,gate,recheck,act code
+    classDef person fill:#dcfce7,stroke:#15803d,color:#0f172a
+    classDef halt fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    class scan,context,gate,act code
     class llm model
-    class human,stop other
+    class human person
+    class stop halt
 ```
 
-Yellow is the only LLM step; everything in blue is deterministic code. Each run is a row in PostgreSQL with an explicit state machine. Every state change and its audit event are written in one transaction, so a crash or a repeated trigger can't send a second coupon or message.
+Yellow is the only LLM step, green is the human decision, and blue is deterministic code. Step 1 also skips carts inside the contact cooldown. Each run is a row in PostgreSQL with an explicit state machine. Every state change and its audit event are written in one transaction, so a crash or a repeated trigger can't send a second coupon or message.
 
 ## Engineering practices
 
