@@ -5,12 +5,35 @@
 # drift. Desired count stays as Terraform set it.
 #
 #   scripts/aws_mvp_rollout.sh <engine-image-tag>
+#
+# Waits on the new deployment's rolloutState (not `aws ecs wait services-stable`, which
+# stops after 10 minutes; a core rollout takes about 10 minutes, #109). Limits:
+# AORTE_ROLLOUT_TIMEOUT seconds (default 1200), polled every AORTE_ROLLOUT_POLL (15).
 set -euo pipefail
 
 TAG=${1:?usage: aws_mvp_rollout.sh <engine-image-tag>}
 PREFIX=${AORTE_PREFIX:-aorte-mvp}
 START=$(date +%s)
+TIMEOUT=${AORTE_ROLLOUT_TIMEOUT:-1200}
+POLL=${AORTE_ROLLOUT_POLL:-15}
 stage() { printf '[rollout +%ss] %s\n' "$(($(date +%s) - START))" "$*"; }
+fail() { printf 'FAILED (rollout): %s\n' "$*" >&2; exit 1; }
+
+wait_rollout() {
+  local arn=$1 deadline state
+  deadline=$(($(date +%s) + TIMEOUT))
+  while :; do
+    state=$(aws ecs describe-services --cluster "$PREFIX" --services core \
+      --query 'services[0].deployments[?taskDefinition==`'"$arn"'`].rolloutState | [0]' --output text)
+    case "$state" in
+      COMPLETED) stage "rollout COMPLETED"; return 0 ;;
+      FAILED) fail "ECS reports rolloutState FAILED for $arn (see the service events)" ;;
+    esac
+    [ "$(date +%s)" -lt "$deadline" ] || fail "no COMPLETED rollout after ${TIMEOUT}s (state $state)"
+    stage "rollout $state; next check in ${POLL}s"
+    sleep "$POLL"
+  done
+}
 
 for family in core; do
   current=$(aws ecs describe-task-definition --task-definition "$PREFIX-$family" --query taskDefinition --output json)
@@ -25,8 +48,8 @@ for family in core; do
     aws ecs update-service --cluster "$PREFIX" --service core --task-definition "$arn" >/dev/null
     desired=$(aws ecs describe-services --cluster "$PREFIX" --services core --query 'services[0].desiredCount' --output text)
     if [ "$desired" -gt 0 ]; then
-      stage "waiting for the core service to become stable (desired $desired)"
-      aws ecs wait services-stable --cluster "$PREFIX" --services core
+      stage "waiting for the rollout (desired $desired, limit ${TIMEOUT}s)"
+      wait_rollout "$arn"
     fi
     stage "core service uses $arn"
   fi
