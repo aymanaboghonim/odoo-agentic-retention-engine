@@ -692,83 +692,85 @@ def test_image_list_matches_compose_digests() -> None:
     assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", v["digest"]) for v in images.values())
 
 
-def test_task_runs_allowed_modules_and_returns_exit_code() -> None:
+def test_exec_runs_in_operator_container_and_returns_exit_code() -> None:
+    import base64
+
     fake = FakeAccount()
-    state = {"n": 0}
+    shipped: list[str] = []
 
     def runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         argv = list(argv)
-        if argv[1:3] == ["ecs", "run-task"]:
-            overrides = json.loads(
-                Path(opt(argv, "--overrides").removeprefix("file://")).read_text()
-            )
-            assert overrides["containerOverrides"][0]["command"][:3] == [
-                "python",
-                "-m",
-                "engine.erp_cli",
-            ]
-            return ok(argv, {"tasks": [{"taskArn": "arn:aws:ecs:task/aorte-mvp/abc123"}]})
-        if argv[1:3] == ["ecs", "describe-tasks"]:
-            state["n"] += 1
-            status = "STOPPED" if state["n"] > 1 else "RUNNING"
-            return ok(
-                argv,
-                {
-                    "tasks": [
-                        {
-                            "lastStatus": status,
-                            "containers": [
-                                {"name": "model-sync", "exitCode": 0},
-                                {"name": "proposal", "exitCode": 3},
-                            ],
-                        }
-                    ]
-                },
-            )
-        if argv[1:3] == ["logs", "get-log-events"]:
-            return ok(argv, {"events": [{"message": "preflight=ok"}]})
+        if argv[1:3] == ["ssm", "send-command"]:
+            params = json.loads(Path(opt(argv, "--parameters").removeprefix("file://")).read_text())
+            encoded = params["commands"][0].split()[1]
+            shipped.append(base64.b64decode(encoded).decode())
+            return ok(argv, {"Command": {"CommandId": "cmd-1"}})
+        if argv[1:3] == ["ssm", "get-command-invocation"]:
+            out = "preflight=ok\n__aorte_exit=3\n"
+            return ok(argv, {"Status": "Success", "StandardOutputContent": out})
         return fake(argv)
 
-    code = main(
-        [
-            "task",
-            "--apply",
-            "--env",
-            "EXECUTION_ERP_MODE=YES",
-            "--",
-            "python",
-            "-m",
-            "engine.erp_cli",
-            "preflight",
-        ],
-        runner=runner,
-    )
-    assert code == 3  # the container's exit code
-    assert (
-        main(["task", "--", "python", "-m", "engine.erp_cli", "preflight"], runner=fake) == 0
-    )  # dry run
-    assert fake.mutations() == []
+    argv = ["exec", "--apply", "--env", "EXECUTION_ERP_MODE=YES", "--", "python", "-m"]
+    code = main([*argv, "engine.erp_cli", "preflight"], runner=runner)
+    assert code == 3  # the command's own exit code
+    script = shipped[0]
+    assert "label=com.amazonaws.ecs.container-name=operator" in script
+    assert "docker exec -e EXECUTION_ERP_MODE=YES" in script
+    assert script.splitlines()[3].endswith("python -m engine.erp_cli preflight 2>&1")
+    dry = FakeAccount()
+    assert main(["exec", "--", "python", "-m", "engine.erp_cli", "preflight"], runner=dry) == 0
+    assert dry.mutations() == []
 
 
-def test_task_rejects_other_commands_and_secret_env() -> None:
+def test_exec_rejects_other_commands_and_secret_env() -> None:
     for argv in (
-        ["task", "--apply", "--", "sh", "-c", "env"],
-        ["task", "--apply", "--", "python", "-m", "os"],
+        ["exec", "--apply", "--", "sh", "-c", "env"],
+        ["exec", "--apply", "--", "python", "-m", "os"],
+        ["exec", "--apply", "--env", "OPENAI_API_KEY=x", "--", "python", "-m", "engine.erp_cli"],
         [
-            "task",
+            "exec",
             "--apply",
             "--env",
-            "OPENAI_API_KEY=x",
+            "TELEGRAM_BOT_TOKEN=x",
             "--",
             "python",
             "-m",
             "engine.erp_cli",
-            "preflight",
+        ],
+        [
+            "exec",
+            "--apply",
+            "--env",
+            "PRIVACY_TOMBSTONE_PEPPER=x",
+            "--",
+            "python",
+            "-m",
+            "engine.erp_cli",
         ],
     ):
         fake = FakeAccount()
         assert main(argv, runner=fake) == 1
-        assert fake.mutations() == [] and not any(c[2] == "run-task" for c in fake.calls)
+        assert fake.mutations() == [] and not any(c[2] == "send-command" for c in fake.calls)
+    # Non-secret limits are allowed even if they mention tokens (#97).
+    args = aws_mvp.build_parser().parse_args(
+        ["exec", "--env", "PROPOSAL_INPUT_TOKEN_LIMIT=4000", "--", "python", "-m", "engine.erp_cli"]
+    )
+    assert aws_mvp._validated_exec(args)[1] == [("PROPOSAL_INPUT_TOKEN_LIMIT", "4000")]
+    assert set(aws_mvp.EXEC_MODULES) == {
+        "engine.erp_cli",
+        "engine.full_stack_worker",
+        "engine.privacy_cli",
+        "scripts.erp_minimal_fixtures",
+        "scripts.ingest_policies",
+    }  # the allowlist changes only by review (#97)
+    stopped = FakeAccount()
+    stopped.instances["i-0live"] = "stopped"
+    assert (
+        main(
+            ["exec", "--apply", "--", "python", "-m", "engine.erp_cli", "preflight"], runner=stopped
+        )
+        == 1
+    )
 
 
 def test_ci_accepts_only_the_oidc_deploy_role(monkeypatch: pytest.MonkeyPatch) -> None:

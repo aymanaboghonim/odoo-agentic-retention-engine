@@ -1184,89 +1184,113 @@ def cmd_secrets(aws: Aws, args: argparse.Namespace) -> int:
     return 0
 
 
-# ---------------------------------------------------------------- one-off tasks (#97)
+# ---------------------------------------------------------------- operator commands (ADR-0027)
 
-# Commands an operator may run as a one-off proposal task (the flow of docs/runbooks/privacy-local.md).
-TASK_MODULES = (
+# Commands an operator may run in the core task's `operator` container (the flow of
+# docs/runbooks/privacy-local.md). They run inside the task network, so the engine's
+# network guard (engine-db/odoo-db on 5432) holds unchanged.
+EXEC_MODULES = (
     "engine.erp_cli",
     "engine.full_stack_worker",
+    "engine.privacy_cli",
     "scripts.erp_minimal_fixtures",
     "scripts.ingest_policies",
 )
+EXIT_MARKER = "__aorte_exit="
 
 
-def cmd_task(
-    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] | None = None
-) -> int:
-    """Run one command in a one-off proposal task, stream its logs, return its exit code."""
-    preflight(aws)
+def _validated_exec(args: argparse.Namespace) -> tuple[list[str], list[tuple[str, str]]]:
     command = list(args.argv)
     if command[:1] == ["--"]:
         command = command[1:]
-    if len(command) < 3 or command[:2] != ["python", "-m"] or command[2] not in TASK_MODULES:
+    if len(command) < 3 or command[:2] != ["python", "-m"] or command[2] not in EXEC_MODULES:
         raise OpsError(
-            f"command must be 'python -m <module> ...' with module in {', '.join(TASK_MODULES)}"
+            f"command must be 'python -m <module> ...' with module in {', '.join(EXEC_MODULES)}"
         )
-    env = []
+    env: list[tuple[str, str]] = []
     for item in args.env or []:
         name, sep, value = item.partition("=")
-        if not sep or not name.isupper() or "KEY" in name or "TOKEN" in name or "PASSWORD" in name:
+        secret_like = name.endswith(("_KEY", "_TOKEN", "_PASSWORD", "_SECRET", "_PEPPER"))
+        if not sep or not name.isupper() or secret_like:
             raise OpsError(f"--env {name!r}: use NAME=value for non-secret settings only")
-        env.append({"name": name, "value": value})
-    overrides = {
-        "containerOverrides": [{"name": "proposal", "command": command, "environment": env}]
-    }
-    with _secret_file(json.dumps(overrides)) as path:
-        started = aws.change(
-            f"run one-off task: {' '.join(command)}",
-            "ecs",
-            "run-task",
-            "--cluster",
-            PREFIX,
-            "--task-definition",
-            f"{PREFIX}-proposal",
-            "--launch-type",
-            "EC2",
-            "--overrides",
+        env.append((name, value))
+    return command, env
+
+
+def exec_script(command: list[str], env: list[tuple[str, str]]) -> str:
+    """Host script: docker exec in the operator container; prints the command's exit code."""
+    import shlex
+
+    env_flags = " ".join(f"-e {shlex.quote(f'{k}={v}')}" for k, v in env)
+    return "\n".join(
+        [
+            "set -u",
+            "C=$(docker ps -q --filter label=com.amazonaws.ecs.container-name=operator)",
+            '[ -n "$C" ] || { echo "operator container is not running"; exit 97; }',
+            f'docker exec {env_flags} "$C" {shlex.join(command)} 2>&1',
+            f'echo "{EXIT_MARKER}$?"',
+        ]
+    )
+
+
+def cmd_exec(
+    aws: Aws, args: argparse.Namespace, sleep: Callable[[float], None] | None = None
+) -> int:
+    """Run one allowlisted command in the operator container over SSM; return its exit code."""
+    import base64
+
+    preflight(aws)
+    command, env = _validated_exec(args)
+    inst = _instance(aws)
+    if inst is None or inst["State"]["Name"] != "running":
+        raise OpsError("the instance is not running; run aws_mvp_start.sh --apply first")
+    encoded = base64.b64encode(exec_script(command, env).encode()).decode()
+    params = json.dumps(
+        {"commands": [f"echo {encoded} | base64 -d | sh"], "executionTimeout": [str(args.timeout)]}
+    )
+    with _secret_file(params) as path:
+        sent = aws.change(
+            f"exec in operator: {' '.join(command)}",
+            "ssm",
+            "send-command",
+            "--instance-ids",
+            inst["InstanceId"],
+            "--document-name",
+            "AWS-RunShellScript",
+            "--timeout-seconds",
+            "60",
+            "--parameters",
             f"file://{path}",
         )
     if not aws.apply:
         return 0
-    tasks = (started or {}).get("tasks") or []
-    if not tasks:
-        raise OpsError(f"run-task started nothing: {(started or {}).get('failures')}")
-    arn = tasks[0]["taskArn"]
-    task_id = arn.rsplit("/", 1)[-1]
+    command_id = (sent or {}).get("Command", {}).get("CommandId", "")
     holder: dict[str, Any] = {}
 
-    def stopped() -> bool:
-        holder["task"] = aws.read("ecs", "describe-tasks", "--cluster", PREFIX, "--tasks", arn)[
-            "tasks"
-        ][0]
-        return holder["task"].get("lastStatus") == "STOPPED"
-
-    _wait(f"task {task_id} stopped", stopped, args.timeout, sleep)
-    for container in ("model-sync", "proposal"):
-        events = (
+    def finished() -> bool:
+        holder["inv"] = (
             aws.try_read(
-                "logs",
-                "get-log-events",
-                "--log-group-name",
-                f"/{PREFIX}/ecs",
-                "--log-stream-name",
-                f"{container}/{container}/{task_id}",
-                "--start-from-head",
+                "ssm",
+                "get-command-invocation",
+                "--command-id",
+                command_id,
+                "--instance-id",
+                inst["InstanceId"],
             )
             or {}
         )
-        for event in events.get("events", []):
-            log(f"  [{container}] {event.get('message', '')}")
-    exits = {c["name"]: c.get("exitCode") for c in holder["task"].get("containers", [])}
-    log(
-        f"task {task_id}: exit codes {exits}; stop reason: {holder['task'].get('stoppedReason', '')}"
-    )
-    code = exits.get("proposal")
-    return code if isinstance(code, int) else 1
+        return holder["inv"].get("Status") in {"Success", "Failed", "TimedOut", "Cancelled"}
+
+    _wait(f"operator command {command[2]}", finished, args.timeout + 120, sleep)
+    out = holder["inv"].get("StandardOutputContent", "")
+    code = None
+    for line in out.splitlines():
+        if line.startswith(EXIT_MARKER):
+            code = int(line.removeprefix(EXIT_MARKER))
+        else:
+            log(f"  | {line}")
+    log(f"exec {command[2]}: ssm {holder['inv'].get('Status')}, exit {code}")
+    return code if code is not None else 1
 
 
 HF_BASE = "https://huggingface.co"
@@ -1406,7 +1430,7 @@ def build_parser() -> argparse.ArgumentParser:
     secrets.add_argument("--from-file", help="read the value from this file (else prompt)")
     secrets.add_argument("--apply", action="store_true")
     task = sub.add_parser(
-        "task", help="run a one-off proposal task (erp_cli, fixtures, worker, ingest)"
+        "exec", help="run an allowlisted command in the operator container (ADR-0027)"
     )
     task.add_argument("--apply", action="store_true")
     task.add_argument("--env", action="append", metavar="NAME=value", help="non-secret override")
@@ -1448,7 +1472,7 @@ def main(argv: list[str] | None = None, runner: Runner = _default_runner) -> int
             "cleanup": cmd_cleanup,
             "secrets": cmd_secrets,
             "model-upload": cmd_model_upload,
-            "task": cmd_task,
+            "exec": cmd_exec,
         }
         return handlers[args.command](aws, args)
     except OpsError as error:

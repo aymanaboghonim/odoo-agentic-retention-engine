@@ -52,7 +52,7 @@ OpenTelemetry export (Tier 2), real customer data (`Q12`), `terraform apply` fro
 | SM-2 | The host has no public IPv4, and its only ingress rule is the API port from the CloudFront prefix list. | `sm2_no_public_path` |
 | SM-3 | On the host, a request without `X-Origin-Verify` gets 403; through CloudFront without a token it gets 401. | `sm3_origin_guard` (SSM command, `--apply`) |
 | SM-4 | A `viewer` token may read approvals but not decide; an `approver` token passes the role check. | `sm4_rbac` (Cognito tokens from `scripts/cognito_login.py`) |
-| SM-5 | `odoo_ro` is read-only and `website_sale_loyalty` is installed. | `sm5_odoo` (`erp_minimal_fixtures --preflight-only` as a one-off task, `--apply`) |
+| SM-5 | `odoo_ro` is read-only and `website_sale_loyalty` is installed. | `sm5_odoo` (`erp_minimal_fixtures --preflight-only` in the operator container, ADR-0027, `--apply`) |
 
 The end-to-end retention flow runs step by step ([runbook](../runbooks/aws-mvp.md)), because `erp_cli execute` needs an exact human confirmation of the run id and destination hash.
 

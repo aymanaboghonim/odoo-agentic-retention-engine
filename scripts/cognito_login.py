@@ -69,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--out", type=Path, required=True, help="token file (mode 600)")
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="only print the link (#97: an auto-opened tab reused another user's session)",
+    )
     args = parser.parse_args(argv)
     if not args.domain.startswith("https://"):
         print("FAILED: --domain must be the https Cognito login domain", file=sys.stderr)
@@ -82,10 +87,24 @@ def main(argv: list[str] | None = None) -> int:
 
     class Callback(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - http.server API
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path != "/callback":
+                # e.g. /logout after clearing a cached Cognito session (#97): not the login.
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Signed out. Now open the login link.\n")
+                return
+            query = urllib.parse.parse_qs(parsed.query)
             if query.get("state", [""])[0] != state:
-                result["error"] = "state mismatch"
-            elif "code" in query:
+                # A stale tab from an earlier run (#97). Refuse it (CSRF check) and keep waiting.
+                self.send_response(400)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Stale or unknown login link; ignored. Use the newest link.\n")
+                print("ignored a callback with an unknown state (stale tab)", flush=True)
+                return
+            if "code" in query:
                 result["code"] = query["code"][0]
             else:
                 result["error"] = query.get("error", ["no code"])[0]
@@ -101,8 +120,16 @@ def main(argv: list[str] | None = None) -> int:
     server = http.server.HTTPServer(("127.0.0.1", args.port), Callback)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = authorize_url(args.domain, args.client_id, redirect, state, challenge)
+    logout = (
+        f"{args.domain.rstrip('/')}/logout?client_id={urllib.parse.quote(args.client_id)}"
+        f"&logout_uri={urllib.parse.quote(f'http://localhost:{args.port}/logout', safe='')}"
+    )
+    print(
+        f"To switch user, first open (clears the cached Cognito session):\n  {logout}", flush=True
+    )
     print(f"Open this URL if the browser does not start:\n  {url}", flush=True)
-    webbrowser.open(url)
+    if not args.no_browser:
+        webbrowser.open(url)
     finished = done.wait(args.timeout)
     server.shutdown()
     if not finished or "code" not in result:

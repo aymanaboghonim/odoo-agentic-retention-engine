@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Register new task definition revisions with the engine image tag and roll out the core
-# service (#97). Terraform owns everything else; the service ignores task_definition, so
-# this does not drift. Desired count stays as Terraform set it.
+# Register a new core task definition revision with the engine image tag and roll out the
+# core service (#97; ADR-0027: the operator container replaced the proposal task).
+# Terraform owns everything else; the service ignores task_definition, so this does not
+# drift. Desired count stays as Terraform set it.
 #
 #   scripts/aws_mvp_rollout.sh <engine-image-tag>
 set -euo pipefail
@@ -11,7 +12,7 @@ PREFIX=${AORTE_PREFIX:-aorte-mvp}
 START=$(date +%s)
 stage() { printf '[rollout +%ss] %s\n' "$(($(date +%s) - START))" "$*"; }
 
-for family in core proposal; do
+for family in core; do
   current=$(aws ecs describe-task-definition --task-definition "$PREFIX-$family" --query taskDefinition --output json)
   next=$(jq --arg tag "$TAG" --arg repo "/$PREFIX/engine:" '
     {family, networkMode, requiresCompatibilities, executionRoleArn, taskRoleArn, volumes,

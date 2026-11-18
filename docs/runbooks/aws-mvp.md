@@ -84,12 +84,21 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
      --client-id "$(terraform -chdir=deploy/terraform/mvp output -raw cognito_client_id)" --out ~/.config/aorte/approver.token
    ```
 
-9. One-off tasks: policies, then fixtures (the preflight first):
+   Add `--no-browser` and open the printed authorize URL yourself. Cognito keeps a login session cookie, so a second sign-in in the same browser silently reuses the first user. To switch users (for example approver, then viewer), sign in one user at a time:
+
+   1. Start the helper for the next user (`--out ~/.config/aorte/viewer.token`). It listens on `localhost:8765`.
+   2. In the browser, open the logout URL that the helper prints (`/logout?client_id=...&logout_uri=http://localhost:8765/logout`). This clears the Cognito session.
+   3. Open the printed authorize URL in the same tab and sign in as the next user with password and TOTP.
+   4. Check that the `groups=[...]` the helper prints matches the user. If it does not, delete the token file and repeat.
+
+   Access tokens last 15 minutes. Get both tokens just before the smoke (step 10) needs them.
+
+9. Operator commands (ADR-0027: `docker exec` in the core task's `operator` container over SSM): policies, then fixtures (the preflight first):
 
    ```bash
-   python -m scripts.aws_mvp task --apply -- python -m scripts.ingest_policies
-   python -m scripts.aws_mvp task --apply -- python -m scripts.erp_minimal_fixtures --preflight-only
-   python -m scripts.aws_mvp task --apply -- python -m scripts.erp_minimal_fixtures --confirmed-synthetic
+   python -m scripts.aws_mvp exec --apply -- python -m scripts.ingest_policies
+   python -m scripts.aws_mvp exec --apply -- python -m scripts.erp_minimal_fixtures --preflight-only
+   python -m scripts.aws_mvp exec --apply -- python -m scripts.erp_minimal_fixtures --confirmed-synthetic
    ```
 
 10. Smoke (SM-1..SM-5) with a report:
@@ -100,7 +109,24 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
       --out evals/aws-mvp/results/<run-id>
     ```
 
-11. End-to-end retention flow. Same commands as [privacy-local.md](privacy-local.md), run as one-off tasks with `--env EXECUTION_ERP_MODE=YES`: worker `--once` with `SCAN_MODE=erp`, then `erp_cli preflight`, `propose` (one model proposal at most, USD 0.50 cap), `show`, and `execute`. `execute` needs the exact run id and destination hash from `show`; the **owner** confirms each delivery (Mailpit, then Telegram).
+11. End-to-end retention flow. Same commands as [privacy-local.md](privacy-local.md), run in the operator container (`aws_mvp.py exec`, ADR-0027): worker `--once` with `SCAN_MODE=erp`, then `erp_cli preflight`, `propose` (one model proposal at most, USD 0.50 cap), `show`, and `execute`. `execute` needs the exact run id and destination hash from `show`; the **owner** confirms each delivery (Mailpit, then Telegram).
+
+    Pass the run settings with `--env` on every `exec`. The values used on 2026-11-18 (owner-approved demo values for `Q12`; the gate values reuse POC-2):
+
+    | Setting | Value |
+    | :-- | :-- |
+    | `EXECUTION_ERP_MODE` | `YES` |
+    | `EXECUTION_ALLOWLIST_DOMAINS` | `example.test` |
+    | `ERP_SCAN_CHANNEL` | `email` (Mailpit is the email transport, not a channel) |
+    | `CAMPAIGN_COOLDOWN_DAYS` | `7` |
+    | `PRIVACY_RETENTION_DAYS` | `30` |
+    | `GATE_TIMEZONE`, `GATE_CURRENCY`, `GATE_DAILY_BUDGET` | `Asia/Riyadh`, `USD`, `450` |
+    | `GATE_CATEGORY_MIN_MARGINS` | `{"Furniture / Office":"0.2"}` |
+    | `propose` only: `PROPOSAL_ERP_MODE`, `PROPOSAL_BUDGET_USD`, `PROPOSAL_REVIEW_BUDGET_USD` | `YES`, `0.50`, `0.50` |
+    | `propose` only: `PROPOSAL_INPUT_TOKEN_LIMIT`, `PROPOSAL_OUTPUT_TOKEN_LIMIT`, `PROPOSAL_REVIEW_ID` | `4000`, `8192`, a review id |
+
+    `exec` refuses `--env` names that end in `_KEY`, `_TOKEN`, `_PASSWORD`, `_SECRET`, or `_PEPPER`; secrets come only from SSM through the task definition.
+
 12. Cost allocation tag (**owner** approves; billing setting). The `Project` key appears in Billing about a day after tagged resources exist, and activation applies only to cost from then on:
 
     ```bash
@@ -116,7 +142,7 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
 
     Until it is active, use account-wide cost. That is valid only while `status` finds nothing else billable in the account.
 
-13. Measure: RAM on the host (`docker stats` through Session Manager), ECR image sizes, and hours. After about 48 hours, read the daily cost in Cost Explorer, filtered by `Project=aorte-mvp` once active. Then run Cleanup and `status --expect-clean --include-bootstrap`.
+13. Measure: RAM and disk on the host (`docker stats`, `free -m`, `df -h` over SSM Run Command), and image sizes (`docker images`, `aws ecr describe-images`). The 2026-11-18 values are in `F-075`. After about 48 hours, read the daily cost in Cost Explorer, filtered by `Project=aorte-mvp`. Then run Cleanup and `status --expect-clean --include-bootstrap` (#107).
 
 Status and cleanup do not use AWS Resource Groups or the tag search API: that API kept stale records after deletion (`F-070`), and some resources (the CloudFront service security group, Cognito groups and clients) are not tagged. The tools query each service API by tag and name instead, and sweep the whole account for untagged billables.
 
@@ -184,4 +210,4 @@ python scripts/aws_mvp_status.py --expect-clean
 
 ## Limits
 
-These scripts are verified by hermetic tests and by read-only runs of `status` and the `shutdown` dry run on the real account. The first live apply, start, shutdown, and cleanup happen in #97.
+The first live apply, deploy, smoke (all of SM-1..SM-5), end-to-end flow, and nightly stop ran on 2026-11-18 (#97, [smoke report](../../evals/aws-mvp/results/2026-11-18-smoke/summary.md)). The live cleanup and the measured cost come in #107.

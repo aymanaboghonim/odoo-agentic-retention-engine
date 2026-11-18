@@ -100,9 +100,3 @@ resource "aws_iam_role_policy" "task_model" {
   role   = aws_iam_role.task_model.id
   policy = data.aws_iam_policy_document.task_model.json
 }
-
-# No policies: the engine does not call AWS APIs. Containers get these empty credentials.
-resource "aws_iam_role" "task" {
-  name               = "${var.name_prefix}-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_trust.json
-}

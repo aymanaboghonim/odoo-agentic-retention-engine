@@ -1,6 +1,6 @@
 # Data connections and data channels
 
-Issue: #26. This page lists only connections that accepted ADRs already decide. Ports, protocols, auth mechanisms and network layout are not decided yet and are listed in [Not decided yet](#not-decided-yet). Do not read a missing value as a default.
+Issue: #26. This page lists only connections that accepted ADRs already decide. The AWS MVP network is in [AWS MVP network](#aws-mvp-network); what is still open is in [Not decided yet](#not-decided-yet). Do not read a missing value as a default.
 
 ## Connections
 
@@ -29,6 +29,23 @@ Issue: #26. This page lists only connections that accepted ADRs already decide. 
 | Engine | LLM provider | Model calls | Through one `LLMClient` port. Only synthetic data is sent to cloud; PII is masked first. | [ADR-0003](../adr/0003-llm-interface-and-model-selection.md) |
 | Engine | Retrieval store | Search product and policy text | Through a `Retriever` port. The store is a derived index, never the source of truth. | [ADR-0006](../adr/0006-retrieval-store-benchmark.md) |
 | Engine | Observability services | Traces, metrics, LLM traces | Only synthetic data | [ADR-0007](../adr/0007-free-tier-observability.md) |
+
+## AWS MVP network
+
+Decided in [ADR-0024](../adr/0024-mvp-ecs-task-layout-and-cloudfront-origin.md) and [ADR-0027](../adr/0027-operator-container-in-core-task.md); checked live by the smoke (SM-1..SM-5, [spec](../specs/aws-mvp-deployment.md)).
+
+| From | To | Protocol and port | Auth |
+| :-- | :-- | :-- | :-- |
+| Browser or CLI | CloudFront | HTTPS 443 (HTTP redirects) | Cognito access token (bearer) on `/api/*` |
+| CloudFront | S3 UI bucket | HTTPS | Origin access control (OAC); the bucket blocks public access |
+| CloudFront | approval-api | HTTP 8080 through a VPC origin into the private subnet | Security group allows only the CloudFront prefix list; the API also requires `X-Origin-Verify` (403 without it) |
+| approval-api | Cognito JWKS | HTTPS (IPv6) | Public keys; the API checks signature, issuer, `client_id`, and `cognito:groups` |
+| worker, approval-api, operator | engine-db | PostgreSQL 5432 on the task's bridge network | Engine role (password from SSM) |
+| worker, operator | odoo-db | PostgreSQL 5432 on the bridge network | `odoo_ro`, read-only (SM-5) |
+| worker, operator | Odoo | HTTP 8069 on the bridge network, JSON-2 | Named Odoo API key (SSM) |
+| worker, operator | Mailpit | SMTP 1025 on the bridge network | None (synthetic mail only, not published on the host) |
+| worker, operator | OpenAI, Telegram | HTTPS over IPv6 (egress-only internet gateway; no IPv4 internet path) | API key, bot token (SSM) |
+| Owner | Odoo UI, Mailpit UI | SSM port forwarding to host ports 18069, 18025 | IAM (SSO); no security group rule |
 
 ## Three data channels
 
@@ -65,8 +82,7 @@ These checks do not exist yet. They are recorded so the matching implementation 
 
 ## Not decided yet
 
-- Production ports, protocols, authentication and network layout remain undecided. Local POC channel transport is recorded in [ADR-0017](../adr/0017-s4-local-channel-transport.md).
-- Network layout, gateway, and what is public or private.
-- Odoo version is 19.0 and the API type is JSON-2 with a bearer API key, local only so far ([F-001](../facts-register.md), [ADR-0014](../adr/0014-odoo-19-baseline-and-seeding.md)). Ports, network layout and the read-only database role for non-local use are still open (Q11).
+- Production (beyond the single-host MVP) ports, protocols, authentication and network layout remain undecided. The MVP layout is in [AWS MVP network](#aws-mvp-network); local POC channel transport is in [ADR-0017](../adr/0017-s4-local-channel-transport.md).
+- Odoo version is 19.0 and the API type is JSON-2 with a bearer API key, local only so far ([F-001](../facts-register.md), [ADR-0014](../adr/0014-odoo-19-baseline-and-seeding.md)). For the AWS MVP, ports, network layout, and the read-only role are in [AWS MVP network](#aws-mvp-network); production use is still open (Q11).
 - Final LLM provider and model (spike S2) and retrieval store (spike S3).
 - Embedding model. The draft assumes `BAAI/bge-m3` with FastEmbed, which is unverified ([F-007](../facts-register.md)).

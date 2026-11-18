@@ -97,8 +97,16 @@ make_plan() {
   mkdir -p "$STATE_DIR"
   chmod 700 "$STATE_DIR"
   stage "terraform plan ${destroy[*]:-} -out (no AWS changes)"
-  "$TF" -chdir="$ROOT" plan -input=false -no-color "${destroy[@]}" -out=.tfsafe/plan.tfplan \
-    >"$STATE_DIR/plan.txt" || fail "terraform plan failed (see $STATE_DIR/plan.txt)"
+  local rc=0
+  "$TF" -chdir="$ROOT" plan -input=false -no-color -detailed-exitcode "${destroy[@]}" \
+    -out=.tfsafe/plan.tfplan >"$STATE_DIR/plan.txt" || rc=$?
+  [ "$rc" = 1 ] && fail "terraform plan failed (see $STATE_DIR/plan.txt)"
+  if [ "$rc" = 0 ]; then
+    # Nothing to apply: remove the plan files now (the plan JSON holds tfvars values).
+    rm -f "$PLAN" "$PLAN_JSON" "$PLAN_OK"
+    stage "no changes: nothing to apply; plan files removed"
+    return 0
+  fi
   "$TF" -chdir="$ROOT" show -json .tfsafe/plan.tfplan >"$PLAN_JSON"
   stage "plan policy check"
   local mode=()
