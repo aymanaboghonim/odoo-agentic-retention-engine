@@ -20,9 +20,12 @@ chdir=""
 if [[ "$1" == -chdir=* ]]; then chdir="${1#-chdir=}"; shift; fi
 case "$1" in
   plan)
+    out=""
     for a in "$@"; do
-      case "$a" in -out=*) echo "plan-$FAKE_PLAN_CONTENT" > "$chdir/${a#-out=}";; esac
+      case "$a" in -out=*) out=1; echo "plan-$FAKE_PLAN_CONTENT" > "$chdir/${a#-out=}";; esac
     done
+    # Saved plan: 2 = changes (default), 0 = no changes. Re-plan: drift exit code.
+    [ -n "$out" ] && exit "${FAKE_PLAN_EXIT:-2}"
     for a in "$@"; do [ "$a" = -detailed-exitcode ] && exit "${FAKE_DRIFT_EXIT:-0}"; done
     exit 0 ;;
   show) echo '{"resource_changes": []}' ;;
@@ -144,4 +147,24 @@ def test_plan_makes_no_apply_call(env: dict[str, str]) -> None:
     result = run(env, "plan")
     assert result.returncode == 0, result.stderr
     assert "plan id" in result.stdout
+    assert not applied(env)
+
+
+def test_no_change_plan_removes_plan_files(env: dict[str, str]) -> None:
+    env["FAKE_PLAN_EXIT"] = "0"
+    result = run(env, "plan")
+    assert result.returncode == 0, result.stderr
+    assert "no changes" in result.stdout
+    state = Path(env["ROOT_DIR"]) / ".tfsafe"
+    assert not (state / "plan.tfplan").exists()
+    assert not (state / "plan.json").exists()
+    assert not (state / "plan.ok").exists()
+    assert "plan id" not in result.stdout
+
+
+def test_failed_plan_stops(env: dict[str, str]) -> None:
+    env["FAKE_PLAN_EXIT"] = "1"
+    result = run(env, "plan")
+    assert result.returncode == 1
+    assert "terraform plan failed" in result.stderr
     assert not applied(env)

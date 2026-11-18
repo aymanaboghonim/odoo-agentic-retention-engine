@@ -8,7 +8,7 @@ Checks (each maps to a #97 done-when item):
        (403), and an unauthenticated request through CloudFront gets 401.
   SM-4 Cognito RBAC: viewer may read, may not decide; approver may decide (#86).
   SM-5 Odoo readiness: `odoo_ro` is read-only and `website_sale_loyalty` is installed
-       (the erp_minimal_fixtures preflight, run as a one-off task).
+       (the erp_minimal_fixtures preflight, run in the operator container, ADR-0027).
 
 SM-3 (host command) and SM-5 (one-off task) start something, so they run only with
 --apply. The end-to-end retention flow is run step by step (docs/runbooks/aws-mvp.md),
@@ -32,7 +32,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.aws_mvp import PREFIX, Aws, OpsError, Runner, _default_runner, cmd_task, preflight  # noqa: E402
+from scripts.aws_mvp import PREFIX, Aws, OpsError, Runner, _default_runner, cmd_exec, preflight  # noqa: E402
 
 
 @dataclass
@@ -203,14 +203,14 @@ def sm5_odoo(aws: Aws) -> Check:
             "SM-5",
             "odoo_ro read-only and website_sale_loyalty",
             "not-run",
-            "one-off task needs --apply",
+            "operator command needs --apply",
         )
     args = argparse.Namespace(
         argv=["python", "-m", "scripts.erp_minimal_fixtures", "--preflight-only"],
         env=[],
         timeout=1800,
     )
-    code = cmd_task(aws, args)
+    code = cmd_exec(aws, args)
     return Check(
         "SM-5",
         "odoo_ro read-only and website_sale_loyalty",

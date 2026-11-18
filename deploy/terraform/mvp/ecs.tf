@@ -37,7 +37,8 @@ locals {
 
   common_engine_env = merge(var.breaker_settings, var.engine_settings, {
     FULL_STACK_SYNTHETIC_ISOLATED = "YES"
-    FULL_STACK_INSTANCE_ID        = var.name_prefix
+    # The engine requires a UUID (fails closed otherwise, #97). Deterministic per stack name.
+    FULL_STACK_INSTANCE_ID = uuidv5("url", "https://github.com/aymanaboghonim/odoo-agentic-retention-engine/${var.name_prefix}")
   })
 
   env = { for k, v in local.common_engine_env : k => v }
@@ -56,7 +57,6 @@ locals {
       stopTimeout       = 60
       environment       = [{ name = "POSTGRES_DB", value = "postgres" }, { name = "POSTGRES_USER", value = "odoo" }]
       secrets           = [{ name = "POSTGRES_PASSWORD", valueFrom = "${local.param_arn}/odoo-db-password" }]
-      portMappings      = [{ containerPort = 5432, hostPort = local.host_ports.odoo_db, protocol = "tcp" }]
       mountPoints       = [{ sourceVolume = "odoo-db", containerPath = "/var/lib/postgresql/data" }]
       healthCheck       = { command = local.pg_health.odoo, interval = 10, timeout = 5, retries = 10, startPeriod = 30 }
       logConfiguration  = local.log_config
@@ -84,7 +84,6 @@ locals {
       stopTimeout       = 60
       environment       = [{ name = "POSTGRES_DB", value = "engine" }, { name = "POSTGRES_USER", value = "engine" }]
       secrets           = [{ name = "POSTGRES_PASSWORD", valueFrom = "${local.param_arn}/engine-db-password" }]
-      portMappings      = [{ containerPort = 5432, hostPort = local.host_ports.engine_db, protocol = "tcp" }]
       mountPoints       = [{ sourceVolume = "engine-db", containerPath = "/var/lib/postgresql/data" }]
       healthCheck       = { command = local.pg_health.engine, interval = 10, timeout = 5, retries = 10, startPeriod = 30 }
       logConfiguration  = local.log_config
@@ -155,10 +154,60 @@ locals {
       image             = local.images.mailpit
       essential         = false
       memoryReservation = 64
-      portMappings = [
-        # The Mailpit adapter uses port 1025; the proposal task reaches it via docker0.
-        { containerPort = 1025, hostPort = 1025, protocol = "tcp" },
-        { containerPort = 8025, hostPort = 18025, protocol = "tcp" },
+      # UI only, for SSM port forwarding. SMTP stays inside the task (operator link).
+      portMappings     = [{ containerPort = 8025, hostPort = 18025, protocol = "tcp" }]
+      logConfiguration = local.log_config
+    },
+    {
+      # F-072: copy the pinned embedding model from S3 (dual-stack) and verify its hashes.
+      name              = "model-sync"
+      image             = local.images.aws_cli
+      essential         = false
+      memoryReservation = 128
+      entryPoint        = ["sh", "-c"]
+      command           = [local.model_sync_script]
+      environment = [
+        { name = "AWS_USE_DUALSTACK_ENDPOINT", value = "true" },
+        { name = "AWS_REGION", value = var.region },
+      ]
+      mountPoints      = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = false }]
+      logConfiguration = local.log_config
+    },
+    {
+      # ADR-0027: one-off operator commands (fixtures, policy ingest, worker --once, erp_cli)
+      # run here with `docker exec` over SSM, inside the task network like the Compose
+      # `proposal` service, so the engine's network guard (engine-db/odoo-db:5432) holds.
+      name              = "operator"
+      image             = local.images.engine
+      essential         = false
+      memoryReservation = 256
+      command           = ["sleep", "infinity"]
+      environment = concat(
+        [for k, v in local.env : { name = k, value = v }],
+        [
+          { name = "ODOO_URL", value = "http://odoo:8069" },
+          { name = "ODOO_DB_NAME", value = "odoo" },
+          { name = "ODOO_ALLOWED_HOSTS", value = "odoo" },
+          { name = "ERP_MAILPIT_SMTP_HOST", value = "mailpit" },
+          { name = "HF_HOME", value = "/model-cache" },
+          { name = "HF_HUB_OFFLINE", value = "1" },
+        ],
+      )
+      secrets = [
+        { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },
+        { name = "ODOO_READONLY_DATABASE_URL", valueFrom = "${local.param_arn}/odoo-readonly-url" },
+        { name = "PRIVACY_TOMBSTONE_PEPPER", valueFrom = "${local.param_arn}/privacy-tombstone-pepper" },
+        { name = "OPENAI_API_KEY", valueFrom = "${local.param_arn}/openai-api-key" },
+        { name = "TELEGRAM_BOT_TOKEN", valueFrom = "${local.param_arn}/telegram-bot-token" },
+        { name = "ODOO_API_KEY", valueFrom = "${local.param_arn}/odoo-api-key" },
+        { name = "ERP_TELEGRAM_CHAT_ID", valueFrom = "${local.param_arn}/telegram-chat-id" },
+        { name = "TELEGRAM_ALLOWLIST_CHAT_IDS", valueFrom = "${local.param_arn}/telegram-chat-id" },
+      ]
+      links       = ["engine-db:engine-db", "odoo-db:odoo-db", "odoo:odoo", "mailpit:mailpit"]
+      mountPoints = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = true }]
+      dependsOn = [
+        { containerName = "initialize", condition = "SUCCESS" },
+        { containerName = "model-sync", condition = "SUCCESS" },
       ]
       logConfiguration = local.log_config
     },
@@ -170,11 +219,12 @@ resource "aws_ecs_task_definition" "core" {
   network_mode             = "bridge"
   requires_compatibilities = ["EC2"]
   execution_role_arn       = aws_iam_role.ecs_exec.arn
-  task_role_arn            = aws_iam_role.task.arn
-  container_definitions    = jsonencode(local.core_containers)
+  # Read-only access to models/ in the backups bucket, for model-sync (F-072).
+  task_role_arn         = aws_iam_role.task_model.arn
+  container_definitions = jsonencode(local.core_containers)
 
   dynamic "volume" {
-    for_each = toset(["odoo-db", "odoo-data", "engine-db"])
+    for_each = toset(["odoo-db", "odoo-data", "engine-db", "model-cache"])
     content {
       name = volume.key
       docker_volume_configuration {
@@ -198,77 +248,5 @@ resource "aws_ecs_service" "core" {
 
   lifecycle {
     ignore_changes = [task_definition] # the deploy workflow (#97) registers new revisions
-  }
-}
-
-# On-demand proposal run (`aws ecs run-task`, #97). Reaches the core services through host
-# ports on the docker0 gateway (ADR-0024 decision 4); no security group rule opens them.
-resource "aws_ecs_task_definition" "proposal" {
-  family                   = "${var.name_prefix}-proposal"
-  network_mode             = "bridge"
-  requires_compatibilities = ["EC2"]
-  execution_role_arn       = aws_iam_role.ecs_exec.arn
-  task_role_arn            = aws_iam_role.task_model.arn
-
-  container_definitions = jsonencode([{
-    # F-072: copy the pinned embedding model from S3 (dual-stack) and verify its hashes.
-    name              = "model-sync"
-    image             = local.images.aws_cli
-    essential         = false
-    memoryReservation = 128
-    entryPoint        = ["sh", "-c"]
-    command           = [local.model_sync_script]
-    environment = [
-      { name = "AWS_USE_DUALSTACK_ENDPOINT", value = "true" },
-      { name = "AWS_REGION", value = var.region },
-    ]
-    mountPoints      = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = false }]
-    logConfiguration = merge(local.log_config, { options = merge(local.log_config.options, { "awslogs-stream-prefix" = "model-sync" }) })
-    }, {
-    name              = "proposal"
-    image             = local.images.engine
-    essential         = true
-    memoryReservation = 1024
-    command           = ["python", "-m", "engine.full_stack_proposal"]
-    environment = concat(
-      [for k, v in local.env : { name = k, value = v }],
-      [
-        { name = "ODOO_URL", value = "http://odoo:${local.host_ports.odoo}" },
-        { name = "ODOO_DB_NAME", value = "odoo" },
-        { name = "HF_HOME", value = "/model-cache" },
-        { name = "HF_HUB_OFFLINE", value = "1" },
-        # Container names resolve to the docker0 gateway; the Odoo client needs the host allowed.
-        { name = "ODOO_ALLOWED_HOSTS", value = "odoo" },
-        { name = "ERP_MAILPIT_SMTP_HOST", value = "mailpit" },
-      ],
-    )
-    secrets = [
-      { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url-host" },
-      { name = "ODOO_READONLY_DATABASE_URL", valueFrom = "${local.param_arn}/odoo-readonly-url-host" },
-      { name = "PRIVACY_TOMBSTONE_PEPPER", valueFrom = "${local.param_arn}/privacy-tombstone-pepper" },
-      { name = "OPENAI_API_KEY", valueFrom = "${local.param_arn}/openai-api-key" },
-      { name = "TELEGRAM_BOT_TOKEN", valueFrom = "${local.param_arn}/telegram-bot-token" },
-      { name = "ODOO_API_KEY", valueFrom = "${local.param_arn}/odoo-api-key" },
-      { name = "ERP_TELEGRAM_CHAT_ID", valueFrom = "${local.param_arn}/telegram-chat-id" },
-      { name = "TELEGRAM_ALLOWLIST_CHAT_IDS", valueFrom = "${local.param_arn}/telegram-chat-id" },
-    ]
-    extraHosts = [
-      { hostname = "engine-db", ipAddress = "172.17.0.1" },
-      { hostname = "odoo-db", ipAddress = "172.17.0.1" },
-      { hostname = "odoo", ipAddress = "172.17.0.1" },
-      { hostname = "mailpit", ipAddress = "172.17.0.1" },
-    ]
-    mountPoints      = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = true }]
-    dependsOn        = [{ containerName = "model-sync", condition = "SUCCESS" }]
-    logConfiguration = merge(local.log_config, { options = merge(local.log_config.options, { "awslogs-stream-prefix" = "proposal" }) })
-  }])
-
-  volume {
-    name = "model-cache"
-    docker_volume_configuration {
-      scope         = "shared" # filled by model-sync; kept across runs
-      autoprovision = true
-      driver        = "local"
-    }
   }
 }

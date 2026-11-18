@@ -1,6 +1,6 @@
 # ADR-0024: MVP network, ECS task layout, and CloudFront VPC origin
 
-- Status: accepted
+- Status: accepted; decision 4 (on-demand proposal task through host ports) superseded in part by ADR-0027
 - Date: 2026-11-17
 - Issue: #95 (part A of #88)
 - Supersedes in part: [ADR-0019](0019-aws-ecs-on-ec2-cloud-runtime.md) decision 3 (ephemeral public IPv4 on the instance) and [ADR-0020](0020-aws-cloudfront-s3-edge-and-backups.md) decision 3 (backend origin on the EC2 public hostname) and its consequence on refreshing that hostname after each start. All other decisions in both ADRs stay.

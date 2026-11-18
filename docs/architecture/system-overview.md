@@ -67,6 +67,56 @@ flowchart LR
 
 The API durably records inbound triggers and operator decisions. The worker scans carts, processes all runs, and exclusively performs Odoo writes and message dispatch. It uses the separate AI database to claim work and persist run state.
 
+## Cloud deployment (AWS MVP)
+
+The MVP runs on one ECS-on-EC2 host in a private subnet ([ADR-0019](../adr/0019-aws-ecs-on-ec2-cloud-runtime.md), [ADR-0020](../adr/0020-aws-cloudfront-s3-edge-and-backups.md), [ADR-0024](../adr/0024-mvp-ecs-task-layout-and-cloudfront-origin.md), [ADR-0027](../adr/0027-operator-container-in-core-task.md)). All containers are in one ECS task in bridge mode, so they reach each other by link name, as in the local Compose stack. Ports and auth per hop are in [data-connections.md](data-connections.md#aws-mvp-network).
+
+```mermaid
+flowchart LR
+    person(["Operator<br/>browser or CLI"])
+    cognito["Cognito<br/>managed login, TOTP MFA"]
+    cf["CloudFront"]
+    ui[("S3 UI bucket<br/>private, OAC")]
+    ssm["SSM<br/>Run Command, port forwarding"]
+
+    subgraph host["EC2 t3a.medium, private subnet, no public IPv4"]
+        api["approval-api"]
+        worker["worker"]
+        op["operator<br/>one-off commands"]
+        odoo["Odoo"]
+        odoodb[("odoo-db")]
+        enginedb[("engine-db")]
+        mailpit["Mailpit"]
+    end
+    ext["OpenAI, Telegram<br/>IPv6 egress only"]
+
+    person -- "sign in (PKCE)" --> cognito
+    person -- "HTTPS + bearer token" --> cf
+    cf -- "/*" --> ui
+    cf -- "/api/* VPC origin, X-Origin-Verify" --> api
+    person -- "allowlisted commands" --> ssm --> op
+    api --> enginedb
+    worker --> enginedb
+    worker -- "read-only role" --> odoodb
+    worker -- "JSON-2 API key" --> odoo
+    worker -- "SMTP" --> mailpit
+    odoo --> odoodb
+    worker --> ext
+    op --> enginedb
+    op --> odoo
+
+    classDef app fill:#dbeafe,stroke:#1d4ed8,color:#0f172a
+    classDef data fill:#dcfce7,stroke:#15803d,color:#0f172a
+    classDef external fill:#f1f5f9,stroke:#64748b,color:#0f172a
+    classDef person fill:#fef3c7,stroke:#b45309,color:#0f172a
+    class api,worker,op,odoo,mailpit app
+    class odoodb,enginedb,ui data
+    class cognito,cf,ssm,ext external
+    class person person
+```
+
+The only inbound path is CloudFront to the API port. There is no NAT, no Elastic IP, and port 22 is closed. The live smoke checks this ([2026-11-18 report](../../evals/aws-mvp/results/2026-11-18-smoke/summary.md)).
+
 ## C3: Components (agent execution path)
 
 ```mermaid

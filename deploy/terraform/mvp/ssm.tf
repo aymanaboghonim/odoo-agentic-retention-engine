@@ -5,12 +5,9 @@
 
 locals {
   parameter_prefix = "/${var.name_prefix}"
-  # Hosts inside the core task (bridge links) and from the proposal task (host ports via
-  # the docker0 gateway, ADR-0024 decision 4).
+  # Host port for the Odoo UI over SSM port forwarding only (no security group rule).
   host_ports = {
-    engine_db = 15432
-    odoo_db   = 15433
-    odoo      = 18069
+    odoo = 18069
   }
 }
 
@@ -49,15 +46,13 @@ locals {
     "odoo-ro-password"         = ephemeral.random_password.odoo_ro.result
     "engine-db-password"       = ephemeral.random_password.engine_db.result
     "engine-database-url"      = "postgresql://engine:${ephemeral.random_password.engine_db.result}@engine-db:5432/engine"
-    "engine-database-url-host" = "postgresql://engine:${ephemeral.random_password.engine_db.result}@engine-db:${local.host_ports.engine_db}/engine"
     "odoo-readonly-url"        = "postgresql://odoo_ro:${ephemeral.random_password.odoo_ro.result}@odoo-db:5432/odoo"
-    "odoo-readonly-url-host"   = "postgresql://odoo_ro:${ephemeral.random_password.odoo_ro.result}@odoo-db:${local.host_ports.odoo_db}/odoo"
     "privacy-tombstone-pepper" = ephemeral.random_password.pepper.result
     "approval-origin-verify"   = random_password.origin_verify.result
   }
   generated_names = toset([
     "odoo-db-password", "odoo-ro-password", "engine-db-password", "engine-database-url",
-    "engine-database-url-host", "odoo-readonly-url", "odoo-readonly-url-host",
+    "odoo-readonly-url",
     "privacy-tombstone-pepper", "approval-origin-verify",
   ])
 }

@@ -148,7 +148,8 @@ resource "aws_iam_role" "deploy" {
 }
 
 # Least privilege for .github/workflows/deploy-aws.yml (#97): push images to this project's
-# ECR repositories, register task definitions, and update or run this cluster's services.
+# ECR repositories, register task definitions, and update this cluster's services (ADR-0027:
+# no one-off ECS tasks).
 data "aws_iam_policy_document" "deploy" {
   statement {
     sid       = "EcrAuth"
@@ -181,16 +182,6 @@ data "aws_iam_policy_document" "deploy" {
       "${local.arn_prefix}:ecs:${local.region}:${local.account}:service/${local.mvp}/*",
     ]
   }
-  statement {
-    sid       = "EcsRunProposal"
-    actions   = ["ecs:RunTask", "ecs:DescribeTasks"]
-    resources = ["*"]
-    condition {
-      test     = "ArnEquals"
-      variable = "ecs:cluster"
-      values   = ["${local.arn_prefix}:ecs:${local.region}:${local.account}:cluster/${local.mvp}"]
-    }
-  }
   # #97 / ADR-0026: stage the pinned embedding model (F-072) from the workflow, which has
   # IPv4 and datacenter bandwidth. Only models/ in the project's backups bucket.
   statement {
@@ -213,7 +204,6 @@ data "aws_iam_policy_document" "deploy" {
     actions = ["iam:PassRole"]
     resources = [
       "${local.arn_prefix}:iam::${local.account}:role/${local.mvp}-ecs-exec",
-      "${local.arn_prefix}:iam::${local.account}:role/${local.mvp}-task",
       "${local.arn_prefix}:iam::${local.account}:role/${local.mvp}-task-model",
     ]
     condition {
