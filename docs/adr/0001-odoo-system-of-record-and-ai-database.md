@@ -1,6 +1,6 @@
 # ADR-0001: Odoo is a black-box system of record; the AI engine has its own database
 
-- Status: accepted
+- Status: accepted; "LangGraph checkpoints" superseded in part by ADR-0028
 - Date: 2026-10-24
 
 ## Context

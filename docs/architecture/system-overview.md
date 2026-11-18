@@ -127,7 +127,7 @@ flowchart LR
         api["API<br/>triggers and approvals"]
         state[("AI database")]
         worker["Worker<br/>single run executor"]
-        workflow["Agent workflow<br/>LangGraph"]
+        workflow["Agent workflow<br/>explicit state machine"]
         policy["Policy gate<br/>deterministic rules"]
         approval["Human approval<br/>when required"]
         adapters["Integration adapters"]
