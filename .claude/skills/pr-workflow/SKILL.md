@@ -25,6 +25,7 @@ Rules are in [docs/process.md](../../../docs/process.md). This is the step list.
 7. Open the PR: `gh pr create --base main --title "<short title>" --body "Closes #<N> ..."`. The title and body become the squash commit, so write them well.
 8. The owner reviews and merges (squash). Do not merge for the owner.
 9. After merge: `git checkout main && git pull`, then delete the local branch with `git branch -D <branch>`. Use `-D`: squash merge leaves the branch looking unmerged.
+10. Check the project board: `uv run --no-sync python scripts/check_project_board.py`. If it lists a closed issue that is not Done, run it again with `--fix`. The "Pull request linked to issue" workflow can move a just-closed issue back to In Progress (#123). An open issue marked Done is only reported; fix it by hand.
 
 ## Checks before opening the PR
 
