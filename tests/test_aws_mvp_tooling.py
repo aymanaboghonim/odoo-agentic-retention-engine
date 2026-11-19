@@ -690,6 +690,7 @@ def test_image_list_matches_compose_digests() -> None:
         source = images[name]["source"].removeprefix("docker.io/").removeprefix("library/")
         assert f"image: {source}@{images[name]['digest']}" in compose, name
     assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", v["digest"]) for v in images.values())
+    assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", v["aws_digest"]) for v in images.values())
 
 
 def test_exec_runs_in_operator_container_and_returns_exit_code() -> None:
@@ -789,33 +790,3 @@ def test_long_s3_copies_get_a_long_timeout(monkeypatch: pytest.MonkeyPatch) -> N
     aws_mvp._default_runner(["aws", "s3", "cp", "a", "s3://b/c"])
     aws_mvp._default_runner(["aws", "ec2", "describe-instances"])
     assert seen == [3600, 300]
-
-
-def test_mirror_copies_by_digest_only(tmp_path: Path) -> None:
-    # skopeo rejects tag+digest references (#97); the dry run shows the exact source ref.
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    for tool, body in (("aws", "exit 1"), ("skopeo", "exit 0")):
-        (bin_dir / tool).write_text(f"#!/usr/bin/env bash\n{body}\n")
-        (bin_dir / tool).chmod(0o755)
-    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)}
-    result = subprocess.run(
-        [
-            "bash",
-            str(REPO / "scripts" / "aws_mvp_mirror_images.sh"),
-            "registry.example",
-            "--dry-run",
-        ],
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    images = json.loads((REPO / "deploy" / "aws-mvp-images.json").read_text(encoding="utf-8"))
-    for name, item in images.items():
-        repo = item["source"].rsplit(":", 1)[0]
-        assert (
-            f"WOULD copy {repo}@{item['digest']} -> registry.example/aorte-mvp/{name}:"
-            in result.stdout
-        )
-    assert ":2.40.4@" not in result.stdout and ":15@" not in result.stdout

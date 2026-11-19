@@ -1,7 +1,7 @@
 {
-  "postgres": {"source": "docker.io/library/postgres:15", "digest": "sha256:64b99032e218b66b1d1a6334995056e1aa57f50a0c522cc856e72dff0e4b0d63"},
-  "odoo": {"source": "docker.io/library/odoo:19.0", "digest": "sha256:27f920e002c43a1af7022a68f3cc17db71a2f9f3348800cb050721ce54893e49"},
-  "pgvector": {"source": "docker.io/pgvector/pgvector:0.8.7-pg15", "digest": "sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c"},
-  "mailpit": {"source": "docker.io/axllent/mailpit:v1.33.0", "digest": "sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231"},
-  "aws-cli": {"source": "public.ecr.aws/aws-cli/aws-cli:2.40.4", "digest": "sha256:eaf444b45380050f920ab07492754aa76223dd90234e51c1f92c2e9391b5ee6b"}
+  "postgres": {"source": "docker.io/library/postgres:15", "digest": "sha256:64b99032e218b66b1d1a6334995056e1aa57f50a0c522cc856e72dff0e4b0d63", "aws_digest": "sha256:7da5d534f1ffcdb2f69efa6e466a7a29ff89eefd611c7b50c4d69aa77fd4a822"},
+  "odoo": {"source": "docker.io/library/odoo:19.0", "digest": "sha256:27f920e002c43a1af7022a68f3cc17db71a2f9f3348800cb050721ce54893e49", "aws_digest": "sha256:0cdc95f06c99fa32c69a1163268781342f2f290ac6bd2a073401f30d7f4fe35f"},
+  "pgvector": {"source": "docker.io/pgvector/pgvector:0.8.7-pg15", "digest": "sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c", "aws_digest": "sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c"},
+  "mailpit": {"source": "docker.io/axllent/mailpit:v1.33.0", "digest": "sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231", "aws_digest": "sha256:18156f9ee243aa339170ac33d09d6d5a80b10d9e06b265f90f223a777a8f4b73"},
+  "aws-cli": {"source": "public.ecr.aws/aws-cli/aws-cli:2.40.4", "digest": "sha256:eaf444b45380050f920ab07492754aa76223dd90234e51c1f92c2e9391b5ee6b", "aws_digest": "sha256:f97d3b708124c28ffa2f6cf2ff6c4c7bf79eeac7c5942b0140a506d911245b81"}
 }
