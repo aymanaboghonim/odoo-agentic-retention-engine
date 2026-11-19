@@ -1,6 +1,6 @@
 # ADR-0031: Live evaluation workflow and fingerprint deploy gate
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-19
 - Issue: #125
 

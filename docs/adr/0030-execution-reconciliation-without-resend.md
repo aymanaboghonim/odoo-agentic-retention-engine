@@ -1,6 +1,6 @@
 # ADR-0030: Automatic execution reconciliation without resend
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-19
 - Issue: #125
 
