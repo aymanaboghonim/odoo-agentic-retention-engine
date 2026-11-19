@@ -133,4 +133,4 @@ The tests need PostgreSQL ([runbook](docs/runbooks/engine-db-local.md)). The ful
 
 ## License
 
-Apache-2.0 ([LICENSE](LICENSE)). Acknowledgements: [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+Apache-2.0 ([LICENSE](LICENSE)). Security reports: [SECURITY.md](SECURITY.md). Acknowledgements: [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
