@@ -3,16 +3,17 @@
 
 locals {
   # Single source for pinned third-party images (also read by scripts/aws_mvp_mirror_images.sh).
+  # Tasks pin `aws_digest`, the linux/amd64 manifest of the multi-platform `digest` (#106).
   third_party      = jsondecode(file("${path.module}/../../aws-mvp-images.json"))
   ecr_repositories = toset(["engine", "postgres", "odoo", "pgvector", "mailpit", "aws-cli"])
   registry         = "${var.account_id}.dkr-ecr.${var.region}.on.aws"
   images = {
     engine   = "${local.registry}/${var.name_prefix}/engine:${var.engine_image_tag}"
-    postgres = "${local.registry}/${var.name_prefix}/postgres@${local.third_party["postgres"].digest}"
-    odoo     = "${local.registry}/${var.name_prefix}/odoo@${local.third_party["odoo"].digest}"
-    pgvector = "${local.registry}/${var.name_prefix}/pgvector@${local.third_party["pgvector"].digest}"
-    mailpit  = "${local.registry}/${var.name_prefix}/mailpit@${local.third_party["mailpit"].digest}"
-    aws_cli  = "${local.registry}/${var.name_prefix}/aws-cli@${local.third_party["aws-cli"].digest}"
+    postgres = "${local.registry}/${var.name_prefix}/postgres@${local.third_party["postgres"].aws_digest}"
+    odoo     = "${local.registry}/${var.name_prefix}/odoo@${local.third_party["odoo"].aws_digest}"
+    pgvector = "${local.registry}/${var.name_prefix}/pgvector@${local.third_party["pgvector"].aws_digest}"
+    mailpit  = "${local.registry}/${var.name_prefix}/mailpit@${local.third_party["mailpit"].aws_digest}"
+    aws_cli  = "${local.registry}/${var.name_prefix}/aws-cli@${local.third_party["aws-cli"].aws_digest}"
   }
 }
 

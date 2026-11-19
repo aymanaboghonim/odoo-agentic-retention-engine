@@ -1389,6 +1389,84 @@ def cmd_model_upload(aws: Aws, args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- ECR prune (#106)
+
+INDEX_MEDIA_TYPES = (
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+)
+
+
+def _image_pins() -> dict[str, str]:
+    """Third-party repo name -> the linux/amd64 digest that tasks pin (aws_digest)."""
+    images = json.loads((REPO / "deploy" / "aws-mvp-images.json").read_text(encoding="utf-8"))
+    return {name: str(item["aws_digest"]) for name, item in images.items()}
+
+
+def _digests_in_use(aws: Aws) -> set[str]:
+    """Digests referenced by the core service's current task definition."""
+    service = aws.read("ecs", "describe-services", "--cluster", PREFIX, "--services", "core")
+    services = service.get("services", [])
+    if not services:
+        return set()
+    taskdef = aws.read(
+        "ecs", "describe-task-definition", "--task-definition", services[0]["taskDefinition"]
+    )
+    images = [c.get("image", "") for c in taskdef["taskDefinition"]["containerDefinitions"]]
+    return {image.split("@", 1)[1] for image in images if "@" in image}
+
+
+def cmd_ecr_prune(aws: Aws, args: argparse.Namespace) -> int:
+    """Delete third-party ECR images other than the pinned linux/amd64 manifest (#106).
+
+    Dry run unless --apply. Fails closed if a repository lacks its pin, or if a digest to
+    delete is still used by the core service's task definition (roll out first).
+    Indexes are deleted before their child manifests.
+    """
+    preflight(aws)
+    in_use = _digests_in_use(aws)
+    plan: list[tuple[str, list[dict[str, Any]]]] = []
+    for name, pin in sorted(_image_pins().items()):
+        repo = f"{PREFIX}/{name}"
+        details = aws.read("ecr", "describe-images", "--repository-name", repo).get(
+            "imageDetails", []
+        )
+        digests = {d["imageDigest"] for d in details}
+        if pin not in digests:
+            raise OpsError(f"{repo} does not hold its pin {pin[:19]}; run the mirror first")
+        extra = [d for d in details if d["imageDigest"] != pin]
+        blocked = sorted(d["imageDigest"][:19] for d in extra if d["imageDigest"] in in_use)
+        if blocked:
+            raise OpsError(
+                f"{repo}: {', '.join(blocked)} is still used by the core task definition; "
+                "roll out the amd64 pins first"
+            )
+        extra.sort(key=lambda d: d.get("imageManifestMediaType") not in INDEX_MEDIA_TYPES)
+        size = sum(int(d.get("imageSizeInBytes", 0)) for d in extra)
+        log(f"{repo}: keep {pin[:19]}; delete {len(extra)} other manifests ({size / 1e6:.1f} MB)")
+        plan.append((repo, extra))
+    for repo, extra in plan:
+        indexes = [d for d in extra if d.get("imageManifestMediaType") in INDEX_MEDIA_TYPES]
+        others = [d for d in extra if d not in indexes]
+        for group in (indexes, others):
+            for start in range(0, len(group), 100):
+                batch = group[start : start + 100]
+                if not batch:
+                    continue
+                aws.change(
+                    f"delete {len(batch)} images from {repo}",
+                    "ecr",
+                    "batch-delete-image",
+                    "--repository-name",
+                    repo,
+                    "--image-ids",
+                    *[f"imageDigest={d['imageDigest']}" for d in batch],
+                )
+    if not aws.apply:
+        log("dry run: nothing deleted; re-run with --apply after review")
+    return 0
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -1436,6 +1514,10 @@ def build_parser() -> argparse.ArgumentParser:
     task.add_argument("--env", action="append", metavar="NAME=value", help="non-secret override")
     task.add_argument("--timeout", type=int, default=1800)
     task.add_argument("argv", nargs=argparse.REMAINDER, help="-- python -m <module> ...")
+    prune = sub.add_parser(
+        "ecr-prune", help="delete third-party ECR images except the amd64 pins (#106)"
+    )
+    prune.add_argument("--apply", action="store_true")
     model = sub.add_parser("model-upload", help="stage the pinned embedding model in S3 (F-072)")
     model.add_argument("--bucket", required=True, help="terraform output backups_bucket")
     model.add_argument("--apply", action="store_true")
@@ -1473,6 +1555,7 @@ def main(argv: list[str] | None = None, runner: Runner = _default_runner) -> int
             "secrets": cmd_secrets,
             "model-upload": cmd_model_upload,
             "exec": cmd_exec,
+            "ecr-prune": cmd_ecr_prune,
         }
         return handlers[args.command](aws, args)
     except OpsError as error:
