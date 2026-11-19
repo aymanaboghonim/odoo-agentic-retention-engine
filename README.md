@@ -96,7 +96,7 @@ On 2026-11-18:
 - that model call cost USD 0.00011513;
 - the host used 768 of 3851 MiB of memory ([F-075](docs/facts-register.md)).
 
-The monthly cost is being measured.
+Measured cost ([report](evals/aws-mvp/results/2026-11-19-cost/summary.md)): USD 0.0376 per running hour plus about USD 2.6 per month while stopped, so about USD 12 per month at 8 hours a day. The stack stays stopped when idle.
 
 ## Known limits
 
