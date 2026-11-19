@@ -24,6 +24,7 @@ from typing import Any, Literal, cast
 
 import sqlalchemy as sa
 
+from engine import telemetry
 from engine.channels import MailpitEmailAdapter, TelegramBotClient
 from engine.db import RunRepository, create_engine
 from engine.execution import (
@@ -369,10 +370,17 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    source = os.environ if env is None else env
     try:
-        live = _Live(os.environ if env is None else env)
+        tel = telemetry.configure_from_env(source, service_name="aorte-operator")  # OBS-6
+    except ValueError as error:
+        print(f"stage=preflight status=failed reason={error}", file=sys.stderr, flush=True)
+        return 1
+    try:
+        live = _Live(source)
     except (ValueError, OSError) as error:
         print(f"stage=preflight status=failed reason={error}", file=sys.stderr, flush=True)
+        tel.shutdown()
         return 1
     try:
         {"preflight": preflight, "propose": propose, "show": show, "execute": execute}[
@@ -384,6 +392,7 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
         return 1
     finally:
         live.engine.dispose()
+        tel.shutdown()
 
 
 if __name__ == "__main__":

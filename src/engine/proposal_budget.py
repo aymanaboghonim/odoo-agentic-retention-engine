@@ -49,6 +49,13 @@ class Rate:
         ) / Decimal(1_000_000)
 
 
+def settled_usd(rate: Rate, input_tokens: int, output_tokens: int) -> Decimal:
+    """The amount `settle` stores; telemetry reports the same value (OBS-9)."""
+    return rate.estimate(input_tokens, output_tokens).quantize(
+        Decimal("0.000000000001"), rounding=ROUND_CEILING
+    )
+
+
 @dataclass(frozen=True)
 class ReviewBudget:
     review_id: str
@@ -172,9 +179,7 @@ class ProposalBudget:
         output_tokens: int,
         rate: Rate,
     ) -> bool:
-        actual = rate.estimate(input_tokens, output_tokens).quantize(
-            Decimal("0.000000000001"), rounding=ROUND_CEILING
-        )
+        actual = settled_usd(rate, input_tokens, output_tokens)
         with self._engine.begin() as conn:
             review_id = conn.execute(
                 sa.text("SELECT review_id FROM proposal_calls WHERE id=:id"), {"id": call_id}

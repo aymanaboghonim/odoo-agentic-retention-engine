@@ -1072,7 +1072,7 @@ def test_show_reports_privacy_refusal_without_pii(
 
 
 def test_cli_refuses_outside_isolated_stack(capsys: pytest.CaptureFixture[str]) -> None:
-    assert erp_cli.main(["preflight", "--channel", "mailpit"], {}) == 1
+    assert erp_cli.main(["preflight", "--channel", "mailpit"], {"TELEMETRY_ENABLED": "NO"}) == 1
     assert "FULL_STACK_SYNTHETIC_ISOLATED" in capsys.readouterr().err
 
 

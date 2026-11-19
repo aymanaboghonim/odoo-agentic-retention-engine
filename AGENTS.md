@@ -38,5 +38,6 @@ Skills live in `.claude/skills/`. Invoke the one that matches the task with the 
 - `verify-facts`: check a volatile fact and record it.
 - `rag-eval`: retrieval corpus, labels, benchmark, and report rules.
 - `local-test-db`: throwaway PostgreSQL for `pytest` and `make ci`.
+- `observability`: PII-safe spans, metrics, and logs; allowlist, naming, caps, and export checks.
 
 More skills (Odoo adapter, infra and deploy, release) are added when the first issue needs them. Claude Code reads this file through `CLAUDE.md`; path-scoped rules are in `.claude/rules/`.

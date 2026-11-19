@@ -13,6 +13,9 @@ Rules:
   BND-3 The LLM provider adapter (`proposal_provider`) imports no engine module, so the
         model layer cannot reach Odoo, channels, or the database.
   BND-4 Only `execution`, `worker`, and `erp_cli` import `channels` directly.
+  BND-5 Telemetry (#126, OBS-10) imports no engine module, and the safety gate and the LLM
+        adapter never import telemetry, so neither money rules nor the model layer depend
+        on what is exported.
 """
 
 from __future__ import annotations
@@ -59,6 +62,20 @@ RULES = (
         None,
         False,
         "the LLM adapter must not reach other engine modules",
+    ),
+    Rule(
+        "BND-5",
+        frozenset({"policy", "proposal_provider"}),
+        frozenset({"telemetry"}),
+        True,
+        "the gate and the LLM adapter must not depend on telemetry (OBS-10)",
+    ),
+    Rule(
+        "BND-5",
+        frozenset({"telemetry"}),
+        None,
+        False,
+        "telemetry must stay a leaf module (OBS-10)",
     ),
 )
 CHANNEL_IMPORTERS = frozenset({"execution", "worker", "erp_cli"})
@@ -144,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAILED (import boundaries): {problem}", file=sys.stderr)
     if problems:
         return 1
-    print(f"import boundaries ok: {len(graph)} modules, rules BND-1..BND-4")
+    print(f"import boundaries ok: {len(graph)} modules, rules BND-1..BND-5")
     return 0
 
 

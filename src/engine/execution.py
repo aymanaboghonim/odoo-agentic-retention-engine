@@ -12,6 +12,7 @@ from typing import Literal, Protocol, cast
 
 from sqlalchemy import Engine
 
+from engine import telemetry
 from engine.approval_data import offer_from_record, snapshot_hash
 from engine.channels import EmailPort, TelegramMessageSender
 from engine.coupon_code import coupon_code_for_run
@@ -367,6 +368,21 @@ class ExecutionService:
     def _execute(
         self, run_id: uuid.UUID, *, test_destination: TestDestination | None
     ) -> ExecutionResult:
+        with telemetry.span("aorte.execution", **{"aorte.run_id": str(run_id)}) as span:
+            try:
+                result = self._execute_run(run_id, test_destination=test_destination)
+            except ExecutionHeld:
+                span.set("aorte.outcome", "held")
+                raise
+            except BaseException:
+                span.set("aorte.outcome", "failed")
+                raise
+            span.set("aorte.outcome", "completed" if result.status == "completed" else None)
+            return result
+
+    def _execute_run(
+        self, run_id: uuid.UUID, *, test_destination: TestDestination | None
+    ) -> ExecutionResult:
         try:
             record = self._runs.get_execution_record(run_id)
         except ApprovalExpired as error:
@@ -687,62 +703,74 @@ class ExecutionService:
         action: Callable[[], str],
     ) -> str:
         for attempt in range(1, self._settings.max_known_not_sent_attempts + 1):
-            self._runs.start_effect(
-                run_id,
-                claim_id,
-                binding_hash=binding_hash,
-                effect=effect,
-                max_attempts=self._settings.max_known_not_sent_attempts,
-            )
-            try:
-                reference = action()
-            except KnownNotSent:
-                self._runs.finish_effect(
-                    run_id,
-                    claim_id,
-                    binding_hash=binding_hash,
-                    effect=effect,
-                    attempt=attempt,
-                    status="not_sent",
+            with telemetry.span(
+                "aorte.effect",
+                **{"aorte.run_id": str(run_id), "aorte.effect": effect, "aorte.attempt": attempt},
+            ) as span:
+                outcome, reference = self._attempt_effect(
+                    run_id, claim_id, binding_hash, effect=effect, action=action, attempt=attempt
                 )
+                span.set("aorte.outcome", outcome)
+            telemetry.count(
+                "aorte.execution.effects", 1, {"aorte.effect": effect, "aorte.outcome": outcome}
+            )
+            if outcome == "not_sent":
                 if attempt < self._settings.max_known_not_sent_attempts:
                     continue
                 self._runs.fail(
                     run_id, reason=f"{effect}_known_not_sent_retry_limit", actor="worker"
                 )
-                raise ExecutionError(f"{effect} was not sent after configured attempts") from None
-            except Exception:
-                self._runs.finish_effect(
-                    run_id,
-                    claim_id,
-                    binding_hash=binding_hash,
-                    effect=effect,
-                    attempt=attempt,
-                    status="unknown",
-                )
+                raise ExecutionError(f"{effect} was not sent after configured attempts")
+            if outcome == "unknown":
                 raise ExecutionHeld(
                     f"{effect} outcome is unknown; operator reconciliation required"
-                ) from None
-            if not isinstance(reference, str) or not reference.strip():
-                self._runs.finish_effect(
-                    run_id,
-                    claim_id,
-                    binding_hash=binding_hash,
-                    effect=effect,
-                    attempt=attempt,
-                    status="unknown",
+                    if reference is None
+                    else f"{effect} returned no confirmation; operator reconciliation required"
                 )
-                raise ExecutionHeld(
-                    f"{effect} returned no confirmation; operator reconciliation required"
-                )
-            self._runs.finish_effect(
-                run_id,
-                claim_id,
-                binding_hash=binding_hash,
-                effect=effect,
-                attempt=attempt,
-                status="confirmed",
-                reference=reference,
-            )
-            return reference
+            return cast(str, reference)
         raise ExecutionError("effect attempts exhausted")
+
+    def _attempt_effect(
+        self,
+        run_id: uuid.UUID,
+        claim_id: uuid.UUID,
+        binding_hash: str,
+        *,
+        effect: Literal["coupon", "message"],
+        action: Callable[[], str],
+        attempt: int,
+    ) -> tuple[Literal["confirmed", "not_sent", "unknown"], str | None]:
+        """One journaled attempt; never retries by itself (EX-4).
+
+        `unknown` with reference None: the action raised. `unknown` with "": no confirmation.
+        """
+        self._runs.start_effect(
+            run_id,
+            claim_id,
+            binding_hash=binding_hash,
+            effect=effect,
+            max_attempts=self._settings.max_known_not_sent_attempts,
+        )
+        status: Literal["confirmed", "not_sent", "unknown"]
+        reference: str | None
+        try:
+            reference = action()
+        except KnownNotSent:
+            status, reference = "not_sent", None
+        except Exception:
+            status, reference = "unknown", None
+        else:
+            if isinstance(reference, str) and reference.strip():
+                status = "confirmed"
+            else:
+                status, reference = "unknown", ""
+        self._runs.finish_effect(
+            run_id,
+            claim_id,
+            binding_hash=binding_hash,
+            effect=effect,
+            attempt=attempt,
+            status=status,
+            reference=reference if status == "confirmed" else None,
+        )
+        return status, reference

@@ -26,6 +26,7 @@ ENV = {
     "FULL_STACK_INSTANCE_ID": str(uuid.uuid4()),
     "ENGINE_DATABASE_URL": "postgresql://engine:synthetic@engine-db:5432/engine",
     "ODOO_READONLY_DATABASE_URL": "postgresql://odoo_ro:synthetic@odoo-db:5432/odoo",
+    "TELEMETRY_ENABLED": "NO",
 }
 
 

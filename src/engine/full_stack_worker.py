@@ -14,6 +14,7 @@ from sqlalchemy import Engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
+from engine import telemetry
 from engine.breaker import BreakerSettings, run_breaker
 from engine.config import EngineConfig
 from engine.db import RunRepository, create_engine
@@ -21,7 +22,7 @@ from engine.odoo import OdooReader
 from engine.privacy import CONSENT_CHANNELS, ConsentChannel, PrivacySettings
 from engine.runtime_state import RuntimeGuard, RuntimeStateRepository
 from engine.synthetic_scan import ErpCartScanner, SyntheticCartScanner
-from engine.worker import GuardedScan, ScanPage, run_scheduled_scans
+from engine.worker import GuardedScan, Heartbeat, ScanPage, run_scheduled_scans
 
 LOG = logging.getLogger(__name__)
 
@@ -145,9 +146,11 @@ def main(argv: list[str] | None = None) -> None:
         "--once", action="store_true", help="scan exactly one bounded page and exit"
     )
     args = parser.parse_args(argv)
+    # Logging first: the telemetry handler joins the root logger afterwards.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     settings = WorkerSettings.from_env(os.environ)
     breaker_settings = BreakerSettings.from_env(os.environ)  # None = off; invalid fails closed
+    tel = telemetry.configure_from_env(os.environ, service_name="aorte-worker")  # OBS-6
     reader = OdooReader(settings.odoo_url)
     if settings.scan_mode == "erp":
         reader.verify_readonly_role()
@@ -160,8 +163,12 @@ def main(argv: list[str] | None = None) -> None:
     try:
         runtime = RuntimeStateRepository(engine)
         # KS-3: a halted (or unreadable) runtime state creates no runs.
-        scanner = GuardedScan(build_scanner(settings, engine, reader), RuntimeGuard(runtime))
+        heartbeat = Heartbeat()
+        guard = RuntimeGuard(runtime)
+        scanner = GuardedScan(build_scanner(settings, engine, reader), guard, heartbeat)
         repo = RunRepository(engine)
+        register_run_gauges(repo)
+        register_health_gauges(heartbeat, guard)
 
         def maintenance() -> None:
             # Spec AA-6: pending approvals past expires_at are cancelled with an audit event.
@@ -184,6 +191,39 @@ def main(argv: list[str] | None = None) -> None:
             )
     finally:
         engine.dispose()
+        tel.shutdown()
+
+
+def register_health_gauges(heartbeat: Heartbeat, guard: RuntimeGuard) -> None:
+    """Liveness and runtime state: the signals the Grafana alerts watch (#126, #127)."""
+    telemetry.observable_gauge(
+        "aorte.worker.last_scan_age",
+        "s",
+        "Seconds since the worker last finished a scan page",
+        lambda: [(heartbeat.age_seconds(), {})],
+    )
+    telemetry.observable_gauge(
+        "aorte.runtime.state",
+        "1",
+        "1 for the current runtime state (unreadable counts as halted, KS-6)",
+        lambda: [(1, {"aorte.runtime_state": guard.state().value})],
+    )
+
+
+def register_run_gauges(repo: RunRepository) -> None:
+    """Runs by state and held effects, read when metrics are exported (OBS-8 labels)."""
+    telemetry.observable_gauge(
+        "aorte.runs",
+        "{run}",
+        "Runs per state",
+        lambda: [(total, {"aorte.state": state}) for state, total in repo.state_counts().items()],
+    )
+    telemetry.observable_gauge(
+        "aorte.execution.held",
+        "{effect}",
+        "Effects with an unknown outcome on executing runs",
+        lambda: [(repo.held_effect_count(), {})],
+    )
 
 
 if __name__ == "__main__":
