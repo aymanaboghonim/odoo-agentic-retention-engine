@@ -29,7 +29,7 @@ The named tests are implementation acceptance tests; they do not exist yet and m
 | AS-3 | A customer-facing message or coupon is not issued before the run reaches `ready_to_execute`; a run awaiting approval cannot cause an external side effect. | `test_pending_approval_has_no_external_side_effects` |
 | AS-4 | An approval applies only to the exact proposal version presented to the approver; any change requires fresh policy evaluation and, where required, approval. | `test_changed_proposal_requires_fresh_policy_and_approval` |
 | AS-5 | Immediately before execution, all safety-gate checks are re-evaluated; human approval cannot override a hard rejection or a failed margin or usage cap. | `test_execution_rechecks_safety_gate` |
-| AS-6 | Repeated handling of a run or decision cannot create duplicate coupons or dispatches for that run. | `test_repeated_trigger_does_not_duplicate_side_effects` |
+| AS-6 | Repeated handling of a run or decision cannot create duplicate coupons or dispatches for that run. | `test_duplicate_trigger_has_no_repeated_side_effect` (`tests/test_privacy_consent_retention.py`), `test_coupon_creation_is_idempotent_by_code` |
 | AS-7 | A failed or interrupted run is not reported as completed; its failure is recorded and exposed to the caller or operator. | `test_failed_run_has_explicit_failure_outcome` |
 
 ## Behavior

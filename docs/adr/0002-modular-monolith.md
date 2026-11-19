@@ -1,6 +1,6 @@
 # ADR-0002: Modular monolith with API and worker, hexagonal inside
 
-- Status: accepted
+- Status: accepted; the LangGraph stack entry and the import-linter gate superseded in part by ADR-0028
 - Date: 2026-10-24
 
 ## Context

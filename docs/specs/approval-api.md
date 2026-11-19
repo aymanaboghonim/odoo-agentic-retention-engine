@@ -48,7 +48,7 @@ execution-time recheck belong to later work. The execution integration is #67.
 
 | ID | Must always be true | Check |
 | :-- | :-- | :-- |
-| AA-1 | Missing or invalid operator configuration fails closed; only an authenticated operator can list or decide requests, and credentials are not exposed. | `test_approval_authentication`, `test_approval_config_fails_closed`, `test_approval_token_not_exposed` |
+| AA-1 | Missing or invalid operator configuration fails closed; only an authenticated operator can list or decide requests, and credentials are not exposed. | `test_approval_authentication`, `test_auth_settings_fail_closed` (`tests/test_operator_rbac.py`, OIDC settings since #86), `test_approval_token_not_exposed` |
 | AA-2 | Only an eligible pending proposal can be decided, and the exact displayed snapshot and gate fingerprint must match. Changed, missing, stale or terminal proposals fail closed. | `test_changed_proposal_requires_fresh_policy_and_approval`, `test_stale_approval_rejected` |
 | AA-3 | A decision, its actor, audit event and valid state transition are atomic and durable; competing decisions cannot both win. | `test_approval_is_atomic_and_durable`, `test_concurrent_approval_decisions` |
 | AS-3 | Pending, approved or rejected decisions in this component never create a coupon or dispatch a message. | `test_pending_approval_has_no_external_side_effects` |
