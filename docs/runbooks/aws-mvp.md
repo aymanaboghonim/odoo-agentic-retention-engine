@@ -73,7 +73,15 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
    gh workflow run deploy-aws.yml
    ```
 
-   It mirrors the pinned third-party images with the same digests (`deploy/aws-mvp-images.json`), pushes `aorte-mvp/engine:<git sha>`, and registers new task definitions.
+   It mirrors the pinned third-party images (`deploy/aws-mvp-images.json`), pushes `aorte-mvp/engine:<git sha>`, and registers new task definitions. Each image entry has two pins: `digest` (what Compose uses, often a multi-platform index) and `aws_digest` (its `linux/amd64` manifest). Only `aws_digest` is copied to ECR and used by the task definitions; the mirror first checks that it is the `linux/amd64` child of `digest` (#106). To update an image, change both pins.
+
+   Images left from older multi-platform copies are removed with a dry run first. The command refuses while the core task definition still uses a digest it would delete:
+
+   ```bash
+   python scripts/aws_mvp.py ecr-prune            # lists what would be deleted per repository
+   python scripts/aws_mvp.py ecr-prune --apply    # after review; keeps every amd64 pin
+   ```
+
 5. Secrets: `openai-api-key`, `telegram-bot-token`, and `telegram-chat-id` (**owner** provides the token and chat id) through `scripts/aws_mvp_secrets.sh`.
 6. Apply `core_desired_count = 1` through `tf_safe.sh`, then `scripts/aws_mvp_start.sh --apply --url <api_base_url>`.
 7. Odoo (**owner**): forward port 18069 with Session Manager, change the demo admin password, and create a named API key. Store it with `scripts/aws_mvp_secrets.sh odoo-api-key`.
