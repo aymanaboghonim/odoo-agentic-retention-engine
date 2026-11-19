@@ -162,6 +162,7 @@ scripts/aws_mvp_shutdown.sh --apply      # also runs every night at 23:00 Africa
 python scripts/aws_mvp_status.py         # read-only; --json, --expect-clean
 ```
 
+- Between work sessions the stack stays deployed with the instance stopped: about USD 2.60/month, mostly the 30 GiB root volume (F-076, ADR-0026). Start it when needed and stop it after; the nightly stop catches a forgotten start. The full teardown runs at the end of the MVP (#120).
 - `start` waits for the instance, the ECS agent, the core service, and a `401` from `/api/approvals` through CloudFront.
 - `shutdown` is idempotent. `--disable-edge` also disables CloudFront; the next Terraform apply turns it back on.
 - `status` asks each service API directly. The tag search API keeps terminated and inactive records for a while (`F-070`), so `status` does not use it. It also sweeps the whole account for Elastic IPs, NAT gateways, load balancers, unattached volumes, and snapshots.
