@@ -1,6 +1,6 @@
 # ADR-0020: Unified CloudFront OAC + private S3 edge and backups
 
-- Status: accepted; decision 3 (public-hostname backend origin) superseded in part by ADR-0024
+- Status: accepted; decision 3 (public-hostname backend origin) superseded in part by ADR-0024; decision 1 (how telemetry reaches Grafana Cloud and Langfuse Cloud, and what it may carry) superseded in part by [ADR-0029](0029-observability-topology-and-telemetry-data-rule.md)
 - Date: 2026-11-14
 - Issue: #84
 - Supersedes: [ADR-0007](0007-free-tier-observability.md) (retains Grafana Cloud + Langfuse Cloud observability; moves UI & object storage to AWS)

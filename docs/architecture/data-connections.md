@@ -28,7 +28,7 @@ Issue: #26. This page lists only connections that accepted ADRs already decide. 
   transport, authentication, and network topology remain undecided.
 | Engine | LLM provider | Model calls | Through one `LLMClient` port. Only synthetic data is sent to cloud; PII is masked first. | [ADR-0003](../adr/0003-llm-interface-and-model-selection.md) |
 | Engine | Retrieval store | Search product and policy text | Through a `Retriever` port. The store is a derived index, never the source of truth. | [ADR-0006](../adr/0006-retrieval-store-benchmark.md) |
-| Engine | Observability services | Traces, metrics, LLM traces | Only synthetic data | [ADR-0007](../adr/0007-free-tier-observability.md) |
+| Engine | Observability services | Traces, metrics, logs, LLM traces | Metadata only from an attribute allowlist; no customer identifier or text ([spec](../specs/observability-telemetry.md)). Grafana Cloud over IPv6; Langfuse Cloud through a CloudFront relay from the AWS host (Langfuse has no AAAA, F-078) | [ADR-0029](../adr/0029-observability-topology-and-telemetry-data-rule.md) |
 
 ## AWS MVP network
 
@@ -76,7 +76,7 @@ Each channel has one job. Mixing them is a design error.
 | :-- | :-- | :-- |
 | DC-1 | The engine never writes to the Odoo database. | Not implemented yet. Add a test that the Odoo database role has no write privilege when the adapter exists. |
 | DC-2 | State changes in Odoo go only through the Odoo API adapter, after the safety gate. | Not implemented yet. Add an architecture test that only the adapter calls Odoo write methods. |
-| DC-3 | Only synthetic data reaches cloud LLM and observability services. | Not implemented yet. Add a test for the PII masking step. |
+| DC-3 | Only synthetic data reaches cloud LLM and observability services. | LLM: `test_pii_is_masked_before_llm_call` (TM-2, #85). Observability: `test_full_run_telemetry_contains_no_pii` (OBS-2, #126). |
 
 These checks do not exist yet. They are recorded so the matching implementation issue adds them.
 
