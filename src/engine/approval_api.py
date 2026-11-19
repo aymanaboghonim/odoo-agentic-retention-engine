@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from engine import telemetry
 from engine.auth import AuthError, AuthSettings, Principal, TokenVerifier
 from engine.config import EngineConfig
 from engine.db import ApprovalConflict, RunRepository, approval_requests, create_engine
@@ -24,6 +25,9 @@ from engine.runtime_state import (
 )
 
 ORIGIN_HEADER = "x-origin-verify"
+# Liveness for the container health check: outside the edge prefix (CloudFront forwards only
+# `/api/*`) and answered only to loopback clients, without authentication or data.
+HEALTH_PATH = "/healthz"
 # INF-9: optional path prefix that the edge forwards (CloudFront sends `/api/*` unchanged).
 ROOT_PATH_PATTERN = re.compile(r"^(/[a-z0-9][a-z0-9-]{0,30}){1,3}$")
 
@@ -76,6 +80,12 @@ def create_app(
 
     @app.middleware("http")
     async def origin_and_cache(request: Request, call_next):  # type: ignore[no-untyped-def]
+        if request.url.path == HEALTH_PATH:
+            if not _is_loopback(request):
+                return JSONResponse(status_code=404, content={"detail": "not found"})
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            return response
         # Runs before authentication (RBAC-5): the request must come through the trusted edge.
         if expected_origin is not None:
             supplied = request.headers.get(ORIGIN_HEADER, "").encode("utf-8", "replace")
@@ -166,6 +176,14 @@ def create_app(
                 ) from error
             return snapshot.as_dict()
 
+    @app.get(HEALTH_PATH, include_in_schema=False)
+    def health() -> JSONResponse:
+        try:
+            repo.ping()
+        except Exception:  # noqa: BLE001 - report unavailable, never the reason
+            return JSONResponse(status_code=503, content={"status": "unavailable"})
+        return JSONResponse(status_code=200, content={"status": "ok"})
+
     app.include_router(router, prefix=prefix)
     return app
 
@@ -192,6 +210,7 @@ def main() -> None:
         raise ValueError("APPROVAL_API_PORT must be a valid port")
     host = _host(settings)
     root_path = validate_root_path(os.environ.get("APPROVAL_API_ROOT_PATH"))
+    tel = telemetry.configure_from_env(os.environ, service_name="aorte-approval-api")  # OBS-6
     engine = create_engine(config.database_url)
     try:
         with engine.connect() as conn:
@@ -211,6 +230,7 @@ def main() -> None:
         )
     finally:
         engine.dispose()
+        tel.shutdown()
 
 
 if __name__ == "__main__":

@@ -502,6 +502,35 @@ class RunRepository:
             )
         return _to_run(row)
 
+    def ping(self) -> None:
+        """Raise if the engine database cannot answer (health check, no data read)."""
+        with self._engine.connect() as conn:
+            conn.execute(sa.text("SELECT 1")).scalar_one()
+
+    def state_counts(self) -> dict[str, int]:
+        """Runs per state, for the runs-by-state gauge (read-only, no customer data)."""
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                sa.select(runs.c.state, sa.func.count()).group_by(runs.c.state)
+            ).all()
+        return {str(state): int(total) for state, total in rows}
+
+    def held_effect_count(self) -> int:
+        """Effects with an unknown outcome on runs still executing (EX-4, ADR-0030)."""
+        with self._engine.connect() as conn:
+            return int(
+                conn.execute(
+                    sa.select(sa.func.count())
+                    .select_from(
+                        execution_effects.join(runs, runs.c.id == execution_effects.c.run_id)
+                    )
+                    .where(
+                        execution_effects.c.status == "unknown",
+                        runs.c.state == RunState.EXECUTING.value,
+                    )
+                ).scalar_one()
+            )
+
     def expire_approvals(self, *, now: datetime | None = None, limit: int = 500) -> int:
         """Cancel pending approvals past `expires_at` (spec AA-6); returns the number cancelled."""
         moment = now or datetime.now(UTC)

@@ -16,6 +16,8 @@ PREFIX=${AORTE_PREFIX:-aorte-mvp}
 START=$(date +%s)
 TIMEOUT=${AORTE_ROLLOUT_TIMEOUT:-1200}
 POLL=${AORTE_ROLLOUT_POLL:-15}
+# Engine settings without a default that every engine container must carry (#126).
+REQUIRED_ENGINE_ENV="TELEMETRY_ENABLED"
 stage() { printf '[rollout +%ss] %s\n' "$(($(date +%s) - START))" "$*"; }
 fail() { printf 'FAILED (rollout): %s\n' "$*" >&2; exit 1; }
 
@@ -37,6 +39,14 @@ wait_rollout() {
 
 for family in core; do
   current=$(aws ecs describe-task-definition --task-definition "$PREFIX-$family" --query taskDefinition --output json)
+  # Preflight (#126): the rollout copies the current environment, so a setting the new engine
+  # requires must already be in the task definition. Apply Terraform first (tf_safe.sh).
+  for name in $REQUIRED_ENGINE_ENV; do
+    missing=$(jq -r --arg name "$name" '
+      [.containerDefinitions[] | select(.name == "worker" or .name == "approval-api" or .name == "operator")
+       | select(([.environment[]?.name] | index($name)) == null) | .name] | join(",")' <<<"$current")
+    [ -z "$missing" ] || fail "task definition lacks $name in: $missing; apply Terraform first (scripts/tf_safe.sh)"
+  done
   next=$(jq --arg tag "$TAG" --arg repo "/$PREFIX/engine:" '
     {family, networkMode, requiresCompatibilities, executionRoleArn, taskRoleArn, volumes,
      containerDefinitions: [.containerDefinitions[]

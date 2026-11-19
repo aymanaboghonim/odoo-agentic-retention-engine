@@ -1,4 +1,4 @@
-"""BND-1..BND-4: engine module boundaries (#111). Hermetic, no database."""
+"""BND-1..BND-5: engine module boundaries (#111, #126). Hermetic, no database."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ BASE = {
     "odoo": "from . import policy\n",
     "worker": "from engine.channels import send\n",
     "erp_cli": "from engine import channels\n",
+    "telemetry": "import logging\n",
 }
 
 
@@ -78,3 +79,16 @@ def test_missing_rule_module_fails_closed(tmp_path: Path, missing: str) -> None:
     root = tree(tmp_path)
     (root / f"{missing}.py").unlink()
     assert any("not found" in p for p in problems(root))
+
+
+def test_gate_and_llm_adapter_never_import_telemetry(tmp_path: Path) -> None:
+    # OBS-10 (#126): money rules and the model layer cannot depend on what is exported.
+    for module in ("policy", "proposal_provider"):
+        (tmp_path / module).mkdir()
+        found = problems(tree(tmp_path / module, **{module: "from engine import telemetry\n"}))
+        assert any(p.startswith(f"BND-5: {module} -> telemetry") for p in found), found
+
+
+def test_telemetry_imports_no_engine_module(tmp_path: Path) -> None:
+    found = problems(tree(tmp_path, telemetry="from engine import db\n"))
+    assert any(p.startswith("BND-5: telemetry -> db") for p in found), found

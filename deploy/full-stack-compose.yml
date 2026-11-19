@@ -90,6 +90,12 @@ services:
       BREAKER_MAX_P95_SECONDS: ${BREAKER_MAX_P95_SECONDS:-15}
       PRIVACY_RETENTION_DAYS: ${PRIVACY_RETENTION_DAYS:-}
       PRIVACY_TOMBSTONE_PEPPER: ${PRIVACY_TOMBSTONE_PEPPER:-}
+      # #126, ADR-0029: telemetry is off unless set; with YES every Grafana setting is required.
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-NO}
+      TELEMETRY_ENVIRONMENT: ${TELEMETRY_ENVIRONMENT:-}
+      GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:-}
+      GRAFANA_OTLP_TOKEN: ${GRAFANA_OTLP_TOKEN:-}
+      TELEMETRY_DAILY_SPAN_CAP: ${TELEMETRY_DAILY_SPAN_CAP:-}
     command: ["python", "-m", "engine.full_stack_worker"]
     networks: [private]
 
@@ -109,9 +115,22 @@ services:
       OIDC_JWKS_FILE: /run/oidc/jwks.json
       APPROVAL_TTL_HOURS: ${APPROVAL_TTL_HOURS:-}
       APPROVAL_API_PORT: "8080"
+      # #126, ADR-0029: telemetry is off unless set; with YES every Grafana setting is required.
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-NO}
+      TELEMETRY_ENVIRONMENT: ${TELEMETRY_ENVIRONMENT:-}
+      GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:-}
+      GRAFANA_OTLP_TOKEN: ${GRAFANA_OTLP_TOKEN:-}
+      TELEMETRY_DAILY_SPAN_CAP: ${TELEMETRY_DAILY_SPAN_CAP:-}
     volumes:
       - ${FULL_STACK_OIDC_DIR:?Set FULL_STACK_OIDC_DIR}:/run/oidc:ro
     command: ["python", "-m", "engine.approval_api"]
+    # #126: loopback-only liveness; checks the engine database without data or auth.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks: [private]
 
   mailpit:
@@ -151,6 +170,12 @@ services:
       EXECUTION_ERP_MODE: ${EXECUTION_ERP_MODE:-}
       PRIVACY_RETENTION_DAYS: ${PRIVACY_RETENTION_DAYS:-}
       PRIVACY_TOMBSTONE_PEPPER: ${PRIVACY_TOMBSTONE_PEPPER:-}
+      # #126, ADR-0029: telemetry is off unless set; with YES every Grafana setting is required.
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-NO}
+      TELEMETRY_ENVIRONMENT: ${TELEMETRY_ENVIRONMENT:-}
+      GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:-}
+      GRAFANA_OTLP_TOKEN: ${GRAFANA_OTLP_TOKEN:-}
+      TELEMETRY_DAILY_SPAN_CAP: ${TELEMETRY_DAILY_SPAN_CAP:-}
       EXECUTION_ALLOWLIST_DOMAINS: ${EXECUTION_ALLOWLIST_DOMAINS:-}
       EXECUTION_ALLOWLIST_EMAILS: ${EXECUTION_ALLOWLIST_EMAILS:-}
       TELEGRAM_ALLOWLIST_CHAT_IDS: ${TELEGRAM_ALLOWLIST_CHAT_IDS:-}

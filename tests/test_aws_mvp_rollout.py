@@ -24,6 +24,7 @@ TASK_DEF = {
         {
             "name": "worker",
             "image": "000000000000.dkr.ecr.us-east-1.amazonaws.com/aorte-mvp/engine:old",
+            "environment": [{"name": "TELEMETRY_ENABLED", "value": "NO"}],
         },
         {
             "name": "mailpit",
@@ -116,3 +117,17 @@ def test_fails_on_timeout(env: dict[str, str]) -> None:
     result = run(env, ["IN_PROGRESS"])
     assert result.returncode == 1
     assert "no COMPLETED rollout after 0s" in result.stderr
+
+
+def test_refuses_task_definition_without_required_engine_setting(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    # #126: the rollout copies the current environment, so a new required setting must be
+    # applied by Terraform first; nothing is registered otherwise.
+    stale = json.loads(json.dumps(TASK_DEF))
+    del stale["containerDefinitions"][0]["environment"]
+    Path(env["FAKE_TASK_DEF"]).write_text(json.dumps(stale), encoding="utf-8")
+    result = run(env, ["COMPLETED"])
+    assert result.returncode == 1
+    assert "task definition lacks TELEMETRY_ENABLED in: worker" in result.stderr
+    assert not any("register-task-definition" in c for c in calls(env))

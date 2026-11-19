@@ -74,6 +74,7 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, every se
 | OBS-13 | At a daily cap, export stops for the rest of the UTC day and the dropped items are counted; runs are not affected. | `test_daily_export_cap_stops_export_and_counts_drops` |
 | OBS-14 | Alloy sends only allowlisted metrics, no logs, and its container has a hard memory limit. | `test_alloy_config_allowlist_and_memory_limit` |
 | OBS-15 | An operator decision score carries the decision code only. | `test_operator_decision_score_has_code_only` |
+| OBS-16 | The worker reports seconds since its last finished scan page and the runtime state (unreadable counts as `halted`); the API answers `/healthz` only to loopback clients, outside the edge prefix, with `ok` or `unavailable` and nothing else. | `test_worker_heartbeat_tracks_completed_scan_pages`, `test_health_gauges_report_liveness_and_runtime_state`, `test_unreadable_runtime_state_reports_halted`, `test_health_endpoint_is_loopback_only_and_reveals_nothing` |
 
 ## Behavior
 
@@ -91,6 +92,19 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, every se
 - The OTel Python logs API is still under `_logs`. Pin the version; stdout logs stay as the fallback.
 - SDK and Alloy memory on the 4 GiB host is measured (#126, #134) before the AWS rollout; Alloy's limit comes from that measurement.
 - Auto-instrumentation libraries may add attributes in a new version; the allowlist drops them (OBS-1), and versions are pinned.
+- `approval-api` is an essential container, so three failed health checks make ECS replace the whole core task (the databases keep their data on the host volume). A database outage therefore restarts the task; `startPeriod` is 60 s. Watch restarts in #127 and #133.
+
+## Implementation notes (#126)
+
+Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, safe exporters, caps, log handler, helpers), spans in [worker.py](../../src/engine/worker.py) (`aorte.scan`), [proposal.py](../../src/engine/proposal.py) (`aorte.proposal`, `aorte.llm.call`, `aorte.gate`), and [execution.py](../../src/engine/execution.py) (`aorte.execution`, `aorte.effect`); the gauges `aorte.runs` and `aorte.execution.held` in [full_stack_worker.py](../../src/engine/full_stack_worker.py). Tests: [test_telemetry.py](../../tests/test_telemetry.py) and BND-5 in [test_import_boundaries.py](../../tests/test_import_boundaries.py). Skill: `.claude/skills/observability/`.
+
+- Entrypoints that configure telemetry: `engine.full_stack_worker`, `engine.approval_api`, and `engine.erp_cli`. Each requires `TELEMETRY_ENABLED`; Compose and Terraform set `NO` as the deployment default (the code has none). The rollout script refuses a task definition without it.
+- `TELEMETRY_DAILY_SPAN_CAP` counts spans and log records together, per process. Three engine processes run on the AWS host, so the engine-wide daily total is at most three times the cap.
+- Exports use bounded batch queues (2,048 items), 5 s batching, and a 10 s export timeout; metrics export every 60 s. A failed export is dropped and counted (`export_failed`).
+- The resource is built from the allowlist only (`service.name`, `deployment.environment.name`, optional `service.version` from `ENGINE_VERSION`); environment-based resource detectors are not used.
+- Measured overhead (`F-084`): about 20 MiB peak RSS per process.
+- Health signals (OBS-16): gauges `aorte.worker.last_scan_age` (seconds; process start counts as the first beat, and a page skipped while halted beats too) and `aorte.runtime.state`; the approval API's `/healthz` checks the engine database with `SELECT 1`. The ECS task definition (Terraform, applied in #127) and Compose run it as the `approval-api` container health check. Grafana alerts on these signals, and how they stay quiet while the stack is stopped by design (ADR-0026), are #127.
+- Not in #126: Langfuse export and OBS-4 (#128), the live Grafana export and SM-6 (#127), APM and Alloy (#134).
 
 ## Open questions
 

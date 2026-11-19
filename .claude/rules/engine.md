@@ -13,3 +13,4 @@ Hard rules are in `AGENTS.md`; these are the ones most often touched in code.
 - No raw customer name, email, or phone at rest or in LLM and log payloads: per-run tokens only, restored from the live Odoo cart at dispatch ([privacy spec](../../docs/specs/privacy-consent-retention.md)).
 - Fail closed: missing or invalid settings stop startup; unknown input is rejected.
 - Side-effecting commands need a preflight, progress output, and a failure report ([process.md](../../docs/process.md)); output never prints tokens, pepper, or customer data.
+- Telemetry goes only through `engine.telemetry` helpers: allowlisted keys, `run_id` and codes only, never customer IDs or text (`observability` skill, ADR-0029).

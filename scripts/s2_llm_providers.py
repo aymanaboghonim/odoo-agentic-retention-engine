@@ -328,7 +328,7 @@ def _gemini_count_tokens_body(model: str, request: dict[str, object]) -> dict[st
     raw_tools = config.get("tools")
     if raw_tools is not None and not isinstance(raw_tools, list):
         raise EvaluationError("Gemini request has invalid tool declarations for countTokens")
-    from google.genai import types  # type: ignore[import-not-found]
+    from google.genai import types  # type: ignore[import-not-found, import-untyped]
 
     try:
         serialized_contents = [
@@ -448,7 +448,7 @@ def create_live_client(
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise EvaluationError("Set GEMINI_API_KEY in the process environment")
-        from google import genai  # type: ignore[import-not-found]
+        from google import genai  # type: ignore[import-not-found, import-untyped]
 
         gemini_client = genai.Client(
             api_key=api_key,

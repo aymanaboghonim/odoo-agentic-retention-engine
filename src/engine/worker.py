@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol
 
+from engine import telemetry
 from engine.channels import ChannelError, TelegramMessageSender
 from engine.runtime_state import RuntimeGuard, RuntimeState
 
@@ -19,18 +20,49 @@ class ScanPage(Protocol):
     def scan_page(self, *, now: datetime) -> tuple[int, int]: ...
 
 
+class Heartbeat:
+    """Seconds since the scan loop last finished a page; the worker's liveness signal."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._last = clock()  # process start counts as the first beat
+
+    def beat(self) -> None:
+        self._last = self._clock()
+
+    def age_seconds(self) -> float:
+        return max(0.0, self._clock() - self._last)
+
+
 class GuardedScan:
     """Spec KS-3: a halted engine creates no runs. Reading the state fails closed."""
 
-    def __init__(self, scanner: ScanPage, guard: RuntimeGuard) -> None:
+    def __init__(
+        self, scanner: ScanPage, guard: RuntimeGuard, heartbeat: Heartbeat | None = None
+    ) -> None:
         self._scanner = scanner
         self._guard = guard
+        self._heartbeat = heartbeat
 
     def scan_page(self, *, now: datetime) -> tuple[int, int]:
-        if self._guard.state() is RuntimeState.HALTED:
-            LOG.info("stage=scan status=skipped reason=engine_halted")
-            return 0, 0
-        return self._scanner.scan_page(now=now)
+        result = self._scan_page(now=now)
+        if self._heartbeat is not None:
+            # A halted engine is still alive: the skipped page beats too.
+            self._heartbeat.beat()
+        return result
+
+    def _scan_page(self, *, now: datetime) -> tuple[int, int]:
+        with telemetry.span("aorte.scan") as span:
+            if self._guard.state() is RuntimeState.HALTED:
+                LOG.info("stage=scan status=skipped reason=engine_halted")
+                span.set("aorte.outcome", "skipped")
+                return 0, 0
+            scanned, created = self._scanner.scan_page(now=now)
+            span.set("aorte.scan.scanned", scanned)
+            span.set("aorte.scan.created", created)
+            telemetry.count("aorte.scan.carts", scanned, {"aorte.outcome": "scanned"})
+            telemetry.count("aorte.scan.carts", created, {"aorte.outcome": "created"})
+            return scanned, created
 
 
 def run_scheduled_scans(

@@ -76,7 +76,7 @@ repos:
         pass_filenames: false
         always_run: true
       - id: import-boundaries
-        name: engine import boundaries (BND-1..BND-4)
+        name: engine import boundaries (BND-1..BND-5)
         entry: uv run --no-sync python scripts/check_import_boundaries.py
         language: system
         pass_filenames: false

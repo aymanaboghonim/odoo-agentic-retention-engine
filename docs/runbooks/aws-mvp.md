@@ -75,6 +75,8 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
 
    It mirrors the pinned third-party images (`deploy/aws-mvp-images.json`), pushes `aorte-mvp/engine:<git sha>`, and registers new task definitions. Each image entry has two pins: `digest` (what Compose uses, often a multi-platform index) and `aws_digest` (its `linux/amd64` manifest). Only `aws_digest` is copied to ECR and used by the task definitions; the mirror first checks that it is the `linux/amd64` child of `digest` (#106). To update an image, change both pins.
 
+   The rollout copies the current task definition's environment and only swaps the engine image. When a new engine version requires a setting (for example `TELEMETRY_ENABLED` from #126), apply the Terraform change with `tf_safe.sh` first; `scripts/aws_mvp_rollout.sh` refuses to register a revision whose worker, approval-api, or operator container lacks it.
+
    Images left from older multi-platform copies are removed with a dry run first. The command refuses while the core task definition still uses a digest it would delete:
 
    ```bash

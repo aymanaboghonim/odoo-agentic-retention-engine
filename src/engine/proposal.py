@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -12,14 +13,21 @@ from typing import Literal, Protocol
 
 from sqlalchemy import Engine
 
+from engine import telemetry
 from engine.coupon_code import coupon_code_for_run
 from engine.db import DEFAULT_APPROVAL_TTL, RunRepository
 from engine.fixed_rule import FIXED_SCHEMA, build_fixed_offer
 from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, OfferProposal, Outcome, as_dict
 from engine.privacy import PiiTokenizer, PrivacyError, has_unknown_tokens
-from engine.proposal_budget import BudgetError, ProposalBudget, Rate, ReviewBudget
-from engine.proposal_provider import VERSION, LLMClient, ProviderError
+from engine.proposal_budget import (
+    BudgetError,
+    ProposalBudget,
+    Rate,
+    ReviewBudget,
+    settled_usd,
+)
+from engine.proposal_provider import MODEL, VERSION, LLMClient, ProviderError
 from engine.retrieval import Retriever
 from engine.runs import RunState
 from engine.runtime_state import RuntimeGuard, RuntimeState
@@ -155,6 +163,16 @@ def approval_ttl_from_env(env: Mapping[str, str]) -> timedelta:
         raise ValueError("APPROVAL_TTL_HOURS must be an integer") from error
 
 
+def _record_llm_usage(rate: Rate, input_tokens: int, output_tokens: int) -> None:
+    """OBS-9: report the settled ledger amount, computed by the same function as `settle`."""
+    model = {"gen_ai.request.model": MODEL}
+    telemetry.count("aorte.llm.tokens", input_tokens, {**model, "gen_ai.token.type": "input"})
+    telemetry.count("aorte.llm.tokens", output_tokens, {**model, "gen_ai.token.type": "output"})
+    telemetry.count(
+        "aorte.llm.cost_usd", float(settled_usd(rate, input_tokens, output_tokens)), model
+    )
+
+
 def _clean(text: str, tokenizer: PiiTokenizer) -> str:
     """TM-2: replace customer identities with opaque per-run tokens before any LLM call."""
     if not isinstance(text, str) or len(text) > 4000:
@@ -233,6 +251,37 @@ class ProposalService:
         language: str,
         request: str,
         execution_channel: Literal["telegram", "mailpit"] | None = None,
+    ) -> None:
+        # OBS-3: the span carries the run ID only, never the customer or cart ID.
+        with telemetry.span("aorte.proposal", **{"aorte.run_id": str(run_id)}) as span:
+            started = time.monotonic()
+            try:
+                self._generate(
+                    run_id,
+                    customer_id=customer_id,
+                    cart_id=cart_id,
+                    language=language,
+                    request=request,
+                    execution_channel=execution_channel,
+                )
+            except BaseException:
+                span.set("aorte.outcome", "failed")
+                raise
+            finally:
+                telemetry.observe(
+                    "aorte.stage.duration", time.monotonic() - started, {"aorte.stage": "proposal"}
+                )
+            span.set("aorte.outcome", "validated")
+
+    def _generate(
+        self,
+        run_id: uuid.UUID,
+        *,
+        customer_id: int,
+        cart_id: int,
+        language: str,
+        request: str,
+        execution_channel: Literal["telegram", "mailpit"] | None,
     ) -> None:
         # A run's trigger reference is bound by the trusted synthetic trigger, not the model.
         run = self.runs.get_run(run_id)
@@ -317,18 +366,32 @@ class ProposalService:
                 rate=self.settings.rate,
                 review=self.settings.review_budget,
             )
-            try:
-                count = self.provider.count_tokens(payload)
-                if (
-                    not isinstance(count, int)
-                    or isinstance(count, bool)
-                    or not 0 <= count <= self.settings.input_tokens
-                ):
-                    raise ProposalError("input token count exceeds configured limit or is invalid")
-                result = self.provider.generate(payload, self.settings.output_tokens)
-            except Exception:
-                self.budget.mark_unknown(call_id, "provider_error")
-                raise
+            llm_span = telemetry.span(
+                "aorte.llm.call",
+                **{
+                    "aorte.run_id": str(run_id),
+                    "gen_ai.operation.name": "chat",
+                    "gen_ai.provider.name": "openai",
+                    "gen_ai.request.model": MODEL,
+                },
+            )
+            with llm_span as call:
+                try:
+                    count = self.provider.count_tokens(payload)
+                    if (
+                        not isinstance(count, int)
+                        or isinstance(count, bool)
+                        or not 0 <= count <= self.settings.input_tokens
+                    ):
+                        raise ProposalError(
+                            "input token count exceeds configured limit or is invalid"
+                        )
+                    result = self.provider.generate(payload, self.settings.output_tokens)
+                except Exception:
+                    self.budget.mark_unknown(call_id, "provider_error")
+                    raise
+                call.set("gen_ai.usage.input_tokens", result.input_tokens)
+                call.set("gen_ai.usage.output_tokens", result.output_tokens)
             if (
                 not isinstance(result.input_tokens, int)
                 or isinstance(result.input_tokens, bool)
@@ -339,12 +402,14 @@ class ProposalService:
             ):
                 self.budget.mark_unknown(call_id, "missing_or_invalid_usage")
                 raise ProposalError("missing or invalid provider usage")
-            if not self.budget.settle(
+            within = self.budget.settle(
                 call_id,
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
                 rate=self.settings.rate,
-            ):
+            )
+            _record_llm_usage(self.settings.rate, result.input_tokens, result.output_tokens)
+            if not within:
                 raise ProposalError("provider usage exceeded reservation")
             if not result.complete:
                 raise ProposalError("provider response incomplete")
@@ -432,7 +497,13 @@ class ProposalService:
         schema_version: str = VERSION,
     ) -> None:
         """Gate, persist, and route one proposal; shared by the model and fixed-rule paths."""
-        decision = self.gate.evaluate(proposal, now=datetime.now(UTC))
+        with telemetry.span(
+            "aorte.gate",
+            **{"aorte.run_id": str(run_id), "aorte.schema_version": schema_version},
+        ) as gate_span:
+            decision = self.gate.evaluate(proposal, now=datetime.now(UTC))
+            gate_span.set("aorte.gate.outcome", decision.outcome.value)
+            gate_span.set("aorte.gate.reasons", [reason.value for reason in decision.reasons])
         self._persist(
             run_id,
             proposal,

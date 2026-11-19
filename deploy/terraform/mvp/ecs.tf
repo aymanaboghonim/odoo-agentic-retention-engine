@@ -35,7 +35,7 @@ locals {
 
   oidc_issuer = "https://cognito-idp.${var.region}.amazonaws.com/${aws_cognito_user_pool.operators.id}"
 
-  common_engine_env = merge(var.breaker_settings, var.engine_settings, {
+  common_engine_env = merge(var.breaker_settings, var.telemetry_settings, var.engine_settings, {
     FULL_STACK_SYNTHETIC_ISOLATED = "YES"
     # The engine requires a UUID (fails closed otherwise, #97). Deterministic per stack name.
     FULL_STACK_INSTANCE_ID = uuidv5("url", "https://github.com/aymanaboghonim/odoo-agentic-retention-engine/${var.name_prefix}")
@@ -130,6 +130,14 @@ locals {
       essential         = true
       memoryReservation = 256
       command           = ["python", "-m", "engine.approval_api"]
+      # #126: loopback-only liveness (DB reachable). Unhealthy for 3 checks replaces the task.
+      healthCheck = {
+        command     = ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
       environment = [
         { name = "OIDC_ISSUER", value = local.oidc_issuer },
         { name = "OIDC_JWKS_URL", value = "${local.oidc_issuer}/.well-known/jwks.json" },
@@ -138,6 +146,7 @@ locals {
         { name = "APPROVAL_API_HOST", value = "0.0.0.0" },
         { name = "APPROVAL_API_PORT", value = "8080" },
         { name = "APPROVAL_API_ROOT_PATH", value = "/api" },
+        { name = "TELEMETRY_ENABLED", value = var.telemetry_settings["TELEMETRY_ENABLED"] },
       ]
       secrets = [
         { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },

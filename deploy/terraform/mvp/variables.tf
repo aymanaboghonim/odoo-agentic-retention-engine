@@ -115,6 +115,14 @@ variable "engine_settings" {
   default     = {}
 }
 
+variable "telemetry_settings" {
+  description = "Telemetry settings (#126, ADR-0029). TELEMETRY_ENABLED is required by the engine; the Grafana settings come with #127."
+  type        = map(string)
+  default = {
+    TELEMETRY_ENABLED = "NO"
+  }
+}
+
 variable "breaker_settings" {
   description = "Circuit breaker numbers from ADR-0023 (same defaults as deploy/full-stack-compose.yml)."
   type        = map(string)
