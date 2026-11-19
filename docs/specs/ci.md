@@ -25,6 +25,7 @@ Non-goals: test live APIs, use paid services, validate external links over the n
 | CI-5 | Python checks run when Python files exist and skip clearly when they do not. | Ruff, mypy and pytest runner scripts |
 | CI-6 | Secret scans cover repository history and redact findings. | `scripts/scan_secrets.sh` |
 | CI-7 | Link checks do not require network access. | `scripts/check_links.sh` with lychee offline mode |
+| CI-8 | Engine module boundaries hold on the transitive import graph (#111, [ADR-0012](../adr/0012-worker-owned-agent-execution.md), [ADR-0028](../adr/0028-explicit-run-state-machine-instead-of-langgraph.md)). BND-1: `approval_api`, `approval_cli`, and `auth` never reach `odoo`, `channels`, `execution`, or `proposal_provider`. BND-2: the gate (`policy`) imports no engine module. BND-3: the LLM adapter (`proposal_provider`) imports no engine module. BND-4: only `execution`, `worker`, and `erp_cli` import `channels`. | `scripts/check_import_boundaries.py` in `make ci`; `tests/test_import_boundaries.py::test_approval_path_cannot_reach_side_effects_even_indirectly`, `::test_gate_imports_no_engine_module`, `::test_llm_adapter_imports_no_engine_module`, `::test_only_execution_paths_import_channels` |
 
 ## Behavior
 
