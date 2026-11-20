@@ -45,7 +45,13 @@ RATES = {
     "logs_gb_month": 0.03,  # F-067
 }
 GB = 1024**3
-EXTERNAL_SECRETS = ("openai-api-key", "telegram-bot-token", "telegram-chat-id", "odoo-api-key")
+EXTERNAL_SECRETS = (
+    "openai-api-key",
+    "telegram-bot-token",
+    "telegram-chat-id",
+    "odoo-api-key",
+    "grafana-otlp-token",  # #127: base64 of <instance-id>:<token> (ADR-0029)
+)
 MUTATING_VERBS = (
     "create-",
     "delete-",
@@ -1195,6 +1201,7 @@ EXEC_MODULES = (
     "engine.privacy_cli",
     "scripts.erp_minimal_fixtures",
     "scripts.ingest_policies",
+    "scripts.telemetry_check",  # #127 smoke SM-6
 )
 EXIT_MARKER = "__aorte_exit="
 

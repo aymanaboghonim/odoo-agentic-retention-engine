@@ -156,6 +156,22 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
 
 Status and cleanup do not use AWS Resource Groups or the tag search API: that API kept stale records after deletion (`F-070`), and some resources (the CloudFront service security group, Cognito groups and clients) are not tagged. The tools query each service API by tag and name instead, and sweep the whole account for untagged billables.
 
+## Telemetry to Grafana Cloud (#127)
+
+The engine exports traces, metrics, and logs to Grafana Cloud (us-east-2) over IPv6 (ADR-0029). Never add a payment method to the Grafana account.
+
+1. **Owner:** in the Grafana stack, *Connections → OpenTelemetry → View connection details*, generate a token with only the write scopes. Save the value after `Basic%20` (the base64 of `<instance-id>:<token>`, not the raw `glc_` token) to a file outside the repo with mode 600.
+2. Check it from your machine (sends one synthetic span, metric point, and log line):
+
+   ```bash
+   GRAFANA_OTLP_ENDPOINT=https://otlp-gateway-prod-us-east-2.grafana.net/otlp \
+     uv run --no-sync python scripts/telemetry_check.py --token-file <token-file>
+   ```
+
+3. Apply the Terraform telemetry settings with `tf_safe.sh` **before** any image rollout (the rollout refuses a task definition without `TELEMETRY_ENABLED`). This also creates the `grafana-otlp-token` SSM placeholder; the engine refuses the placeholder at startup.
+4. Write the token: `scripts/aws_mvp_secrets.sh grafana-otlp-token --from-file <token-file> --apply`. Containers read SSM at start, so write it before starting the stack.
+5. Start the stack, run the deploy workflow, then the smoke with `--apply`: SM-6 runs `scripts.telemetry_check` in the operator container.
+
 ## Daily use
 
 ```bash

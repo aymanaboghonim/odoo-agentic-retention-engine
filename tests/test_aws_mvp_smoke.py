@@ -82,6 +82,7 @@ def test_read_only_smoke_passes_checks_it_can_run(tmp_path: Path, web: Any) -> N
         "SM-3": "not-run",
         "SM-4": "pass",
         "SM-5": "not-run",
+        "SM-6": "not-run",
     }
     assert code == 1  # not-run is not a pass
     summary = (out / "summary.md").read_text()
@@ -108,3 +109,22 @@ def test_smoke_rejects_non_cloudfront_url(tmp_path: Path, web: Any) -> None:
         smoke.main(["--base-url", "http://example.com", "--out", str(tmp_path)], runner=fake_aws())
         == 1
     )
+
+
+def test_sm6_runs_the_telemetry_check_in_the_operator_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OBS-11 (#127): the check runs inside the task network, with aws-mvp (AAAA required)."""
+    seen: list[list[str]] = []
+
+    def fake_exec(aws: Any, args: Any) -> int:
+        seen.append(list(args.argv))
+        return 0
+
+    monkeypatch.setattr(smoke, "cmd_exec", fake_exec)
+    apply = type("A", (), {"apply": True})()
+    check = smoke.sm6_telemetry(apply)  # type: ignore[arg-type]
+    assert check.status == "pass" and check.id == "SM-6"
+    assert seen == [["python", "-m", "scripts.telemetry_check", "--environment", "aws-mvp"]]
+    monkeypatch.setattr(smoke, "cmd_exec", lambda aws, args: 1)
+    assert smoke.sm6_telemetry(apply).status == "fail"  # type: ignore[arg-type]

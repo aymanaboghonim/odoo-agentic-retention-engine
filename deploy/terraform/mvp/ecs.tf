@@ -119,6 +119,7 @@ locals {
         { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },
         { name = "ODOO_READONLY_DATABASE_URL", valueFrom = "${local.param_arn}/odoo-readonly-url" },
         { name = "PRIVACY_TOMBSTONE_PEPPER", valueFrom = "${local.param_arn}/privacy-tombstone-pepper" },
+        { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
       ]
       links            = ["odoo-db:odoo-db", "engine-db:engine-db"]
       dependsOn        = [{ containerName = "initialize", condition = "SUCCESS" }]
@@ -138,7 +139,7 @@ locals {
         retries     = 3
         startPeriod = 60
       }
-      environment = [
+      environment = concat([
         { name = "OIDC_ISSUER", value = local.oidc_issuer },
         { name = "OIDC_JWKS_URL", value = "${local.oidc_issuer}/.well-known/jwks.json" },
         { name = "OIDC_CLIENT_ID", value = aws_cognito_user_pool_client.operator_cli.id },
@@ -146,11 +147,13 @@ locals {
         { name = "APPROVAL_API_HOST", value = "0.0.0.0" },
         { name = "APPROVAL_API_PORT", value = "8080" },
         { name = "APPROVAL_API_ROOT_PATH", value = "/api" },
-        { name = "TELEMETRY_ENABLED", value = var.telemetry_settings["TELEMETRY_ENABLED"] },
-      ]
+        ],
+        [for k, v in var.telemetry_settings : { name = k, value = v }],
+      )
       secrets = [
         { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },
         { name = "APPROVAL_ORIGIN_VERIFY_SECRET", valueFrom = "${local.param_arn}/approval-origin-verify" },
+        { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
       ]
       links            = ["engine-db:engine-db"]
       portMappings     = [{ containerPort = 8080, hostPort = var.api_port, protocol = "tcp" }]
@@ -211,6 +214,7 @@ locals {
         { name = "ODOO_API_KEY", valueFrom = "${local.param_arn}/odoo-api-key" },
         { name = "ERP_TELEGRAM_CHAT_ID", valueFrom = "${local.param_arn}/telegram-chat-id" },
         { name = "TELEGRAM_ALLOWLIST_CHAT_IDS", valueFrom = "${local.param_arn}/telegram-chat-id" },
+        { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
       ]
       links       = ["engine-db:engine-db", "odoo-db:odoo-db", "odoo:odoo", "mailpit:mailpit"]
       mountPoints = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = true }]

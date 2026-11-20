@@ -106,6 +106,13 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 - Health signals (OBS-16): gauges `aorte.worker.last_scan_age` (seconds; process start counts as the first beat, and a page skipped while halted beats too) and `aorte.runtime.state`; the approval API's `/healthz` checks the engine database with `SELECT 1`. The ECS task definition (Terraform, applied in #127) and Compose run it as the `approval-api` container health check. Grafana alerts on these signals, and how they stay quiet while the stack is stopped by design (ADR-0026), are #127.
 - Not in #126: Langfuse export and OBS-4 (#128), the live Grafana export and SM-6 (#127), APM and Alloy (#134).
 
+## Implementation notes (#127)
+
+- [telemetry_check.py](../../scripts/telemetry_check.py) is the live check (OBS-11): settings, DNS (AAAA required for `aws-mvp`), then one span, metric point (`aorte.telemetry.check`), and log line through the production exporters. Tests: [test_telemetry_check.py](../../tests/test_telemetry_check.py). Smoke SM-6 runs it in the operator container.
+- `GRAFANA_OTLP_TOKEN` is the base64 of `<instance-id>:<token>`; a raw `glc_` token gets 401 from Grafana, so the settings refuse it, and they refuse the SSM placeholder `unset`. Found on 2026-11-20: the first local check got 401 with the raw token and passed with the base64 value.
+- Terraform `telemetry_settings` sets `TELEMETRY_ENABLED=YES`, `TELEMETRY_ENVIRONMENT=aws-mvp`, the us-east-2 endpoint, and `TELEMETRY_DAILY_SPAN_CAP=20000` for the worker, approval-api, and operator; the token comes from SSM `grafana-otlp-token`.
+- Dashboards and alert rules as code, and keeping alerts quiet while the stack is stopped, are #139.
+
 ## Open questions
 
 - Whether the OpenAI admin key can be limited to read-only usage and cost (checked in #130 when `F-036` is refreshed).
