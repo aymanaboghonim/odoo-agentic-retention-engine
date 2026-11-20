@@ -37,7 +37,11 @@ from opentelemetry.sdk._logs.export import (
     LogRecordExportResult,
 )
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import (
+    MetricExporter,
+    MetricReader,
+    PeriodicExportingMetricReader,
+)
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
@@ -199,6 +203,11 @@ METRICS: Mapping[str, tuple[str, str, str]] = {
     "aorte.execution.effects": ("counter", "{effect}", "Execution effect outcomes"),
     "aorte.stage.duration": ("histogram", "s", "Stage duration"),
     "aorte.telemetry.dropped": ("counter", "{item}", "Telemetry items not exported"),
+    "aorte.telemetry.check": (
+        "counter",
+        "{check}",
+        "Live export checks (scripts/telemetry_check.py)",
+    ),
 }
 
 # ---------------------------------------------------------------- PII and secret scanner
@@ -282,6 +291,16 @@ class TelemetrySettings:
         if not token or any(ch.isspace() for ch in token):
             # The value is never echoed (OBS-7).
             raise TelemetryConfigError("GRAFANA_OTLP_TOKEN must be set")
+        if token == "unset":
+            # The Terraform placeholder (ssm.tf); the real value is written outside Terraform.
+            raise TelemetryConfigError(
+                "GRAFANA_OTLP_TOKEN is the SSM placeholder; write it with aws_mvp_secrets.sh"
+            )
+        if token.startswith("glc_"):
+            # OTLP Basic auth needs base64("<instance-id>:<token>"), the value after "Basic%20".
+            raise TelemetryConfigError(
+                "GRAFANA_OTLP_TOKEN must be the base64 of <instance-id>:<token>, not the raw token"
+            )
         try:
             cap = int(env["TELEMETRY_DAILY_SPAN_CAP"])
         except (KeyError, ValueError) as error:
@@ -650,23 +669,28 @@ class Telemetry:
                 _STATE.handle = None
 
 
-def _otlp_exporters(
+def otlp_exporters(
     settings: TelemetrySettings,
-) -> tuple[SpanExporter, MetricReader, LogRecordExporter]:
+) -> tuple[SpanExporter, MetricExporter, LogRecordExporter]:
+    """The production OTLP/HTTP exporters to Grafana Cloud (also used by the live check)."""
     from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
     from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
+    if not settings.enabled or not settings.grafana_endpoint or not settings.grafana_token:
+        raise TelemetryConfigError("telemetry is not enabled with a Grafana endpoint and token")
     base = settings.grafana_endpoint
     headers = {"Authorization": f"Basic {settings.grafana_token}"}
     return (
         OTLPSpanExporter(endpoint=f"{base}/v1/traces", headers=headers, timeout=10),
-        PeriodicExportingMetricReader(
-            OTLPMetricExporter(endpoint=f"{base}/v1/metrics", headers=headers, timeout=10),
-            export_interval_millis=60_000,
-            export_timeout_millis=10_000,
-        ),
+        OTLPMetricExporter(endpoint=f"{base}/v1/metrics", headers=headers, timeout=10),
         OTLPLogExporter(endpoint=f"{base}/v1/logs", headers=headers, timeout=10),
+    )
+
+
+def periodic_reader(exporter: MetricExporter) -> MetricReader:
+    return PeriodicExportingMetricReader(
+        exporter, export_interval_millis=60_000, export_timeout_millis=10_000
     )
 
 
@@ -689,9 +713,9 @@ def configure(
     if not RESOURCE_ATTRIBUTES["service.name"](service_name):
         raise TelemetryConfigError("invalid service name")
     if span_exporter is None or metric_reader is None or log_exporter is None:
-        otlp_spans, otlp_metrics, otlp_logs = _otlp_exporters(settings)
+        otlp_spans, otlp_metrics, otlp_logs = otlp_exporters(settings)
         span_exporter = span_exporter or otlp_spans
-        metric_reader = metric_reader or otlp_metrics
+        metric_reader = metric_reader or periodic_reader(otlp_metrics)
         log_exporter = log_exporter or otlp_logs
     attributes: dict[str, Any] = {
         "service.name": service_name,

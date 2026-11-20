@@ -9,8 +9,11 @@ Checks (each maps to a #97 done-when item):
   SM-4 Cognito RBAC: viewer may read, may not decide; approver may decide (#86).
   SM-5 Odoo readiness: `odoo_ro` is read-only and `website_sale_loyalty` is installed
        (the erp_minimal_fixtures preflight, run in the operator container, ADR-0027).
+  SM-6 Telemetry export (#127, OBS-11): from the operator container, the Grafana OTLP host
+       has an AAAA record and one span, metric point, and log line are accepted
+       (scripts/telemetry_check.py).
 
-SM-3 (host command) and SM-5 (one-off task) start something, so they run only with
+SM-3 (host command), SM-5, and SM-6 (operator commands) start something, so they run only with
 --apply. The end-to-end retention flow is run step by step (docs/runbooks/aws-mvp.md),
 because `erp_cli execute` needs an exact human confirmation. Writes summary.md and
 results.json to --out. Never prints tokens.
@@ -219,6 +222,19 @@ def sm5_odoo(aws: Aws) -> Check:
     )
 
 
+def sm6_telemetry(aws: Aws) -> Check:
+    name = "telemetry export to Grafana Cloud over IPv6"
+    if not aws.apply:
+        return Check("SM-6", name, "not-run", "operator command needs --apply")
+    args = argparse.Namespace(
+        argv=["python", "-m", "scripts.telemetry_check", "--environment", "aws-mvp"],
+        env=[],
+        timeout=300,
+    )
+    code = cmd_exec(aws, args)
+    return Check("SM-6", name, "pass" if code == 0 else "fail", f"telemetry_check exit {code}")
+
+
 def write_report(out: Path, checks: list[Check], meta: dict[str, str]) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "results.json").write_text(
@@ -275,6 +291,7 @@ def main(argv: list[str] | None = None, runner: Runner = _default_runner) -> int
         read = lambda p: p.read_text(encoding="utf-8").strip() if p else None  # noqa: E731
         checks.append(sm4_rbac(base, read(args.viewer_token), read(args.approver_token)))
         checks.append(sm5_odoo(aws))
+        checks.append(sm6_telemetry(aws))
     except OpsError as error:
         print(f"FAILED (smoke): {error}", file=sys.stderr)
         return 1

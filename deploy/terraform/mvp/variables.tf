@@ -116,10 +116,15 @@ variable "engine_settings" {
 }
 
 variable "telemetry_settings" {
-  description = "Telemetry settings (#126, ADR-0029). TELEMETRY_ENABLED is required by the engine; the Grafana settings come with #127."
+  description = "Non-secret telemetry settings (#126, #127, ADR-0029). The token comes from SSM (grafana-otlp-token)."
   type        = map(string)
   default = {
-    TELEMETRY_ENABLED = "NO"
+    TELEMETRY_ENABLED     = "YES"
+    TELEMETRY_ENVIRONMENT = "aws-mvp"
+    # F-079: AAAA verified 2026-11-20; the host has IPv6-only egress (ADR-0024).
+    GRAFANA_OTLP_ENDPOINT = "https://otlp-gateway-prod-us-east-2.grafana.net/otlp"
+    # Spans plus log records per process per UTC day (three engine processes).
+    TELEMETRY_DAILY_SPAN_CAP = "20000"
   }
 }
 

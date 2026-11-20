@@ -66,7 +66,7 @@ resource "aws_ssm_parameter" "generated" {
 }
 
 resource "aws_ssm_parameter" "external" {
-  for_each = toset(["openai-api-key", "telegram-bot-token", "telegram-chat-id", "odoo-api-key"])
+  for_each = toset(["openai-api-key", "telegram-bot-token", "telegram-chat-id", "odoo-api-key", "grafana-otlp-token"])
   name     = "${local.parameter_prefix}/${each.key}"
   type     = "SecureString"
   # Placeholder only; scripts/aws_mvp_secrets.sh (#96) writes the real value outside Terraform.
