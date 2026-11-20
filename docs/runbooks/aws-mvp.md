@@ -171,6 +171,9 @@ The engine exports traces, metrics, and logs to Grafana Cloud (us-east-2) over I
 3. Apply the Terraform telemetry settings with `tf_safe.sh` **before** any image rollout (the rollout refuses a task definition without `TELEMETRY_ENABLED`). This also creates the `grafana-otlp-token` SSM placeholder; the engine refuses the placeholder at startup.
 4. Write the token: `scripts/aws_mvp_secrets.sh grafana-otlp-token --from-file <token-file> --apply`. Containers read SSM at start, so write it before starting the stack.
 5. Start the stack, run the deploy workflow, then the smoke with `--apply`: SM-6 runs `scripts.telemetry_check` in the operator container.
+6. Look at the data in the stack (`https://<stack>.grafana.net`, the owner's stack URL; it is not recorded in this public repo): **Drilldown → Metrics** (search `aorte`; Prometheus storage adds unit suffixes such as `_seconds` and `_total`), **Drilldown → Logs** (service `aorte-worker`), **Drilldown → Traces** (`resource.service.name`). In Explore, TraceQL `{ span.aorte.run_id = "<id>" }` finds one check or run.
+
+First live rollout: 2026-11-20 (#140), report in [2026-11-20-telemetry](../../evals/aws-mvp/results/2026-11-20-telemetry/README.md). The account starts in a 14-day trial (F-085); never add a payment method.
 
 ## Daily use
 
