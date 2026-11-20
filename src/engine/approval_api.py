@@ -144,6 +144,18 @@ def create_app(
             raise HTTPException(
                 status_code=409, detail="approval is stale or unavailable"
             ) from error
+        # OBS-15 (#128): the decision code joins the run's trace; never the operator identity.
+        with telemetry.span(
+            "aorte.approval",
+            run_id=run_id,
+            **{
+                "aorte.run_id": str(run_id),
+                "aorte.decision": payload.decision,
+                "langfuse.observation.type": "event",
+                "langfuse.trace.name": "aorte.run",
+            },
+        ):
+            pass
         return {"run_id": str(run.id), "state": run.state.value, "decision": payload.decision}
 
     if runtime is not None:

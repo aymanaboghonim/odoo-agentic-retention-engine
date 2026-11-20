@@ -1,6 +1,6 @@
 # ADR-0031: Live evaluation workflow and fingerprint deploy gate
 
-- Status: accepted
+- Status: accepted; decision 5 (decisions as Langfuse scores) superseded in part by [ADR-0032](0032-operator-decisions-as-trace-events-one-trace-per-run.md)
 - Date: 2026-11-19
 - Issue: #125
 

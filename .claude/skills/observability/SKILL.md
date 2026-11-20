@@ -62,6 +62,13 @@ The AWS rollout copies the current task definition's environment. A new required
 - Check usage against the allowances every month and in the Tier 2 close report (`#133`).
 - Measured SDK overhead: about 20 MiB peak per process (`F-084`).
 
+## Langfuse and run traces
+
+- Pass `run_id=` to `telemetry.span` for a run's root span (proposal, approval, execution): the run UUID becomes the trace ID, so one run is one trace across processes (OBS-17, ADR-0032).
+- Only `LANGFUSE_SPANS` reach Langfuse, under `TELEMETRY_DAILY_LANGFUSE_UNIT_CAP` (each span is a Hobby unit). Never add the scan or other high-rate spans there.
+- LLM spans: `langfuse.observation.type=generation`, `gen_ai.request.model`, `gen_ai.usage.*`, `gen_ai.usage.cost`. Text (`langfuse.observation.input`/`output`) only if `telemetry.eval_text_enabled()`; it is tokenized, and the exporter still scans it.
+- Operator decisions are `aorte.approval` events with the code only. Langfuse scores need its REST API (F-086) and are post-MVP.
+
 ## Health signals
 
 The worker reports `aorte.worker.last_scan_age` and `aorte.runtime.state`; the API answers `/healthz` (loopback only, no auth, no data) for the container health check (OBS-16). Alerts on "no data" must stay quiet while the stack is stopped by design (ADR-0026); see #127.

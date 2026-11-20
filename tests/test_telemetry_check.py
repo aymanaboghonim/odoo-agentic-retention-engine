@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import sys
+import uuid
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -112,7 +113,7 @@ def test_check_sends_one_item_per_signal_and_never_prints_the_token(
     assert code == 0, out
     for signal in ("traces", "metrics", "logs"):
         assert f"stage=export-{signal} status=ok" in out
-    assert "stage=check status=passed" in out and "aaaa_records=1" in out
+    assert "stage=check status=passed" in out and "grafana:a=1,aaaa=1" in out
     assert TOKEN not in out
     (span,) = factory.spans.exported
     assert span.resource.attributes["service.name"] == "aorte-telemetry-check"
@@ -183,3 +184,48 @@ def test_raw_or_placeholder_token_is_refused_by_the_engine_settings(
                 "TELEMETRY_DAILY_SPAN_CAP": "10",
             }
         )
+
+
+LANGFUSE_KEYS = "pk-lf-" + "1" * 12 + ":" + "sk-lf-" + "2" * 12  # synthetic
+
+
+def test_langfuse_check_sends_one_event_in_the_check_trace(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """#128: with only Langfuse set, one `aorte.check` event goes to the Langfuse exporter."""
+    keys = tmp_path / "langfuse"
+    keys.write_text(LANGFUSE_KEYS + "\n", encoding="utf-8")
+    exported = Spans(True)
+    env = {"LANGFUSE_OTLP_ENDPOINT": "https://us.cloud.langfuse.com/api/public/otel"}
+    code, out = run(
+        capsys,
+        ["--langfuse-key-file", str(keys)],
+        env,
+        exporters=Factory(),
+        langfuse=lambda settings: exported,
+        resolve=resolver(True),
+    )
+    assert code == 0, out
+    assert "stage=export-langfuse status=ok" in out and "export-traces" not in out
+    (event,) = exported.exported
+    check_id = (event.attributes or {})["aorte.run_id"]
+    assert event.name == "aorte.check" and event.context.trace_id == uuid.UUID(str(check_id)).int
+    assert LANGFUSE_KEYS.split(":")[1] not in out
+
+
+def test_langfuse_host_without_aaaa_fails_on_aws(capsys: pytest.CaptureFixture[str]) -> None:
+    """F-078: Langfuse Cloud is IPv4-only; on the AWS host only the relay can pass (#129)."""
+    public, _, secret = LANGFUSE_KEYS.partition(":")
+    env = {
+        "LANGFUSE_OTLP_ENDPOINT": "https://us.cloud.langfuse.com/api/public/otel",
+        "LANGFUSE_PUBLIC_KEY": public,
+        "LANGFUSE_SECRET_KEY": secret,
+    }
+    code, out = run(
+        capsys,
+        ["--environment", "aws-mvp"],
+        env,
+        langfuse=lambda settings: Spans(True),
+        resolve=resolver(False),
+    )
+    assert code == 1 and "has no AAAA record" in out

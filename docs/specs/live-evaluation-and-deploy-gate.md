@@ -11,7 +11,7 @@ Run the live release-gate evaluation in GitHub Actions, without the owner's mach
 
 ## Scope and non-goals
 
-Scope: `llm-eval.yml`; the fingerprint; the report PR; the gate step in `deploy-aws.yml`; Langfuse traces and scores from evaluation runs.
+Scope: `llm-eval.yml`; the fingerprint; the report PR; the gate step in `deploy-aws.yml`; Langfuse traces from evaluation runs and decision events.
 
 Non-goals: changing the gate thresholds (G1..G5 stay as agreed); scheduled unattended runs; feedback-triggered runs (post-MVP); production traffic evaluation.
 
@@ -25,7 +25,7 @@ Non-goals: changing the gate thresholds (G1..G5 stay as agreed); scheduled unatt
 | EVW-4 | A G4 or G5 failure only warns; deploying past it needs a non-empty override reason, written to the job summary. | `test_quality_override_requires_reason` |
 | EVW-5 | Preflight runs before any paid call, and spend stays under the hard ceiling. | `test_eval_workflow_preflight_and_ceiling` |
 | EVW-6 | The report and job summary contain no secret, and the evaluation uses only the fixed synthetic datasets. | `test_eval_report_has_no_secrets_and_synthetic_only` |
-| EVW-7 | Operator decisions are exported as Langfuse scores with the decision code only. | `test_operator_decision_score_has_code_only` |
+| EVW-7 | Operator decisions are exported as events in the run trace with the decision code only (ADR-0032). | `test_operator_decision_event_has_code_only` |
 
 ## Behavior
 

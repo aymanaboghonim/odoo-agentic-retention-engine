@@ -253,7 +253,11 @@ class ProposalService:
         execution_channel: Literal["telegram", "mailpit"] | None = None,
     ) -> None:
         # OBS-3: the span carries the run ID only, never the customer or cart ID.
-        with telemetry.span("aorte.proposal", **{"aorte.run_id": str(run_id)}) as span:
+        with telemetry.span(
+            "aorte.proposal",
+            run_id=run_id,
+            **{"aorte.run_id": str(run_id), "langfuse.trace.name": "aorte.run"},
+        ) as span:
             started = time.monotonic()
             try:
                 self._generate(
@@ -373,6 +377,7 @@ class ProposalService:
                     "gen_ai.operation.name": "chat",
                     "gen_ai.provider.name": "openai",
                     "gen_ai.request.model": MODEL,
+                    "langfuse.observation.type": "generation",
                 },
             )
             with llm_span as call:
@@ -392,6 +397,26 @@ class ProposalService:
                     raise
                 call.set("gen_ai.usage.input_tokens", result.input_tokens)
                 call.set("gen_ai.usage.output_tokens", result.output_tokens)
+                tokens_in, tokens_out = result.input_tokens, result.output_tokens
+                if (
+                    isinstance(tokens_in, int)
+                    and isinstance(tokens_out, int)
+                    and not isinstance(tokens_in, bool)
+                    and not isinstance(tokens_out, bool)
+                    and tokens_in >= 0
+                    and tokens_out >= 0
+                ):
+                    # The same function as the ledger (OBS-9); Langfuse maps it to cost.
+                    # Never reuse `cost`: it holds the cart's unit cost for the offer below.
+                    llm_usd = settled_usd(self.settings.rate, tokens_in, tokens_out)
+                    call.set("gen_ai.usage.cost", float(llm_usd))
+                if telemetry.eval_text_enabled():
+                    # OBS-4: the payload is already tokenized; the exporter rescans it.
+                    call.set(
+                        "langfuse.observation.input",
+                        json.dumps(payload, ensure_ascii=False, default=str),
+                    )
+                    call.set("langfuse.observation.output", result.text)
             if (
                 not isinstance(result.input_tokens, int)
                 or isinstance(result.input_tokens, bool)
