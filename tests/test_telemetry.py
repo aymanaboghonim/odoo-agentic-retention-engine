@@ -681,6 +681,9 @@ def test_cost_metric_matches_budget_ledger(
     attributes = dict(call.attributes or {})
     assert attributes["gen_ai.usage.input_tokens"] == row.input_tokens
     assert attributes["gen_ai.usage.output_tokens"] == row.output_tokens
+    # #128: Langfuse maps gen_ai.usage.cost to the generation cost; same ledger value.
+    assert attributes["gen_ai.usage.cost"] == float(row.actual_usd)
+    assert attributes["langfuse.observation.type"] == "generation"
 
 
 # --- OBS-13 --------------------------------------------------------------------------------

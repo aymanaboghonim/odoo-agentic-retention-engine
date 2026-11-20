@@ -17,11 +17,14 @@ importing it).
 
 from __future__ import annotations
 
+import base64
 import logging
 import re
 import threading
+import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any, Literal, cast
@@ -45,6 +48,7 @@ from opentelemetry.sdk.metrics.export import (
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
+from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.trace import Status, StatusCode
 
 LOG = logging.getLogger(__name__)
@@ -154,6 +158,11 @@ SPAN_ATTRIBUTES: Mapping[str, Validator] = {
     "gen_ai.usage.input_tokens": _count,
     "gen_ai.usage.output_tokens": _count,
     "error.type": _pattern(r"[A-Za-z_][A-Za-z0-9_]{0,63}"),
+    # #128: Langfuse mapping (F-078) and the operator decision event (codes only).
+    "aorte.decision": _enum("approve", "reject"),
+    "langfuse.observation.type": _enum("span", "generation", "event"),
+    "langfuse.trace.name": _pattern(r"aorte\.[a-z_]{1,40}"),
+    "gen_ai.usage.cost": _amount,
 }
 
 RESOURCE_ATTRIBUTES: Mapping[str, Validator] = {
@@ -177,9 +186,23 @@ SPAN_NAMES = frozenset(
         "aorte.gate",
         "aorte.execution",
         "aorte.effect",
+        "aorte.approval",
+        "aorte.check",
     }
 )
 OTHER_SPAN = "aorte.other"
+# Only these reach Langfuse: one trace per run, never the once-a-minute scan (Hobby units).
+LANGFUSE_SPANS = frozenset(
+    {
+        "aorte.proposal",
+        "aorte.llm.call",
+        "aorte.gate",
+        "aorte.approval",
+        "aorte.execution",
+        "aorte.effect",
+        "aorte.check",
+    }
+)
 
 # Metric labels: a closed set with closed values (OBS-8). No run or proposal IDs.
 METRIC_LABELS: Mapping[str, Validator] = {
@@ -189,7 +212,7 @@ METRIC_LABELS: Mapping[str, Validator] = {
     "aorte.effect": _enum("coupon", "message"),
     "aorte.channel": _enum("telegram", "mailpit"),
     "aorte.runtime_state": _enum("active", "fallback_fixed_rule", "halted"),
-    "aorte.signal": _enum("span", "log", "attribute", "label"),
+    "aorte.signal": _enum("span", "log", "attribute", "label", "langfuse"),
     "aorte.reason": _enum("daily_cap", "filtered", "export_failed"),
     "gen_ai.request.model": _pattern(r"[a-z0-9][a-z0-9._-]{0,63}"),
     "gen_ai.token.type": _enum("input", "output"),
@@ -234,6 +257,21 @@ def contains_sensitive(text: str) -> bool:
     )
 
 
+def _eval_text(value: object) -> bool:
+    """Tokenized prompt or output (OBS-4): PII tokens may stay; no contact or credential."""
+    if not isinstance(value, str) or not 0 < len(value) <= 8000:
+        return False
+    stripped = _UUID.sub("", value.lower())
+    return not (_EMAIL.search(stripped) or _PHONE.search(stripped) or _SECRET.search(value))
+
+
+# Exported only by the Langfuse exporter, and only with TELEMETRY_EVAL_TEXT=YES.
+TEXT_ATTRIBUTES: Mapping[str, Validator] = {
+    "langfuse.observation.input": _eval_text,
+    "langfuse.observation.output": _eval_text,
+}
+
+
 def filter_attributes(
     attributes: Mapping[str, Any] | None, allowed: Mapping[str, Validator]
 ) -> tuple[dict[str, Any], int]:
@@ -256,6 +294,59 @@ class TelemetryConfigError(ValueError):
     """Telemetry settings are missing or invalid; startup must stop (OBS-6)."""
 
 
+ERP_FLAGS = (("SCAN_MODE", "erp"), ("PROPOSAL_ERP_MODE", "YES"), ("EXECUTION_ERP_MODE", "YES"))
+GRAFANA_KEYS = ("GRAFANA_OTLP_ENDPOINT", "GRAFANA_OTLP_TOKEN", "TELEMETRY_DAILY_SPAN_CAP")
+LANGFUSE_KEYS = (
+    "LANGFUSE_OTLP_ENDPOINT",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "TELEMETRY_DAILY_LANGFUSE_UNIT_CAP",
+)
+
+
+def _https_endpoint(env: Mapping[str, str], key: str) -> str:
+    endpoint = env.get(key, "").strip().rstrip("/")
+    parts = urlsplit(endpoint)
+    if (
+        parts.scheme != "https"
+        or not parts.hostname
+        or parts.username
+        or parts.password
+        or parts.query
+        or parts.fragment
+    ):
+        raise TelemetryConfigError(f"{key} must be an https URL without credentials or query")
+    return endpoint
+
+
+def _cap(env: Mapping[str, str], key: str) -> int:
+    try:
+        value = int(env[key])
+    except (KeyError, ValueError) as error:
+        raise TelemetryConfigError(f"{key} must be an integer") from error
+    if not 1 <= value <= 10_000_000:
+        raise TelemetryConfigError(f"{key} must be between 1 and 10000000")
+    return value
+
+
+def _secret(env: Mapping[str, str], key: str) -> str:
+    """A credential: required, no whitespace, not the SSM placeholder; never echoed (OBS-7)."""
+    value = env.get(key, "").strip()
+    if not value or any(ch.isspace() for ch in value):
+        raise TelemetryConfigError(f"{key} must be set")
+    if value == "unset":
+        # The Terraform placeholder (ssm.tf); the real value is written outside Terraform.
+        raise TelemetryConfigError(
+            f"{key} is the SSM placeholder; write it with aws_mvp_secrets.sh"
+        )
+    return value
+
+
+def _given(env: Mapping[str, str], keys: Sequence[str]) -> bool:
+    """All-or-none group: True when any key is set; the caller then validates every key."""
+    return any(env.get(key, "").strip() for key in keys)
+
+
 @dataclass(frozen=True)
 class TelemetrySettings:
     enabled: bool
@@ -263,6 +354,21 @@ class TelemetrySettings:
     grafana_endpoint: str | None = None
     grafana_token: str | None = field(default=None, repr=False)
     daily_span_cap: int | None = None
+    langfuse_endpoint: str | None = None
+    langfuse_public_key: str | None = field(default=None, repr=False)
+    langfuse_secret_key: str | None = field(default=None, repr=False)
+    daily_langfuse_unit_cap: int | None = None
+    eval_text: bool = False
+
+    @property
+    def grafana(self) -> bool:
+        return bool(self.grafana_endpoint and self.grafana_token)
+
+    @property
+    def langfuse(self) -> bool:
+        return bool(
+            self.langfuse_endpoint and self.langfuse_public_key and self.langfuse_secret_key
+        )
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> TelemetrySettings:
@@ -274,45 +380,56 @@ class TelemetrySettings:
         environment = env.get("TELEMETRY_ENVIRONMENT", "").strip()
         if environment not in ENVIRONMENTS:
             raise TelemetryConfigError("TELEMETRY_ENVIRONMENT must be local, eval, or aws-mvp")
-        endpoint = env.get("GRAFANA_OTLP_ENDPOINT", "").strip().rstrip("/")
-        parts = urlsplit(endpoint)
-        if (
-            parts.scheme != "https"
-            or not parts.hostname
-            or parts.username
-            or parts.password
-            or parts.query
-            or parts.fragment
-        ):
-            raise TelemetryConfigError(
-                "GRAFANA_OTLP_ENDPOINT must be an https URL without credentials or query"
+        values: dict[str, Any] = {}
+        if _given(env, GRAFANA_KEYS):
+            endpoint = _https_endpoint(env, "GRAFANA_OTLP_ENDPOINT")
+            token = _secret(env, "GRAFANA_OTLP_TOKEN")
+            if token.startswith("glc_"):
+                # OTLP Basic auth needs base64("<instance-id>:<token>"), the value after "Basic%20".
+                raise TelemetryConfigError(
+                    "GRAFANA_OTLP_TOKEN must be the base64 of <instance-id>:<token>, "
+                    "not the raw token"
+                )
+            values.update(
+                grafana_endpoint=endpoint,
+                grafana_token=token,
+                daily_span_cap=_cap(env, "TELEMETRY_DAILY_SPAN_CAP"),
             )
-        token = env.get("GRAFANA_OTLP_TOKEN", "").strip()
-        if not token or any(ch.isspace() for ch in token):
-            # The value is never echoed (OBS-7).
-            raise TelemetryConfigError("GRAFANA_OTLP_TOKEN must be set")
-        if token == "unset":
-            # The Terraform placeholder (ssm.tf); the real value is written outside Terraform.
-            raise TelemetryConfigError(
-                "GRAFANA_OTLP_TOKEN is the SSM placeholder; write it with aws_mvp_secrets.sh"
+        if _given(env, LANGFUSE_KEYS):
+            public = _secret(env, "LANGFUSE_PUBLIC_KEY")
+            secret = _secret(env, "LANGFUSE_SECRET_KEY")
+            if not public.startswith("pk-lf-") or not secret.startswith("sk-lf-"):
+                raise TelemetryConfigError(
+                    "LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY must be Langfuse project keys"
+                )
+            values.update(
+                langfuse_endpoint=_https_endpoint(env, "LANGFUSE_OTLP_ENDPOINT"),
+                langfuse_public_key=public,
+                langfuse_secret_key=secret,
+                daily_langfuse_unit_cap=_cap(env, "TELEMETRY_DAILY_LANGFUSE_UNIT_CAP"),
             )
-        if token.startswith("glc_"):
-            # OTLP Basic auth needs base64("<instance-id>:<token>"), the value after "Basic%20".
+        if not values:
             raise TelemetryConfigError(
-                "GRAFANA_OTLP_TOKEN must be the base64 of <instance-id>:<token>, not the raw token"
+                "TELEMETRY_ENABLED=YES needs the Grafana settings (GRAFANA_OTLP_ENDPOINT, "
+                "GRAFANA_OTLP_TOKEN, TELEMETRY_DAILY_SPAN_CAP) or the Langfuse settings"
             )
-        try:
-            cap = int(env["TELEMETRY_DAILY_SPAN_CAP"])
-        except (KeyError, ValueError) as error:
-            raise TelemetryConfigError("TELEMETRY_DAILY_SPAN_CAP must be an integer") from error
-        if not 1 <= cap <= 10_000_000:
-            raise TelemetryConfigError("TELEMETRY_DAILY_SPAN_CAP must be between 1 and 10000000")
+        text = env.get("TELEMETRY_EVAL_TEXT", "NO").strip() or "NO"
+        if text not in {"YES", "NO"}:
+            raise TelemetryConfigError("TELEMETRY_EVAL_TEXT must be YES or NO")
+        if text == "YES":
+            # OBS-4: tokenized text goes to Langfuse only from synthetic evaluation runs.
+            if "langfuse_endpoint" not in values:
+                raise TelemetryConfigError("TELEMETRY_EVAL_TEXT=YES needs the Langfuse settings")
+            for key, value in ERP_FLAGS:
+                if env.get(key, "").strip() == value:
+                    raise TelemetryConfigError(
+                        f"TELEMETRY_EVAL_TEXT=YES is refused with {key}={value} (OBS-4)"
+                    )
         return cls(
             enabled=True,
             environment=cast(Environment, environment),
-            grafana_endpoint=endpoint,
-            grafana_token=token,
-            daily_span_cap=cap,
+            eval_text=text == "YES",
+            **values,
         )
 
 
@@ -351,6 +468,7 @@ class _State:
     meter: Meter = field(default_factory=lambda: NoOpMeter("engine"))
     instruments: dict[str, Any] = field(default_factory=dict)
     handle: Telemetry | None = None
+    eval_text: bool = False
 
 
 _STATE = _State()
@@ -420,14 +538,27 @@ class SpanHandle:
 
 
 @contextmanager
-def span(name: str, **attributes: object) -> Iterator[SpanHandle]:
-    """Start a span; on an exception set `error.type` and ERROR status, never the message."""
+def span(name: str, *, run_id: object = None, **attributes: object) -> Iterator[SpanHandle]:
+    """Start a span; on an exception set `error.type` and ERROR status, never the message.
+
+    With `run_id` and no current span, the span starts the run's own trace: its trace ID is
+    the run UUID, so the proposal, approval, and execution spans of one run share a trace
+    even when different processes emit them (#128).
+    """
+    token = None
     try:
+        if run_id is not None and not trace.get_current_span().get_span_context().is_valid:
+            token = _RUN_TRACE.set(uuid.UUID(str(run_id)).int)
         cm = _STATE.tracer.start_as_current_span(
             name, record_exception=False, set_status_on_exception=False
         )
         otel_span = cm.__enter__()
     except Exception:  # noqa: BLE001
+        otel_span = None
+    finally:
+        if token is not None:
+            _RUN_TRACE.reset(token)
+    if otel_span is None:
         yield SpanHandle(trace.INVALID_SPAN)
         return
     handle = SpanHandle(otel_span)
@@ -471,13 +602,30 @@ def observable_gauge(
 # ---------------------------------------------------------------- safe exporters
 
 
+_RUN_TRACE: ContextVar[int | None] = ContextVar("aorte_run_trace", default=None)
+
+
+class RunTraceIds(RandomIdGenerator):
+    """Use the run UUID as the trace ID while `span(run_id=...)` starts a run's root span."""
+
+    def generate_trace_id(self) -> int:
+        value = _RUN_TRACE.get()
+        return value if value else super().generate_trace_id()
+
+
+def eval_text_enabled() -> bool:
+    """True only with TELEMETRY_EVAL_TEXT=YES and Langfuse configured (OBS-4)."""
+    return _STATE.eval_text
+
+
 def _safe_resource(resource: Resource) -> Resource:
     kept, _ = filter_attributes(resource.attributes, RESOURCE_ATTRIBUTES)
     return Resource(kept)
 
 
-def sanitize_span(span: ReadableSpan) -> tuple[ReadableSpan, int]:
-    attributes, dropped = filter_attributes(span.attributes, SPAN_ATTRIBUTES)
+def sanitize_span(span: ReadableSpan, *, text: bool = False) -> tuple[ReadableSpan, int]:
+    allowed = {**SPAN_ATTRIBUTES, **TEXT_ATTRIBUTES} if text else SPAN_ATTRIBUTES
+    attributes, dropped = filter_attributes(span.attributes, allowed)
     name = span.name if span.name in SPAN_NAMES else OTHER_SPAN
     safe = ReadableSpan(
         name=name,
@@ -499,17 +647,30 @@ def sanitize_span(span: ReadableSpan) -> tuple[ReadableSpan, int]:
 class SafeSpanExporter(SpanExporter):
     """Cap, rebuild, then export spans; a failing exporter never raises (OBS-1, OBS-5)."""
 
-    def __init__(self, inner: SpanExporter, cap: DailyCap) -> None:
+    def __init__(
+        self,
+        inner: SpanExporter,
+        cap: DailyCap,
+        *,
+        names: frozenset[str] | None = None,
+        text: bool = False,
+        signal: str = "span",
+    ) -> None:
         self._inner = inner
         self._cap = cap
+        self._names = names  # None: every span; else only these names (Langfuse)
+        self._text = text  # OBS-4: tokenized text only on the Langfuse exporter, when enabled
+        self._signal = signal
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         safe: list[ReadableSpan] = []
         for item in spans:
-            if not self._cap.take():
-                _drop("span", "daily_cap")
+            if self._names is not None and item.name not in self._names:
                 continue
-            clean, dropped = sanitize_span(item)
+            if not self._cap.take():
+                _drop(self._signal, "daily_cap")
+                continue
+            clean, dropped = sanitize_span(item, text=self._text)
             if dropped:
                 _drop("attribute", "filtered", dropped)
             safe.append(clean)
@@ -518,7 +679,7 @@ class SafeSpanExporter(SpanExporter):
         try:
             return self._inner.export(safe)
         except Exception:  # noqa: BLE001
-            _drop("span", "export_failed", len(safe))
+            _drop(self._signal, "export_failed", len(safe))
             return SpanExportResult.FAILURE
 
     def shutdown(self) -> None:
@@ -666,6 +827,7 @@ class Telemetry:
                 _STATE.tracer = trace.NoOpTracer()
                 _STATE.meter = NoOpMeter("engine")
                 _STATE.instruments.clear()
+                _STATE.eval_text = False
                 _STATE.handle = None
 
 
@@ -677,7 +839,7 @@ def otlp_exporters(
     from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-    if not settings.enabled or not settings.grafana_endpoint or not settings.grafana_token:
+    if not settings.enabled or not settings.grafana:
         raise TelemetryConfigError("telemetry is not enabled with a Grafana endpoint and token")
     base = settings.grafana_endpoint
     headers = {"Authorization": f"Basic {settings.grafana_token}"}
@@ -685,6 +847,21 @@ def otlp_exporters(
         OTLPSpanExporter(endpoint=f"{base}/v1/traces", headers=headers, timeout=10),
         OTLPMetricExporter(endpoint=f"{base}/v1/metrics", headers=headers, timeout=10),
         OTLPLogExporter(endpoint=f"{base}/v1/logs", headers=headers, timeout=10),
+    )
+
+
+def langfuse_span_exporter(settings: TelemetrySettings) -> SpanExporter:
+    """OTLP/HTTP traces to Langfuse (F-078): Basic auth of public:secret key, ingestion v4."""
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+    if not settings.enabled or not settings.langfuse:
+        raise TelemetryConfigError("telemetry is not enabled with the Langfuse settings")
+    auth = base64.b64encode(
+        f"{settings.langfuse_public_key}:{settings.langfuse_secret_key}".encode()
+    ).decode()
+    headers = {"Authorization": f"Basic {auth}", "x-langfuse-ingestion-version": "4"}
+    return OTLPSpanExporter(
+        endpoint=f"{settings.langfuse_endpoint}/v1/traces", headers=headers, timeout=10
     )
 
 
@@ -702,21 +879,28 @@ def configure(
     span_exporter: SpanExporter | None = None,
     metric_reader: MetricReader | None = None,
     log_exporter: LogRecordExporter | None = None,
+    langfuse_exporter: SpanExporter | None = None,
     clock: Callable[[], datetime] | None = None,
 ) -> Telemetry:
     """Set up telemetry for this process; with `enabled=False` everything stays a no-op.
 
-    Tests pass in-memory exporters; production builds OTLP/HTTP exporters to Grafana.
+    Grafana gets traces, metrics, and logs; Langfuse gets only the run spans (#128). Tests pass
+    in-memory exporters; production builds the OTLP/HTTP exporters from the settings.
     """
     if not settings.enabled:
         return Telemetry()
     if not RESOURCE_ATTRIBUTES["service.name"](service_name):
         raise TelemetryConfigError("invalid service name")
-    if span_exporter is None or metric_reader is None or log_exporter is None:
+    grafana = settings.grafana or any(
+        item is not None for item in (span_exporter, metric_reader, log_exporter)
+    )
+    if grafana and (span_exporter is None or metric_reader is None or log_exporter is None):
         otlp_spans, otlp_metrics, otlp_logs = otlp_exporters(settings)
         span_exporter = span_exporter or otlp_spans
         metric_reader = metric_reader or periodic_reader(otlp_metrics)
         log_exporter = log_exporter or otlp_logs
+    if settings.langfuse and langfuse_exporter is None:
+        langfuse_exporter = langfuse_span_exporter(settings)
     attributes: dict[str, Any] = {
         "service.name": service_name,
         "deployment.environment.name": settings.environment,
@@ -724,37 +908,59 @@ def configure(
     if service_version:
         attributes["service.version"] = service_version
     resource, _ = filter_attributes(attributes, RESOURCE_ATTRIBUTES)
-    cap = DailyCap(settings.daily_span_cap or 1, clock)
+
+    def batch(exporter: SpanExporter) -> BatchSpanProcessor:
+        return BatchSpanProcessor(
+            exporter,
+            max_queue_size=2048,
+            schedule_delay_millis=5000,
+            max_export_batch_size=256,
+            export_timeout_millis=10_000,
+        )
+
     with _LOCK:
         if _STATE.handle is not None:
             raise TelemetryConfigError("telemetry is already configured in this process")
-        tracer_provider = TracerProvider(resource=Resource(resource))
-        tracer_provider.add_span_processor(
-            BatchSpanProcessor(
-                SafeSpanExporter(span_exporter, cap),
-                max_queue_size=2048,
-                schedule_delay_millis=5000,
-                max_export_batch_size=256,
-                export_timeout_millis=10_000,
+        tracer_provider = TracerProvider(resource=Resource(resource), id_generator=RunTraceIds())
+        logger_provider: LoggerProvider | None = None
+        handler: EngineLogHandler | None = None
+        if span_exporter is not None:
+            cap = DailyCap(settings.daily_span_cap or 1, clock)
+            tracer_provider.add_span_processor(batch(SafeSpanExporter(span_exporter, cap)))
+            logger_provider = LoggerProvider(resource=Resource(resource))
+            logger_provider.add_log_record_processor(
+                BatchLogRecordProcessor(
+                    SafeLogExporter(cast(LogRecordExporter, log_exporter), cap),
+                    max_queue_size=2048,
+                    schedule_delay_millis=5000,
+                    max_export_batch_size=256,
+                    export_timeout_millis=10_000,
+                )
             )
-        )
-        meter_provider = MeterProvider(resource=Resource(resource), metric_readers=[metric_reader])
-        logger_provider = LoggerProvider(resource=Resource(resource))
-        logger_provider.add_log_record_processor(
-            BatchLogRecordProcessor(
-                SafeLogExporter(log_exporter, cap),
-                max_queue_size=2048,
-                schedule_delay_millis=5000,
-                max_export_batch_size=256,
-                export_timeout_millis=10_000,
+            handler = EngineLogHandler(logger_provider)
+            logging.getLogger().addHandler(handler)
+        if langfuse_exporter is not None:
+            units = DailyCap(settings.daily_langfuse_unit_cap or 1, clock)
+            tracer_provider.add_span_processor(
+                batch(
+                    SafeSpanExporter(
+                        langfuse_exporter,
+                        units,
+                        names=LANGFUSE_SPANS,
+                        text=settings.eval_text,
+                        signal="langfuse",
+                    )
+                )
             )
+        meter_provider = MeterProvider(
+            resource=Resource(resource),
+            metric_readers=[metric_reader] if metric_reader is not None else [],
         )
-        handler = EngineLogHandler(logger_provider)
-        logging.getLogger().addHandler(handler)
         handle = Telemetry(tracer_provider, meter_provider, logger_provider, handler)
         _STATE.tracer = tracer_provider.get_tracer("engine")
         _STATE.meter = meter_provider.get_meter("engine")
         _STATE.instruments.clear()
+        _STATE.eval_text = settings.eval_text and langfuse_exporter is not None
         _STATE.handle = handle
     return handle
 

@@ -11,7 +11,7 @@ Give the owner traces, metrics, logs, APM, infrastructure metrics, LLM cost, and
 
 ## Scope and non-goals
 
-Scope: OpenTelemetry setup in the engine (versions in `F-080`); stage spans; metrics; OTLP logs; engine APM (FastAPI, SQLAlchemy/psycopg, and outbound HTTP auto-instrumentation with scrubbing); a Grafana Alloy container for host, container, and PostgreSQL metrics; the attribute allowlist and value scanner; client-side export caps; export to Grafana Cloud (`F-079`) and Langfuse Cloud (`F-078`); the CloudFront relay to Langfuse for the IPv6-only host; operator decisions as Langfuse scores; the daily billing reconciliation job. The evaluation workflow is in [its own spec](live-evaluation-and-deploy-gate.md).
+Scope: OpenTelemetry setup in the engine (versions in `F-080`); stage spans; metrics; OTLP logs; engine APM (FastAPI, SQLAlchemy/psycopg, and outbound HTTP auto-instrumentation with scrubbing); a Grafana Alloy container for host, container, and PostgreSQL metrics; the attribute allowlist and value scanner; client-side export caps; export to Grafana Cloud (`F-079`) and Langfuse Cloud (`F-078`); the CloudFront relay to Langfuse for the IPv6-only host; operator decisions as events in the run trace (ADR-0032); the daily billing reconciliation job. The evaluation workflow is in [its own spec](live-evaluation-and-deploy-gate.md).
 
 Non-goals: archiving raw telemetry (ADR-0029); instrumenting Odoo, PostgreSQL, or Mailpit from inside (they are monitored from outside: container and PostgreSQL metrics through Alloy, and engine spans for each call to them); real customer data (`Q12`).
 
@@ -26,7 +26,7 @@ Deny by default. Only keys in the allowlist in `src/engine/telemetry.py` are exp
 | gate decision code, effect type and outcome, held count | prompt, model output, message, subject, cart or product text |
 | channel name (`telegram`, `mailpit`), scan mode, environment | tokens, keys, `Authorization`, pepper, Odoo or SSM values |
 | HTTP route template, method, status; target service name | full URLs, query strings, the Telegram bot path, SQL parameters |
-| operator decision code as a Langfuse score | operator identity, reason text |
+| operator decision code (`aorte.decision`), as an event in the run trace (ADR-0032) | operator identity, reason text |
 | error class name (not the message) | exception messages and stack traces |
 
 Metric labels are a closed set (stage, state, outcome, channel, model, environment). `run_id` and `proposal_id` are span attributes, never metric labels.
@@ -41,14 +41,15 @@ The only exception: with `TELEMETRY_EVAL_TEXT=YES` and a run on a fixed syntheti
 
 ## Settings
 
-All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, every setting for each enabled exporter is required, and a partial set stops startup.
+All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Grafana settings and the Langfuse settings are each all-or-none groups, at least one group is required, and a partial group stops startup. `TELEMETRY_EVAL_TEXT` may be omitted, which means the safe `NO`.
 
 | Setting | Meaning |
 | :-- | :-- |
 | `TELEMETRY_ENABLED` | `YES` or `NO` |
 | `TELEMETRY_ENVIRONMENT` | `local`, `eval`, or `aws-mvp`; a resource attribute |
 | `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_TOKEN` | stack OTLP host (must have AAAA on AWS) and token (secret) |
-| `LANGFUSE_OTLP_ENDPOINT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | direct host, or the relay URL on AWS; keys are secrets |
+| `LANGFUSE_OTLP_ENDPOINT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | base URL ending in `/api/public/otel` (the relay URL on AWS, #129); keys `pk-lf-...` and `sk-lf-...` are secrets |
+| `TELEMETRY_DAILY_LANGFUSE_UNIT_CAP` | integer `>= 1`; spans sent to Langfuse per process per UTC day (each is one unit, `F-010`) |
 | `TELEMETRY_RELAY_KEY` | secret header value for the relay (AWS only) |
 | `TELEMETRY_EVAL_TEXT` | `YES` or `NO`; `YES` is refused in ERP mode |
 | `TELEMETRY_DAILY_SPAN_CAP`, `TELEMETRY_DAILY_LANGFUSE_UNIT_CAP` | integers `>= 1`; required when telemetry is on |
@@ -73,7 +74,9 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, every se
 | OBS-12 | APM spans never carry a full URL, query string, the Telegram bot path, or SQL parameters. | `test_apm_spans_are_scrubbed` |
 | OBS-13 | At a daily cap, export stops for the rest of the UTC day and the dropped items are counted; runs are not affected. | `test_daily_export_cap_stops_export_and_counts_drops` |
 | OBS-14 | Alloy sends only allowlisted metrics, no logs, and its container has a hard memory limit. | `test_alloy_config_allowlist_and_memory_limit` |
-| OBS-15 | An operator decision score carries the decision code only. | `test_operator_decision_score_has_code_only` |
+| OBS-15 | An operator decision is an `aorte.approval` event in the run's trace and carries the decision code only (ADR-0032). | `test_operator_decision_event_has_code_only` |
+| OBS-17 | A run's root spans use the run UUID as trace ID, so one run is one trace across processes; other spans keep random IDs. | `test_run_spans_share_one_trace_named_by_the_run` |
+| OBS-18 | Langfuse receives only the run spans (never the scan), under its own daily unit cap; tokenized text only there and only with `TELEMETRY_EVAL_TEXT=YES`, after a contact and secret scan. | `test_langfuse_gets_run_spans_only_never_the_scan`, `test_langfuse_unit_cap_is_separate_from_the_grafana_cap`, `test_text_reaches_only_langfuse_and_only_when_enabled`, `test_text_with_a_contact_is_dropped_even_when_enabled` |
 | OBS-16 | The worker reports seconds since its last finished scan page and the runtime state (unreadable counts as `halted`); the API answers `/healthz` only to loopback clients, outside the edge prefix, with `ok` or `unavailable` and nothing else. | `test_worker_heartbeat_tracks_completed_scan_pages`, `test_health_gauges_report_liveness_and_runtime_state`, `test_unreadable_runtime_state_reports_halted`, `test_health_endpoint_is_loopback_only_and_reveals_nothing` |
 
 ## Behavior
@@ -112,6 +115,16 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 - `GRAFANA_OTLP_TOKEN` is the base64 of `<instance-id>:<token>`; a raw `glc_` token gets 401 from Grafana, so the settings refuse it, and they refuse the SSM placeholder `unset`. Found on 2026-11-20: the first local check got 401 with the raw token and passed with the base64 value.
 - Terraform `telemetry_settings` sets `TELEMETRY_ENABLED=YES`, `TELEMETRY_ENVIRONMENT=aws-mvp`, the us-east-2 endpoint, and `TELEMETRY_DAILY_SPAN_CAP=20000` for the worker, approval-api, and operator; the token comes from SSM `grafana-otlp-token`.
 - Dashboards and alert rules as code, and keeping alerts quiet while the stack is stopped, are #139.
+
+## Implementation notes (#128)
+
+- Langfuse gets its own OTLP span exporter ([telemetry.py](../../src/engine/telemetry.py) `langfuse_span_exporter`: Basic auth of `public:secret`, header `x-langfuse-ingestion-version: 4`, `F-078`), filtered to `LANGFUSE_SPANS` with its own daily cap. Grafana and Langfuse are independent: either or both.
+- Mapping: the LLM span is `langfuse.observation.type=generation` with `gen_ai.request.model`, `gen_ai.usage.input_tokens`/`output_tokens`, and `gen_ai.usage.cost` (the settled ledger amount, OBS-9); run root spans carry `langfuse.trace.name=aorte.run`.
+- Tokenized prompt and output (`langfuse.observation.input`/`output`) are set only when `telemetry.eval_text_enabled()`; the Langfuse exporter keeps them only after a contact and credential scan (PII tokens may stay); the Grafana exporter always drops them.
+- Operator decisions: `aorte.approval` event from the approval API (ADR-0032). Real Langfuse scores need its REST API (`F-086`) and are post-MVP.
+- `scripts/telemetry_check.py --langfuse-key-file <file>` sends one `aorte.check` event to Langfuse (the key file holds one line `<public>:<secret>`).
+- Evaluation runs export from GitHub Actions in #135; the AWS host reaches Langfuse only through the relay (#129).
+- Live check 2026-11-20 from the owner's machine to Langfuse US (project `aorte-mvp`): export accepted; the owner saw trace `506fef5973b543dfad4627ea196e6ee7` (the check ID without dashes) named `aorte.check`, one event observation, environment `local`, only allowlisted attributes, no input or output, no scores. The preflight again found no AAAA record for `us.cloud.langfuse.com` (`F-078`).
 
 ## Open questions
 

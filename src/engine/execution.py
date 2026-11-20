@@ -368,7 +368,11 @@ class ExecutionService:
     def _execute(
         self, run_id: uuid.UUID, *, test_destination: TestDestination | None
     ) -> ExecutionResult:
-        with telemetry.span("aorte.execution", **{"aorte.run_id": str(run_id)}) as span:
+        with telemetry.span(
+            "aorte.execution",
+            run_id=run_id,
+            **{"aorte.run_id": str(run_id), "langfuse.trace.name": "aorte.run"},
+        ) as span:
             try:
                 result = self._execute_run(run_id, test_destination=test_destination)
             except ExecutionHeld:

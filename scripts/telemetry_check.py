@@ -118,23 +118,42 @@ class RecordingLogs(LogRecordExporter):
         return self.inner.force_flush(timeout_millis)
 
 
-def settings_from(env: Mapping[str, str], environment: str, token_file: Path | None) -> Any:
-    token = env.get("GRAFANA_OTLP_TOKEN", "")
-    if token_file is not None:
-        try:
-            token = token_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            raise CheckFailed("cannot read the token file") from None
+def _read(path: Path, what: str) -> str:
     try:
-        return telemetry.TelemetrySettings.from_env(
-            {
-                "TELEMETRY_ENABLED": "YES",
-                "TELEMETRY_ENVIRONMENT": environment,
-                "GRAFANA_OTLP_ENDPOINT": env.get("GRAFANA_OTLP_ENDPOINT", ""),
-                "GRAFANA_OTLP_TOKEN": token,
-                "TELEMETRY_DAILY_SPAN_CAP": "100",
-            }
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        raise CheckFailed(f"cannot read the {what} file") from None
+
+
+def settings_from(
+    env: Mapping[str, str],
+    environment: str,
+    token_file: Path | None,
+    langfuse_key_file: Path | None = None,
+) -> Any:
+    """Grafana and/or Langfuse, whichever endpoint is set; keys come from env or files."""
+    values = {"TELEMETRY_ENABLED": "YES", "TELEMETRY_ENVIRONMENT": environment}
+    if env.get("GRAFANA_OTLP_ENDPOINT", "").strip() or token_file is not None:
+        token = _read(token_file, "token") if token_file else env.get("GRAFANA_OTLP_TOKEN", "")
+        values.update(
+            GRAFANA_OTLP_ENDPOINT=env.get("GRAFANA_OTLP_ENDPOINT", ""),
+            GRAFANA_OTLP_TOKEN=token,
+            TELEMETRY_DAILY_SPAN_CAP="100",
         )
+    if env.get("LANGFUSE_OTLP_ENDPOINT", "").strip() or langfuse_key_file is not None:
+        public = env.get("LANGFUSE_PUBLIC_KEY", "")
+        secret = env.get("LANGFUSE_SECRET_KEY", "")
+        if langfuse_key_file is not None:
+            # One line: <public key>:<secret key>
+            public, _, secret = _read(langfuse_key_file, "Langfuse key").partition(":")
+        values.update(
+            LANGFUSE_OTLP_ENDPOINT=env.get("LANGFUSE_OTLP_ENDPOINT", ""),
+            LANGFUSE_PUBLIC_KEY=public,
+            LANGFUSE_SECRET_KEY=secret,
+            TELEMETRY_DAILY_LANGFUSE_UNIT_CAP="100",
+        )
+    try:
+        return telemetry.TelemetrySettings.from_env(values)
     except telemetry.TelemetryConfigError as error:
         raise CheckFailed(str(error)) from None
 
@@ -160,6 +179,9 @@ def main(
     env: Mapping[str, str] | None = None,
     *,
     exporters: ExporterFactory = telemetry.otlp_exporters,
+    langfuse: Callable[[telemetry.TelemetrySettings], SpanExporter] = (
+        telemetry.langfuse_span_exporter
+    ),
     resolve: Resolver = socket.getaddrinfo,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -169,7 +191,10 @@ def main(
         default=None,
         help="defaults to TELEMETRY_ENVIRONMENT, else local; aws-mvp requires an AAAA record",
     )
-    parser.add_argument("--token-file", type=Path, help="read the token from this file")
+    parser.add_argument("--token-file", type=Path, help="Grafana token file")
+    parser.add_argument(
+        "--langfuse-key-file", type=Path, help="Langfuse keys file: one line <public>:<secret>"
+    )
     args = parser.parse_args(argv)
     source = os.environ if env is None else env
     environment = args.environment or source.get("TELEMETRY_ENVIRONMENT", "") or "local"
@@ -177,42 +202,68 @@ def main(
     check_id = str(uuid.uuid4())
     try:
         stage("preflight", "started")
-        settings = settings_from(source, environment, args.token_file)
-        ipv4, ipv6 = check_dns(
-            settings.grafana_endpoint,
-            require_ipv6=environment == "aws-mvp",
-            resolve=resolve,
-        )
-        stage(
-            "preflight", "passed", f"a_records={ipv4} aaaa_records={ipv6} environment={environment}"
-        )
-        spans_exporter, metrics_exporter, logs_exporter = exporters(settings)
-        spans = RecordingSpans(spans_exporter)
-        metrics = RecordingMetrics(metrics_exporter)
-        logs = RecordingLogs(logs_exporter)
+        settings = settings_from(source, environment, args.token_file, args.langfuse_key_file)
+        targets = []
+        for name, endpoint in (
+            ("grafana", settings.grafana_endpoint),
+            ("langfuse", settings.langfuse_endpoint),
+        ):
+            if endpoint:
+                ipv4, ipv6 = check_dns(
+                    endpoint, require_ipv6=environment == "aws-mvp", resolve=resolve
+                )
+                targets.append(f"{name}:a={ipv4},aaaa={ipv6}")
+        stage("preflight", "passed", f"{' '.join(targets)} environment={environment}")
+        recorders: list[tuple[str, Any]] = []
+        spans = metrics = logs = None
+        reader = None
+        if settings.grafana:
+            spans_exporter, metrics_exporter, logs_exporter = exporters(settings)
+            spans = RecordingSpans(spans_exporter)
+            metrics = RecordingMetrics(metrics_exporter)
+            logs = RecordingLogs(logs_exporter)
+            reader = PeriodicExportingMetricReader(
+                metrics, export_interval_millis=3_600_000, export_timeout_millis=10_000
+            )
+            recorders += [("traces", spans), ("metrics", metrics), ("logs", logs)]
+        langfuse_spans = RecordingSpans(langfuse(settings)) if settings.langfuse else None
+        if langfuse_spans is not None:
+            recorders.append(("langfuse", langfuse_spans))
         logging.basicConfig(level=logging.INFO, handlers=[logging.NullHandler()])
         handle = telemetry.configure(
             settings,
             service_name=SERVICE,
             span_exporter=spans,
-            metric_reader=PeriodicExportingMetricReader(
-                metrics, export_interval_millis=3_600_000, export_timeout_millis=10_000
-            ),
+            metric_reader=reader,
             log_exporter=logs,
+            langfuse_exporter=langfuse_spans,
         )
         stage("export", "started", f"check_id={check_id}")
         try:
-            with telemetry.span("aorte.scan", **{"aorte.run_id": check_id}) as span:
-                span.set("aorte.outcome", "skipped")
-            telemetry.count("aorte.telemetry.check", 1)
-            log = logging.getLogger("engine.telemetry_check")
-            log.setLevel(logging.INFO)  # works even when the root logger is already set up
-            log.info("telemetry check run=%s", check_id)
+            if settings.grafana:
+                with telemetry.span("aorte.scan", **{"aorte.run_id": check_id}) as span:
+                    span.set("aorte.outcome", "skipped")
+                telemetry.count("aorte.telemetry.check", 1)
+                log = logging.getLogger("engine.telemetry_check")
+                log.setLevel(logging.INFO)  # works even when the root logger is already set up
+                log.info("telemetry check run=%s", check_id)
+            if settings.langfuse:
+                # One event in a trace whose ID is the check ID (the run-trace rule, #128).
+                with telemetry.span(
+                    "aorte.check",
+                    run_id=check_id,
+                    **{
+                        "aorte.run_id": check_id,
+                        "langfuse.observation.type": "event",
+                        "langfuse.trace.name": "aorte.check",
+                    },
+                ):
+                    pass
             handle.force_flush()
         finally:
             handle.shutdown()
         failed = []
-        for name, recorder in (("traces", spans), ("metrics", metrics), ("logs", logs)):
+        for name, recorder in recorders:
             ok = bool(recorder.results) and all(recorder.results)
             stage(f"export-{name}", "ok" if ok else "failed")
             if not ok:
@@ -225,7 +276,8 @@ def main(
     elapsed = time.monotonic() - started
     stage("check", "passed", f"check_id={check_id} service={SERVICE} elapsed_s={elapsed:.1f}")
     print(
-        "not checked: storage and indexing in Grafana; search the check ID in Explore",
+        "not checked: storage and indexing; search the check ID in Grafana Explore "
+        "or the Langfuse trace list",
         flush=True,
     )
     return 0
