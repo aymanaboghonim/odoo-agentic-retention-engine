@@ -82,7 +82,7 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
 
    Deleting a run does not delete its artifacts: they stay listed with no run (`workflow_run.id` null). Delete them with `gh api -X DELETE repos/{owner}/{repo}/actions/artifacts/<id>` (#146).
 
-   Deploying while the stack is stopped: `scripts/aws_mvp_shutdown.sh` stops only the EC2 instance; the core service keeps desired count 1. The rollout then registers the new task definition and points the service at it, but no task can start, so the job fails after `AORTE_ROLLOUT_TIMEOUT` (1,200 s by default). The next start runs the new revision. Measured in #146 (run 45689429657).
+   Deploying while the stack is stopped: `scripts/aws_mvp_shutdown.sh` stops only the EC2 instance; the core service keeps desired count 1. The rollout registers the new task definition and points the service at it. It then lists container instances with a connected agent; with none it prints `stack stopped` and exits without waiting, and the next start runs the new revision (#148). Before #148 the job waited and failed after 1,200 s (#146, run 45689429657).
 
    It mirrors the pinned third-party images (`deploy/aws-mvp-images.json`), pushes `aorte-mvp/engine:<git sha>`, and registers new task definitions. Each image entry has two pins: `digest` (what Compose uses, often a multi-platform index) and `aws_digest` (its `linux/amd64` manifest). Only `aws_digest` is copied to ECR and used by the task definitions; the mirror first checks that it is the `linux/amd64` child of `digest` (#106). To update an image, change both pins.
 
