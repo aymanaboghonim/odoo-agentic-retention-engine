@@ -80,6 +80,10 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
    gh api repos/{owner}/{repo}/actions/runs/<run-id>/artifacts --jq .total_count   # expect 0
    ```
 
+   Deleting a run does not delete its artifacts: they stay listed with no run (`workflow_run.id` null). Delete them with `gh api -X DELETE repos/{owner}/{repo}/actions/artifacts/<id>` (#146).
+
+   Deploying while the stack is stopped: `scripts/aws_mvp_shutdown.sh` stops only the EC2 instance; the core service keeps desired count 1. The rollout then registers the new task definition and points the service at it, but no task can start, so the job fails after `AORTE_ROLLOUT_TIMEOUT` (1,200 s by default). The next start runs the new revision. Measured in #146 (run 45689429657).
+
    It mirrors the pinned third-party images (`deploy/aws-mvp-images.json`), pushes `aorte-mvp/engine:<git sha>`, and registers new task definitions. Each image entry has two pins: `digest` (what Compose uses, often a multi-platform index) and `aws_digest` (its `linux/amd64` manifest). Only `aws_digest` is copied to ECR and used by the task definitions; the mirror first checks that it is the `linux/amd64` child of `digest` (#106). To update an image, change both pins.
 
    The rollout copies the current task definition's environment and only swaps the engine image. When a new engine version requires a setting (for example `TELEMETRY_ENABLED` from #126), apply the Terraform change with `tf_safe.sh` first; `scripts/aws_mvp_rollout.sh` refuses to register a revision whose worker, approval-api, or operator container lacks it.

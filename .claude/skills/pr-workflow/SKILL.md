@@ -31,6 +31,13 @@ Rules are in [docs/process.md](../../../docs/process.md). This is the step list.
 
 - Branch name starts with the issue number.
 - Every commit has `Refs #<N>`. The PR has `Closes #<N>`.
+- `Closes #<N>` is required (CI checks it) and closes the issue at merge, so every "Done when" line must be true before the owner merges. Do live or owner steps (a deploy, a scan, cleanup) on the branch before merge and add their results to the same PR. If a step can only happen after merge (it needs the code on `main`), split it into a follow-up issue before opening the PR; that issue gets its own PR with `Closes`. Lesson from #142: the PR closed the issue while its live scan and cleanup were still open.
+- The PR-body check runs only in GitHub Actions; a plain `make ci` skips it. After opening or editing the PR, run it locally (lesson from #147: the PR said `Refs` instead of `Closes`):
+
+  ```bash
+  CI_PULL_REQUEST=1 PR_BODY="$(gh pr view --json body --jq .body)" uv run --no-sync python scripts/check_traceability.py
+  ```
+
 - `make ci` passes (when it exists, issue #8).
 - No secrets, no real customer data.
 - Every decision made in this change is in an ADR, the facts register or STATUS.
