@@ -1,7 +1,7 @@
 name: Deploy AWS MVP
 
 # Manual only (#97). Runs in the protected `aws-mvp` environment (owner is the required
-# reviewer) and assumes the bootstrap deploy role through GitHub OIDC (F-068): no stored
+# reviewer; its role ARN and bucket are secrets, #142) and assumes the bootstrap deploy role through GitHub OIDC (F-068): no stored
 # AWS keys. It pushes images and rolls out task definitions; it never runs Terraform.
 
 on:
@@ -25,14 +25,32 @@ jobs:
       id-token: write
     env:
       AWS_REGION: us-east-1
+      # #142: the repository is public. No build summary and no build-record artifact
+      # (F-087); they carry the registry name.
+      DOCKER_BUILD_SUMMARY: "false"
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
+      # #142: first step, before anything prints. The role ARN and the bucket are
+      # environment secrets (masked everywhere, even in step headers); this masks the
+      # account ID taken from the ARN, which hides the ECR registry and task ARNs.
+      - name: Mask the AWS account ID
+        env:
+          ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          acct=$(printf '%s' "$ROLE_ARN" | cut -d: -f5)
+          case "$acct" in
+            [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+            *) echo "AWS_DEPLOY_ROLE_ARN secret is missing or not an IAM role ARN" >&2; exit 1 ;;
+          esac
+          echo "::add-mask::$acct"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
+          mask-aws-account-id: true
       - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b
         with:
           version: 0.13.5
@@ -44,7 +62,7 @@ jobs:
       # presence means a complete, verified upload; the step is then skipped.
       - name: Stage the pinned embedding model in S3 (skipped when present)
         env:
-          BACKUPS_BUCKET: ${{ vars.AWS_BACKUPS_BUCKET }}
+          BACKUPS_BUCKET: ${{ secrets.AWS_BACKUPS_BUCKET }}
         run: |
           uv sync --locked --no-default-groups --group engine
           key=$(uv run --no-sync python -c 'from scripts.aws_mvp import _model_constants, model_snapshot_key; r, v, _ = _model_constants(); print(model_snapshot_key(r, v))')
