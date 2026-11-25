@@ -31,6 +31,7 @@ Rules are in [docs/process.md](../../../docs/process.md). This is the step list.
 
 - Branch name starts with the issue number.
 - Every commit has `Refs #<N>`. The PR has `Closes #<N>`.
+- `Closes #<N>` closes the issue at merge, so every "Done when" line of that issue must be true when the PR merges. If part of the work happens after merge (a live run, an owner step, cleanup), move it to a follow-up issue before opening the PR, and use `Refs` for it. Lesson from #142: the PR closed the issue while its live scan and cleanup were still open.
 - `make ci` passes (when it exists, issue #8).
 - No secrets, no real customer data.
 - Every decision made in this change is in an ADR, the facts register or STATUS.
