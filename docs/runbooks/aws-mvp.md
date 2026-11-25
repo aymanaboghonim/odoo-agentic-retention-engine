@@ -59,7 +59,7 @@ aws sts get-caller-identity --profile aws-mvp --query Arn --output text
 
 Owner decisions (2026-11-17): the model comes through the S3 backups bucket; channels are Mailpit and the dedicated Telegram test chat; at most one model proposal with a USD 0.50 cap; the stack stays about 48 hours for cost measurement, then full cleanup. Steps marked **owner** are hand-offs. Every Terraform change goes through `tf_safe.sh` plan, review, and `--confirm`.
 
-1. Bootstrap root (First deploy, step 1). Then create the GitHub environment `aws-mvp` with the owner as required reviewer, and set its variable `AWS_DEPLOY_ROLE_ARN` to the `deploy_role_arn` output.
+1. Bootstrap root (First deploy, step 1). Then create the GitHub environment `aws-mvp` with the owner as required reviewer, and set its **secrets** (not variables: variables print in public logs, #142) `AWS_DEPLOY_ROLE_ARN` to the `deploy_role_arn` output and `AWS_BACKUPS_BUCKET` to the `backups_bucket` output. Pipe the values into `gh secret set <NAME> --env aws-mvp`; never paste them into a shell history line or a doc.
 2. MVP root with `core_desired_count = 0` (First deploy, step 2). **Owner:** confirm the AWS budget subscription email.
 3. Stage the embedding model. Hugging Face's file CDN is IPv4-only, so the host cannot download it (`F-072`). Run from a machine with IPv4; the upload is 2.26 GB:
 
@@ -71,6 +71,13 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
 
    ```bash
    gh workflow run deploy-aws.yml
+   ```
+
+   Public log check (#142): the workflow masks the account ID first and turns off the Docker build record. After a run, download the log and count the account ID and the bucket name (keep them in shell variables, do not print them); both counts must be 0, and the run must have no artifacts:
+
+   ```bash
+   gh run view <run-id> --log | grep -c -e "$ACCOUNT_ID" -e "$BUCKET"   # expect 0
+   gh api repos/{owner}/{repo}/actions/runs/<run-id>/artifacts --jq .total_count   # expect 0
    ```
 
    It mirrors the pinned third-party images (`deploy/aws-mvp-images.json`), pushes `aorte-mvp/engine:<git sha>`, and registers new task definitions. Each image entry has two pins: `digest` (what Compose uses, often a multi-platform index) and `aws_digest` (its `linux/amd64` manifest). Only `aws_digest` is copied to ECR and used by the task definitions; the mirror first checks that it is the `linux/amd64` child of `digest` (#106). To update an image, change both pins.
