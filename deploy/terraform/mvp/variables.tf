@@ -139,3 +139,13 @@ variable "breaker_settings" {
     BREAKER_MAX_P95_SECONDS          = "15"
   }
 }
+
+variable "langfuse_host" {
+  description = "Langfuse Cloud region host behind the /lf-otel/* relay (#129, ADR-0029: US)."
+  type        = string
+  default     = "us.cloud.langfuse.com"
+  validation {
+    condition     = can(regex("^[a-z0-9.-]+\\.langfuse\\.com$", var.langfuse_host))
+    error_message = "langfuse_host must be a langfuse.com host name."
+  }
+}

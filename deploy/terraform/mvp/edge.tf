@@ -1,5 +1,6 @@
 # ADR-0020 + ADR-0024: one HTTPS origin on *.cloudfront.net. `/*` is the private UI bucket
-# (OAC), `/api/*` is the VPC origin on the private ECS host.
+# (OAC), `/api/*` is the VPC origin on the private ECS host, `/lf-otel/*` is the relay to
+# Langfuse Cloud US for the IPv6-only host (#129, ADR-0029, RL-1).
 
 data "aws_cloudfront_cache_policy" "optimized" {
   name = "Managed-CachingOptimized"
@@ -12,6 +13,28 @@ data "aws_cloudfront_cache_policy" "disabled" {
 # F-059: forwards the viewer Authorization header; /api/* must not cache.
 data "aws_cloudfront_origin_request_policy" "all_viewer" {
   name = "Managed-AllViewer"
+}
+
+# #129: forwards every viewer header except Host (Langfuse needs its own Host); CloudFront
+# keeps Authorization on POST (F-089).
+data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
+  name = "Managed-AllViewerExceptHostHeader"
+}
+
+# #129: the relay secret. Terraform creates only the empty store; scripts/aws_mvp.py
+# relay-key writes the value, so it is never in a plan or in state.
+resource "aws_cloudfront_key_value_store" "relay" {
+  name    = "${var.name_prefix}-relay"
+  comment = "relay secret for /lf-otel/* (value written outside Terraform)"
+}
+
+resource "aws_cloudfront_function" "lf_relay" {
+  name                         = "${var.name_prefix}-lf-relay"
+  runtime                      = "cloudfront-js-2.0"
+  comment                      = "403 without the relay header; strips /lf-otel (RL-1)"
+  publish                      = true
+  code                         = file("${path.module}/templates/lf_relay.js")
+  key_value_store_associations = [aws_cloudfront_key_value_store.relay.arn]
 }
 
 resource "aws_s3_bucket" "ui" {
@@ -120,6 +143,17 @@ resource "aws_cloudfront_distribution" "edge" {
     }
   }
 
+  origin {
+    origin_id   = "langfuse"
+    domain_name = var.langfuse_host
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
   default_cache_behavior {
     target_origin_id       = "ui"
     viewer_protocol_policy = "redirect-to-https"
@@ -137,6 +171,20 @@ resource "aws_cloudfront_distribution" "edge" {
     cached_methods           = ["GET", "HEAD"]
     cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+  }
+
+  ordered_cache_behavior {
+    path_pattern             = "/lf-otel/*"
+    target_origin_id         = "langfuse"
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.lf_relay.arn
+    }
   }
 
   restrictions {

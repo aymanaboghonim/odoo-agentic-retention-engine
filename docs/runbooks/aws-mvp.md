@@ -186,6 +186,23 @@ The engine exports traces, metrics, and logs to Grafana Cloud (us-east-2) over I
 
 First live rollout: 2026-11-20 (#140), report in [2026-11-20-telemetry](../../evals/aws-mvp/results/2026-11-20-telemetry/README.md). The account starts in a 14-day trial (F-085); never add a payment method.
 
+## Relay to Langfuse Cloud (#129)
+
+The host is IPv6-only and Langfuse US has no AAAA record (`F-078`), so the host posts OTLP spans to the CloudFront path `/lf-otel/*` (ADR-0029, RL-1). A viewer-request CloudFront Function lets through only `POST /lf-otel/api/public/otel/...` with the header `x-aorte-relay-key`, removes that header, and strips `/lf-otel`; everything else gets 403. `Authorization` (the Langfuse Basic auth) passes on POST (`F-089`). The engine side is #150.
+
+1. Apply Terraform with `tf_safe.sh` (creates the empty KeyValueStore `aorte-mvp-relay`, the function, the SSM placeholder `telemetry-relay-key`, and the behavior). Until step 2 the relay answers 403 to everything.
+2. Write the secret (generated locally; never in a plan, state, or output). Run it again to rotate; the engine reads SSM at container start:
+
+   ```bash
+   uv run --no-sync python -m scripts.aws_mvp relay-key           # dry run
+   uv run --no-sync python -m scripts.aws_mvp relay-key --apply
+   ```
+
+3. Check the function live with `aws cloudfront test-function --name aorte-mvp-lf-relay --stage LIVE --if-match <ETag of describe-function> --event-object fileb://<event.json>`: 403 without the header, with a wrong one, for GET, and for other paths; a valid POST comes back with the URI `/api/public/otel/...` and without `x-aorte-relay-key`. Keep the event file private (mode 600) and delete it.
+4. End to end from your machine: POST one OTLP/JSON span to `https://<distribution domain>/lf-otel/api/public/otel/v1/traces` with `x-langfuse-ingestion-version: 4`, the Basic auth header, and the relay header, each read from a mode-600 header file (`curl -H @file`), never from the command line. Expect 403 without the relay header, 401 from Langfuse without auth, 200 with both. Then find the span with `GET https://us.cloud.langfuse.com/api/public/v2/observations?fields=core,basic&fromStartTime=...&toStartTime=...` (the old trace read API is gone, `F-090`).
+
+First live check: 2026-11-26 (#129), all cases as expected; trace `8cfe79bc34391e10cdab62e9b130caed` (`aorte.relay_check`, environment `local`).
+
 ## Daily use
 
 ```bash

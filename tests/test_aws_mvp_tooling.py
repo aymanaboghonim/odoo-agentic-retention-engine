@@ -63,6 +63,8 @@ class FakeAccount:
         self.distribution = {"enabled": True}
         self.vpc_origins = {"vo-1"}
         self.oacs = {"oac-1"}
+        self.functions = {"aorte-mvp-lf-relay", "someone-else-fn"}
+        self.stores = {"aorte-mvp-relay", "someone-else-kvs"}
         self.log_groups = {"/aorte-mvp/ecs"}
         self.cluster = "ACTIVE"
         self.services = {"core"}
@@ -187,6 +189,29 @@ class FakeAccount:
                 }
             },
             "cloudfront get-origin-access-control": {"ETag": "etag-oac"},
+            # Both stages are listed, so a published function appears twice (#129).
+            "cloudfront list-functions": {
+                "FunctionList": {
+                    "Items": [{"Name": f} for f in sorted(self.functions) for _ in range(2)]
+                }
+            },
+            "cloudfront describe-function": {"ETag": "etag-fn"},
+            "cloudfront list-key-value-stores": {
+                "KeyValueStoreList": {
+                    "Items": [
+                        {"Name": k, "ARN": f"arn:aws:cloudfront::0:key-value-store/{k}"}
+                        for k in sorted(self.stores)
+                    ]
+                }
+            },
+            "cloudfront describe-key-value-store": {
+                "ETag": "etag-kvs",
+                "KeyValueStore": {
+                    "Name": "aorte-mvp-relay",
+                    "ARN": "arn:aws:cloudfront::0:key-value-store/aorte-mvp-relay",
+                },
+            },
+            "cloudfront-keyvaluestore describe-key-value-store": {"ETag": "etag-kvs-data"},
             "logs describe-log-groups": {
                 "logGroups": [{"logGroupName": g, "storedBytes": 1024} for g in self.log_groups]
             },
@@ -303,6 +328,16 @@ class FakeAccount:
             self.vpc_children.discard("sg-cf")  # the service-managed SG goes with it
         elif op == "delete-origin-access-control":
             self.oacs.discard(o("--id"))
+        elif op == "delete-function":
+            assert not self.distribution, "function is associated with the distribution"
+            assert o("--if-match") == "etag-fn"
+            self.functions.discard(o("--name"))
+        elif op == "delete-key-value-store":
+            assert "aorte-mvp-lf-relay" not in self.functions, "store is associated"
+            assert o("--if-match") == "etag-kvs"
+            self.stores.discard(o("--name"))
+        elif op in {"put-parameter", "put-key"}:
+            pass
         elif op in {
             "delete-internet-gateway",
             "delete-egress-only-internet-gateway",
@@ -429,6 +464,7 @@ def test_full_sweep_reaches_clean_and_spares_unrelated(tf_calls: list[tuple[str,
     )
     assert "vol-other" in fake.volumes and "vol-other" not in fake.touched()
     assert "sg-default" not in fake.touched()
+    assert fake.functions == {"someone-else-fn"} and fake.stores == {"someone-else-kvs"}
 
 
 def test_full_cleanup_with_terraform_then_sweep(tf_calls: list[tuple[str, ...]]) -> None:
@@ -456,6 +492,8 @@ def test_status_reports_billables_and_skips_inactive(capsys: pytest.CaptureFixtu
         "budget",
         "ssm-parameter",
         "cloudfront-oac",
+        "cloudfront-function",
+        "cloudfront-kvs",
         "ecs-task-definition",
         "iam-instance-profile",
         "iam-oidc-provider",
@@ -791,3 +829,36 @@ def test_long_s3_copies_get_a_long_timeout(monkeypatch: pytest.MonkeyPatch) -> N
     aws_mvp._default_runner(["aws", "s3", "cp", "a", "s3://b/c"])
     aws_mvp._default_runner(["aws", "ec2", "describe-instances"])
     assert seen == [3600, 300]
+
+
+# ---------------------------------------------------------------- relay secret (#129)
+
+
+def test_relay_key_dry_run_writes_nothing() -> None:
+    fake = FakeAccount()
+    assert main(["relay-key"], runner=fake) == 0
+    assert fake.mutations() == []
+
+
+def test_relay_key_writes_one_value_to_ssm_and_kvs_never_on_argv(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = FakeAccount()
+    seen: dict[str, str] = {}
+    real_change = fake.change
+
+    def capture(argv: list[str], op: str) -> None:
+        value_arg = opt(argv, "--value")
+        assert value_arg.startswith("file://"), "the secret never goes on the command line"
+        seen[op] = Path(value_arg.removeprefix("file://")).read_text(encoding="utf-8")
+        real_change(argv, op)
+
+    fake.change = capture  # type: ignore[method-assign]
+    assert main(["relay-key", "--apply"], runner=fake) == 0
+    assert set(seen) == {"put-parameter", "put-key"}
+    assert seen["put-parameter"] == seen["put-key"] and len(seen["put-key"]) >= 40
+    put_key = next(c for c in fake.calls if "put-key" in c)
+    assert opt(put_key, "--if-match") == "etag-kvs-data"
+    assert opt(put_key, "--key") == "relay-key"
+    out = capsys.readouterr()
+    assert seen["put-key"] not in out.out + out.err
