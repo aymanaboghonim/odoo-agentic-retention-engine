@@ -124,8 +124,10 @@ CLEANUP_COVERAGE: dict[str, str | None] = {
     "terraform_data": None,
     # #139: Grafana Cloud objects, not AWS; removed with the Grafana root's destroy plan
     # (`scripts/tf_safe.sh deploy/terraform/grafana destroy-plan`, docs/runbooks/grafana.md).
+    "grafana_contact_point": None,
     "grafana_dashboard": None,
     "grafana_folder": None,
+    "grafana_rule_group": None,
 }
 
 

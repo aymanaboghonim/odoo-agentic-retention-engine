@@ -829,3 +829,8 @@ def test_run_spans_carry_the_padded_trace_id_for_the_langfuse_link() -> None:
     assert dict(clean.attributes or {})["aorte.trace_id"] == f"{1:032x}"
     scan, _ = telemetry.sanitize_span(_readable(name="aorte.scan", attributes={}))
     assert "aorte.trace_id" not in dict(scan.attributes or {})
+
+
+def test_every_process_reports_up_for_peer_presence(capture: Capture) -> None:
+    """#163: a running process reports aorte.process.up=1; the alert reads absence as stopped."""
+    assert capture.metrics()["aorte.process.up"] == [({}, 1.0)]

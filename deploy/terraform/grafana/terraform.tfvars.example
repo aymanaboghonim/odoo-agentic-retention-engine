@@ -1,2 +1,4 @@
-# Copy to terraform.tfvars (gitignored). The real value is in ~/.config/aorte/langfuse-project-id.
+# Copy to terraform.tfvars (gitignored). Real values: ~/.config/aorte/langfuse-project-id and
+# the owner's email (never in the public repo).
 langfuse_project_id = "REPLACE"
+alert_email         = "owner@example.test"
