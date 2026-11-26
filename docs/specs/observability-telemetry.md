@@ -53,6 +53,8 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Graf
 | `TELEMETRY_RELAY_KEY` | secret header value for the relay (AWS only); sent as `x-aorte-relay-key` by the Langfuse exporter. Needs the Langfuse settings; on `aws-mvp`, Langfuse settings without it fail at startup (#150) |
 | `TELEMETRY_EVAL_TEXT` | `YES` or `NO`; `YES` is refused in ERP mode |
 | `TELEMETRY_DAILY_SPAN_CAP`, `TELEMETRY_DAILY_LANGFUSE_UNIT_CAP` | integers `>= 1`; required when telemetry is on |
+| `TELEMETRY_APM` | `YES` or `NO` (omitted means `NO`); `YES` needs the Grafana settings (#134) |
+| `TELEMETRY_DAILY_APM_SPAN_CAP` | integer `>= 1`; APM spans per process per UTC day, separate from the span cap; required with `TELEMETRY_APM=YES` |
 
 ## Invariants
 
@@ -133,6 +135,13 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 - Trace links: Tempo search drops leading zeros from trace IDs (`F-095`), so the exporter adds `aorte.trace_id` (32 hex, allowlisted; set by the exporter on run spans, a caller's value is overwritten) and the trace tables link `https://us.cloud.langfuse.com/project/<project-id>/traces/<aorte.trace_id>`. Test: `test_run_spans_carry_the_padded_trace_id_for_the_langfuse_link`; dashboard tests in `tests/test_grafana_dashboard.py`.
 - Applied 2026-11-26 (plans `8d54fbcc25ba` folder, `b21c9866f179` dashboard; no drift). A local `telemetry_check.py` trace exported to both, and one click in the dashboard opened it in Langfuse.
 - Alert rules and how they stay quiet while the stack is stopped (peer presence, owner decision 2026-11-26) are #163.
+
+## Implementation notes (#134)
+
+- APM with `TELEMETRY_APM=YES`: FastAPI (the approval API, `instrument_fastapi`; `/healthz` and the ASGI send/receive spans excluded), psycopg (all engine and Odoo-reader SQL; SQLAlchemy runs on it), and urllib (Odoo, OpenAI, Telegram, Mailpit calls). No SQLAlchemy instrumentation: its 0.66b2 release requires SQLAlchemy below 2.1 (`F-097`). Stable semantic conventions (`OTEL_SEMCONV_STABILITY_OPT_IN=http,database`).
+- Scrubbing (OBS-12): APM span names are kept only as an HTTP method with an optional route template, or an SQL keyword with an optional database name; anything else becomes `aorte.other`. Allowlisted attributes: method, status code, route template, scheme, server address and port, `db.system.name`, `db.namespace`, and `db.query.text` (the statement shape; parameters are never captured, and a value the PII and secret scanner flags is dropped). Never the full URL, path, query, headers, or client address; the Telegram bot token is in the URL path, so it never leaves.
+- APM spans count against `TELEMETRY_DAILY_APM_SPAN_CAP` (30,000 on AWS), never the engine span cap, and never reach Langfuse. Instrumentation metrics pass through OTel Views: only `http.server.request.duration` survives, with `http.route`, `http.request.method`, and `http.response.status_code` (OBS-8); every other `http.*` and `db.*` instrument is dropped.
+- Measured locally (`F-097`): about 6 to 7 MiB more peak RSS per process. Grafana: an "API (RED) and database" row (requests, 5xx ratio, P95 per route, slow SQL). The live check from the host is in #133.
 
 ## Implementation notes (#163)
 

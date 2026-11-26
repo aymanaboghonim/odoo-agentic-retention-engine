@@ -5,6 +5,9 @@ Run once with telemetry off and once on, and compare the peak RSS:
     uv run --no-sync python scripts/measure_telemetry_memory.py off
     uv run --no-sync python scripts/measure_telemetry_memory.py on
 
+#134 (APM): compare `on --requests 2000` with `apm --requests 2000`; both serve the same
+in-process FastAPI requests, and `apm` also instruments FastAPI, psycopg, and urllib.
+
 `on` uses the real OTLP/HTTP exporters pointed at an unreachable loopback endpoint, so no
 data leaves the machine and every export fails: the queues fill, which is the worst case.
 This measures one Python process only, not the Compose or AWS containers.
@@ -32,14 +35,16 @@ UNREACHABLE = {
     "GRAFANA_OTLP_TOKEN": "synthetic-not-a-token",
     "TELEMETRY_DAILY_SPAN_CAP": "100000",
 }
+APM = {**UNREACHABLE, "TELEMETRY_APM": "YES", "TELEMETRY_DAILY_APM_SPAN_CAP": "100000"}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("mode", choices=("off", "on"))
+    parser.add_argument("mode", choices=("off", "on", "apm"))
     parser.add_argument("--runs", type=int, default=2000, help="proposal-like span pairs")
+    parser.add_argument("--requests", type=int, default=0, help="in-process API requests")
     args = parser.parse_args(argv)
-    env = UNREACHABLE if args.mode == "on" else {"TELEMETRY_ENABLED": "NO"}
+    env = {"on": UNREACHABLE, "apm": APM}.get(args.mode, {"TELEMETRY_ENABLED": "NO"})
     logging.basicConfig(level=logging.INFO, handlers=[logging.NullHandler()])
     handle = telemetry.configure_from_env(env, service_name="aorte-worker")
     log = logging.getLogger("engine.measure")
@@ -51,6 +56,20 @@ def main(argv: list[str] | None = None) -> int:
         telemetry.count("aorte.llm.tokens", 10, {"gen_ai.token.type": "input"})
         if index % 10 == 0:
             log.info("proposal run=%s status=validated", uuid.uuid4())
+    if args.requests:
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+
+        @app.get("/runs/{run_id}")
+        def run(run_id: str) -> dict[str, str]:
+            return {"state": "received"}
+
+        telemetry.instrument_fastapi(app)  # no-op unless mode is apm
+        client = TestClient(app)
+        for _ in range(args.requests):
+            client.get(f"/runs/{uuid.uuid4()}")
     handle.shutdown()
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
     print(f"stage=emit status=completed mode={args.mode} peak_rss_mib={peak}", flush=True)

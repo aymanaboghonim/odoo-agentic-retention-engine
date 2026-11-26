@@ -125,6 +125,9 @@ variable "telemetry_settings" {
     GRAFANA_OTLP_ENDPOINT = "https://otlp-gateway-prod-us-east-2.grafana.net/otlp"
     # Spans plus log records per process per UTC day (three engine processes).
     TELEMETRY_DAILY_SPAN_CAP = "20000"
+    # #134: engine APM (FastAPI, psycopg, urllib) under its own cap per process per UTC day.
+    TELEMETRY_APM                = "YES"
+    TELEMETRY_DAILY_APM_SPAN_CAP = "30000"
   }
 }
 

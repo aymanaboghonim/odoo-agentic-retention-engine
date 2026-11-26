@@ -38,6 +38,9 @@ def test_dashboard_has_the_required_panels() -> None:
         ("Estimated LLM USD", "aorte_llm_cost_usd"),
         ("Effect outcomes", "aorte_execution_effects"),
         ("Dropped telemetry", "aorte_telemetry_dropped"),
+        ("API requests per route", "http_server_request_duration"),  # #134
+        ("API 5xx error ratio", "http_server_request_duration"),
+        ("API P95 latency per route", "http_server_request_duration"),
     ):
         panels = [p for p in PANELS if fragment in p["title"]]
         assert panels, fragment
@@ -66,11 +69,17 @@ def test_queries_use_variables_and_bounded_labels() -> None:
                             "aorte_outcome",
                             "aorte_signal",
                             "aorte_reason",
+                            "http_route",
+                            "le",
                         }
 
 
 def test_trace_panels_link_to_langfuse_by_full_trace_id() -> None:
-    tables = [p for p in PANELS if p["datasource"]["uid"] == "${tempo}"]
+    tables = [
+        p
+        for p in PANELS
+        if p["datasource"]["uid"] == "${tempo}" and "aorte.trace_id" in queries(p)[0]
+    ]
     assert len(tables) == 3
     for panel in tables:
         (query,) = queries(panel)
@@ -108,3 +117,12 @@ def test_no_private_identifiers_in_the_public_files() -> None:
     versions = (ROOT / "versions.tf").read_text(encoding="utf-8")
     assert re.search(r'^provider "grafana" \{\}$', versions, re.M)  # URL and token from env
     assert 'version = "= 4.55.0"' in versions
+
+
+def test_slow_sql_panel_shows_statement_shape_only() -> None:
+    """#134: APM spans are not in Langfuse, so the SQL table has no Langfuse link."""
+    panel = by_title("Slow SQL")
+    (query,) = queries(panel)
+    assert "span.db.query.text" in query and "duration > 100ms" in query
+    assert "parameters" not in query
+    assert not panel["fieldConfig"]["defaults"].get("links")

@@ -227,14 +227,16 @@ def main() -> None:
     try:
         with engine.connect() as conn:
             conn.execute(sa.select(approval_requests.c.run_id).limit(0))
+        app = create_app(
+            RunRepository(engine),
+            verifier,
+            origin_verify_secret=settings.origin_verify_secret,
+            runtime=RuntimeStateRepository(engine),
+            root_path=root_path,
+        )
+        telemetry.instrument_fastapi(app)  # #134: no-op unless TELEMETRY_APM=YES
         uvicorn.run(
-            create_app(
-                RunRepository(engine),
-                verifier,
-                origin_verify_secret=settings.origin_verify_secret,
-                runtime=RuntimeStateRepository(engine),
-                root_path=root_path,
-            ),
+            app,
             host=host,
             port=port,
             proxy_headers=False,
