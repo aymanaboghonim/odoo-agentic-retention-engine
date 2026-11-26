@@ -75,6 +75,9 @@ ALLOWED_RESOURCE_TYPES = frozenset(
         # hashicorp/random: random_id for name suffixes; random_password only per INF-5.
         "random_id",
         "random_password",
+        # #139: Grafana Cloud as code (deploy/terraform/grafana); no AWS resource.
+        "grafana_dashboard",
+        "grafana_folder",
     }
 )
 
@@ -236,8 +239,12 @@ def check_source(config: Config) -> list[Violation]:
 
 
 def _inf7_account_pinned(config: Config) -> list[Violation]:
-    """Every AWS provider pins allowed_account_ids, so a plan cannot target another account."""
-    if config.resources and not config.aws_providers:
+    """Every AWS provider pins allowed_account_ids, so a plan cannot target another account.
+
+    A root without AWS resources (the Grafana root, #139) needs no AWS provider.
+    """
+    uses_aws = any(r.type.startswith("aws_") for r in [*config.resources, *config.data])
+    if uses_aws and not config.aws_providers:
         return [Violation("INF-7", 'provider "aws"', "an aws provider block is required")]
     return [
         Violation("INF-7", 'provider "aws"', "must set allowed_account_ids")

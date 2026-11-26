@@ -126,6 +126,13 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 - Evaluation runs export from GitHub Actions in #135; the AWS host reaches Langfuse only through the relay (#129).
 - Live check 2026-11-20 from the owner's machine to Langfuse US (project `aorte-mvp`): export accepted; the owner saw trace `506fef5973b543dfad4627ea196e6ee7` (the check ID without dashes) named `aorte.check`, one event observation, environment `local`, only allowlisted attributes, no input or output, no scores. The preflight again found no AAAA record for `us.cloud.langfuse.com` (`F-078`).
 
+## Implementation notes (#139)
+
+- Dashboard as code: Terraform root `deploy/terraform/grafana` (`grafana/grafana` 4.55.0, `F-094`), state in the S3 backend under its own key, applied only through `scripts/tf_safe.sh` (owner decision 2026-11-26). The provider takes `GRAFANA_URL` and `GRAFANA_AUTH` (a stack service account token, not the OTLP token) from the environment; the Langfuse project ID is a variable in the gitignored `terraform.tfvars`. Steps: [grafana runbook](../runbooks/grafana.md).
+- Trace links: Tempo search drops leading zeros from trace IDs (`F-095`), so the exporter adds `aorte.trace_id` (32 hex, allowlisted; set by the exporter on run spans, a caller's value is overwritten) and the trace tables link `https://us.cloud.langfuse.com/project/<project-id>/traces/<aorte.trace_id>`. Test: `test_run_spans_carry_the_padded_trace_id_for_the_langfuse_link`; dashboard tests in `tests/test_grafana_dashboard.py`.
+- Applied 2026-11-26 (plans `8d54fbcc25ba` folder, `b21c9866f179` dashboard; no drift). A local `telemetry_check.py` trace exported to both, and one click in the dashboard opened it in Langfuse.
+- Alert rules and how they stay quiet while the stack is stopped (peer presence, owner decision 2026-11-26) are #163.
+
 ## Open questions
 
 - Whether the OpenAI admin key can be limited to read-only usage and cost (checked in #130 when `F-036` is refreshed).

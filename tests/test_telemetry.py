@@ -420,6 +420,7 @@ def test_exporter_drops_non_allowlisted_attributes(capture: Capture) -> None:
     assert dict(clean.attributes or {}) == {
         "aorte.run_id": run_id,
         "aorte.gate.reasons": ("discount_above_hard_cap",),
+        "aorte.trace_id": "0" * 31 + "1",  # #139: padded, set by the exporter
     }
     assert clean.events == () and clean.links == ()
     assert clean.status.status_code is StatusCode.ERROR and clean.status.description is None
@@ -817,3 +818,14 @@ def test_health_endpoint_is_loopback_only_and_reveals_nothing() -> None:
         )
         # The edge forwards only /api/*: the prefixed path does not exist.
         assert _health_client(_PingRepo(True), "127.0.0.1").get("/api/healthz").status_code == 404
+
+
+def test_run_spans_carry_the_padded_trace_id_for_the_langfuse_link() -> None:
+    """#139: Tempo search drops leading zeros; the exporter adds the full ID to run spans."""
+    forged = "f" * 32
+    clean, _ = telemetry.sanitize_span(
+        _readable(name="aorte.llm.call", attributes={"aorte.trace_id": forged})
+    )
+    assert dict(clean.attributes or {})["aorte.trace_id"] == f"{1:032x}"
+    scan, _ = telemetry.sanitize_span(_readable(name="aorte.scan", attributes={}))
+    assert "aorte.trace_id" not in dict(scan.attributes or {})

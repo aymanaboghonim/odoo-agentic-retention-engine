@@ -235,6 +235,7 @@ def test_operator_decision_event_has_code_only(both: Capture) -> None:
         "aorte.decision": "reject",
         "langfuse.observation.type": "event",
         "langfuse.trace.name": "aorte.run",
+        "aorte.trace_id": f"{run_id.int:032x}",
     }
     assert "example.test" not in str(event.attributes)
 

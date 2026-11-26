@@ -5,7 +5,7 @@ root="$(git rev-parse --show-toplevel)"
 inputs=()
 while IFS= read -r -d '' file; do
 	inputs+=("/repo/${file#"$root"/}")
-done < <(find "$root" \( -path "$root/.git" -o -path "$root/.venv" -o -path "$root/blueprint-draft.md" \) -prune -o -type f -name '*.md' -print0)
+done < <(find "$root" \( -path "$root/.git" -o -path "$root/.venv" -o -path "$root/blueprint-draft.md" -o -name .terraform \) -prune -o -type f -name '*.md' -print0)
 
 if ((${#inputs[@]} == 0)); then
 	echo "No Markdown files found; link check skipped."
