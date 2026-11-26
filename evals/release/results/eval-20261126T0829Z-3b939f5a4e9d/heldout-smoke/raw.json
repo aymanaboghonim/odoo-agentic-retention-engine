@@ -1,0 +1,140 @@
+{
+  "actual_usd": "0.000109250000",
+  "budget_ceiling_usd": "0.90",
+  "case_set": "heldout",
+  "cases": [
+    {
+      "action": "draft_message",
+      "action_pass": true,
+      "case_id": "heldout-001-en",
+      "contract_pass": true,
+      "dialect": null,
+      "error": null,
+      "expected_action": "draft_message",
+      "gate_result": {
+        "discount_amount": "0",
+        "fingerprint": "9fd8985a8e8f2a6e6f73d2f6fbfd750760f5a86274fbf48e54d20eb849d6bfd7",
+        "margin": null,
+        "outcome": "auto_approve",
+        "reasons": []
+      },
+      "generation_seconds": 1.5478983990000188,
+      "language": "en",
+      "price_checked": false,
+      "price_claim": null,
+      "price_currency": null,
+      "price_pass": true,
+      "proposal": {
+        "action": "draft_message",
+        "cart_id": "1",
+        "cart_owner_id": "1",
+        "cart_snapshot": {
+          "amount_total": "80.0",
+          "currency": "USD",
+          "date_order": "2026-11-24T08:31:15.845247+00:00",
+          "language": "en",
+          "lines": [
+            {
+              "category": "Furniture / Office",
+              "name": "Saffron Desk Lamp",
+              "product_id": 1,
+              "quantity": "1",
+              "sku": "synthetic-product",
+              "unit_cost": "40.0",
+              "unit_price": "80.0"
+            }
+          ],
+          "order_id": 1,
+          "partner_id": 1
+        },
+        "category": "Furniture / Office",
+        "currency": "USD",
+        "customer_id": "1",
+        "customer_message": "Of course! Your Saffron Desk Lamp is still in your cart. You can pick up where you left off whenever you’re ready.",
+        "eligible_total": "80.0",
+        "eligible_unit_cost_total": "40.0",
+        "is_bulk": false,
+        "language": "en",
+        "pii_tokens": {
+          "customer_id": "1",
+          "tokens": {
+            "{{PII_EMAIL_1}}": {
+              "field": "email",
+              "part": null
+            },
+            "{{PII_NAME_1}}": {
+              "field": "name",
+              "part": null
+            },
+            "{{PII_NAME_2}}": {
+              "field": "name",
+              "part": 0
+            },
+            "{{PII_NAME_3}}": {
+              "field": "name",
+              "part": 1
+            }
+          }
+        },
+        "policy_sources": [
+          {
+            "content_hash": "44681ba7439d7388a7e599dceda50974d6f33db38152a0d0d6e0a3ecb292170f",
+            "source_id": "message-tone",
+            "version": "1"
+          },
+          {
+            "content_hash": "106782a153e66b5c0a17527b256fbf0eec20ce276db6c905e8e0c8f062417bcc",
+            "source_id": "contact-schedule",
+            "version": "1"
+          },
+          {
+            "content_hash": "3ff0d30edf886bfe5288a9d6d0bf3920d612781a192fe7cfcca24c550fec4032",
+            "source_id": "coupon-terms",
+            "version": "1"
+          },
+          {
+            "content_hash": "bd6c9b2a3884dab435af93450346971ebd893b5eee177115de6ef7eb9de0be71",
+            "source_id": "consent",
+            "version": "1"
+          }
+        ],
+        "proposed_discount_percent": null,
+        "run_id": "701ee01c-f927-4478-b3b1-9bf7acdba920"
+      },
+      "proposed_discount_percent": null,
+      "provider_timeout_retries": 0,
+      "run_id": "701ee01c-f927-4478-b3b1-9bf7acdba920",
+      "state": "evaluating_policy",
+      "usage": {
+        "actual_usd": "0.000109250000",
+        "input_tokens": 606,
+        "output_tokens": 67,
+        "reserved_usd": "0.004596000000"
+      }
+    }
+  ],
+  "completed_at": "2026-11-26T08:31:17.770475+00:00",
+  "contract_sha256": "db6ebcbdcb100bdfc35f7c0e938279286641f6e1d67635c9e3c92a5a8048e368",
+  "dataset_sha256": "50e8af9ec97bffbd334e121e8549664ca08cae3e5a9bf7d7e8f333fe3e3ecd6d",
+  "dataset_version": "s2-golden-v3",
+  "expected_case_ids": [
+    "heldout-001-en"
+  ],
+  "input_token_limit": 4000,
+  "inventory": {
+    "excluded": {},
+    "excluded_case_ids": {},
+    "included": 44,
+    "included_by_language": {
+      "ar": 22,
+      "en": 22
+    }
+  },
+  "model": "gpt-6-luna",
+  "output_token_limit": 8192,
+  "phase": "smoke",
+  "prompt_version": "proposal-v3-consent-and-facts",
+  "rate_provenance": "F-005 standard text including cache writes; verified 2026-11-06",
+  "reserved_usd": "0.004596000000",
+  "review_id": "ci-eval-heldout"
+}
