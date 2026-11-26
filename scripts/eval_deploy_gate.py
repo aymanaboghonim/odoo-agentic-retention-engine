@@ -110,7 +110,9 @@ def decide(root: Path, override_reason: str) -> Decision:
                 "a quality_override_reason."
             )
             return decision
-        decision.lines.append(f"WARNING: G4/G5 failed; deployed with override reason: `{reason}`")
+        decision.lines.append(
+            f"WARNING: G4/G5 failed; deploy allowed with override reason: `{reason}`"
+        )
     else:
         decision.lines.append("PASS: G1..G5 pass in the matching report.")
     decision.blocked = False
