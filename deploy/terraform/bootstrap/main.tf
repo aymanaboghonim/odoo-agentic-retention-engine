@@ -182,6 +182,13 @@ data "aws_iam_policy_document" "deploy" {
       "${local.arn_prefix}:ecs:${local.region}:${local.account}:service/${local.mvp}/*",
     ]
   }
+  # #148: the rollout waits only when a container instance has a connected agent; when the
+  # stack is stopped no task can start, so it registers the revision and exits (F-088).
+  statement {
+    sid       = "EcsContainerInstances"
+    actions   = ["ecs:ListContainerInstances"]
+    resources = ["${local.arn_prefix}:ecs:${local.region}:${local.account}:cluster/${local.mvp}"]
+  }
   # #97 / ADR-0026: stage the pinned embedding model (F-072) from the workflow, which has
   # IPv4 and datacenter bandwidth. Only models/ in the project's backups bucket.
   statement {

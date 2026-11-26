@@ -1,5 +1,7 @@
 """scripts/aws_mvp_rollout.sh waits on the deployment's rolloutState (#109). Hermetic.
 
+With the stack stopped (no connected container instance) it does not wait (#148).
+
 A fake `aws` on PATH answers from fixtures and records every call; no AWS access happens.
 """
 
@@ -40,6 +42,7 @@ case "$1 $2" in
   "ecs describe-task-definition") cat "$FAKE_TASK_DEF" ;;
   "ecs register-task-definition") echo "$FAKE_ARN" ;;
   "ecs update-service") ;;
+  "ecs list-container-instances") echo "${FAKE_AGENTS:-1}" ;;
   "ecs describe-services")
     case "$*" in
       *desiredCount*) echo 1 ;;
@@ -131,3 +134,24 @@ def test_refuses_task_definition_without_required_engine_setting(
     assert result.returncode == 1
     assert "task definition lacks TELEMETRY_ENABLED in: worker" in result.stderr
     assert not any("register-task-definition" in c for c in calls(env))
+
+
+def test_running_stack_checks_for_a_connected_agent(env: dict[str, str]) -> None:
+    result = run(env, ["COMPLETED"])
+    assert result.returncode == 0, result.stderr
+    checks = [c for c in calls(env) if "list-container-instances" in c]
+    assert len(checks) == 1
+    assert "--cluster aorte-mvp" in checks[0]
+    assert "agentConnected==true" in checks[0] and "--status ACTIVE" in checks[0]
+
+
+def test_stopped_stack_registers_without_waiting(env: dict[str, str]) -> None:
+    # #148: the instance is stopped, desired count stays 1, no agent is connected.
+    env["FAKE_AGENTS"] = "0"
+    result = run(env, ["IN_PROGRESS"])
+    assert result.returncode == 0, result.stderr
+    assert "stack stopped" in result.stdout and ARN in result.stdout
+    log = calls(env)
+    assert sum("register-task-definition" in c for c in log) == 1
+    assert sum("update-service" in c for c in log) == 1
+    assert not any("rolloutState" in c for c in log), "no wait on a stopped stack"

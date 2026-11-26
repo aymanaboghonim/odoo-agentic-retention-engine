@@ -2,7 +2,7 @@
 # Register a new core task definition revision with the engine image tag and roll out the
 # core service (#97; ADR-0027: the operator container replaced the proposal task).
 # Terraform owns everything else; the service ignores task_definition, so this does not
-# drift. Desired count stays as Terraform set it.
+# drift. Desired count stays as Terraform set it. With the stack stopped it does not wait (#148).
 #
 #   scripts/aws_mvp_rollout.sh <engine-image-tag>
 #
@@ -57,7 +57,13 @@ for family in core; do
   if [ "$family" = core ]; then
     aws ecs update-service --cluster "$PREFIX" --service core --task-definition "$arn" >/dev/null
     desired=$(aws ecs describe-services --cluster "$PREFIX" --services core --query 'services[0].desiredCount' --output text)
-    if [ "$desired" -gt 0 ]; then
+    # #148: a stopped stack keeps desired count 1 (only the instance stops), but no task
+    # can start without a connected agent, so waiting would only time out.
+    agents=$(aws ecs list-container-instances --cluster "$PREFIX" --status ACTIVE \
+      --filter "agentConnected==true" --query 'length(containerInstanceArns)' --output text)
+    if [ "$desired" -gt 0 ] && [ "$agents" -eq 0 ]; then
+      stage "stack stopped (no connected container instance): $arn runs at the next start"
+    elif [ "$desired" -gt 0 ]; then
       stage "waiting for the rollout (desired $desired, limit ${TIMEOUT}s)"
       wait_rollout "$arn"
     fi
