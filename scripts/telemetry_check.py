@@ -152,6 +152,8 @@ def settings_from(
             LANGFUSE_SECRET_KEY=secret,
             TELEMETRY_DAILY_LANGFUSE_UNIT_CAP="100",
         )
+        if env.get(telemetry.RELAY_KEY, "").strip():
+            values[telemetry.RELAY_KEY] = env[telemetry.RELAY_KEY]  # AWS: through the relay
     try:
         return telemetry.TelemetrySettings.from_env(values)
     except telemetry.TelemetryConfigError as error:

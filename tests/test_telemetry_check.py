@@ -220,6 +220,7 @@ def test_langfuse_host_without_aaaa_fails_on_aws(capsys: pytest.CaptureFixture[s
         "LANGFUSE_OTLP_ENDPOINT": "https://us.cloud.langfuse.com/api/public/otel",
         "LANGFUSE_PUBLIC_KEY": public,
         "LANGFUSE_SECRET_KEY": secret,
+        "TELEMETRY_RELAY_KEY": "r" * 43,  # synthetic; aws-mvp needs it (#150)
     }
     code, out = run(
         capsys,
@@ -229,3 +230,27 @@ def test_langfuse_host_without_aaaa_fails_on_aws(capsys: pytest.CaptureFixture[s
         resolve=resolver(False),
     )
     assert code == 1 and "has no AAAA record" in out
+
+
+def test_aws_check_through_the_relay_passes_the_relay_key(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """#150: SM-6 on the AWS host sends the Langfuse check through the relay."""
+    public, _, secret = LANGFUSE_KEYS.partition(":")
+    env = {
+        "LANGFUSE_OTLP_ENDPOINT": "https://d0.cloudfront.example/lf-otel/api/public/otel",
+        "LANGFUSE_PUBLIC_KEY": public,
+        "LANGFUSE_SECRET_KEY": secret,
+        "TELEMETRY_RELAY_KEY": "r" * 43,
+    }
+    seen = []
+
+    def exporter(settings: Any) -> Spans:
+        seen.append(settings.relay_key)
+        return Spans(True)
+
+    code, out = run(
+        capsys, ["--environment", "aws-mvp"], env, langfuse=exporter, resolve=resolver(True)
+    )
+    assert code == 0, out
+    assert seen == ["r" * 43] and "r" * 43 not in out

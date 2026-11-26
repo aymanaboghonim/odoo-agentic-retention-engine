@@ -203,6 +203,15 @@ The host is IPv6-only and Langfuse US has no AAAA record (`F-078`), so the host 
 
 First live check: 2026-11-26 (#129), all cases as expected; trace `8cfe79bc34391e10cdab62e9b130caed` (`aorte.relay_check`, environment `local`).
 
+Engine side (#150). Terraform puts `LANGFUSE_OTLP_ENDPOINT` (the relay URL) and `TELEMETRY_DAILY_LANGFUSE_UNIT_CAP` (`langfuse_daily_unit_cap`, default 300 per process per day: 3 x 300 x 30 = 27k of the 50k Hobby units, `F-010`) into the `worker`, `approval-api`, and `operator` containers, with `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `TELEMETRY_RELAY_KEY` from SSM. On `aws-mvp` the engine refuses Langfuse settings without the relay key. Order: apply Terraform, write the keys (below), then deploy and start. The keys file is one line `<public>:<secret>`; split it into two mode-600 files and delete them after:
+
+```bash
+scripts/aws_mvp_secrets.sh langfuse-public-key --from-file <public-key-file> --apply
+scripts/aws_mvp_secrets.sh langfuse-secret-key --from-file <secret-key-file> --apply
+```
+
+SM-6 then also sends the Langfuse check event through the relay; find it with the v2 observations API (`F-090`).
+
 ## Daily use
 
 ```bash

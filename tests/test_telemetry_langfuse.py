@@ -275,3 +275,51 @@ def test_langfuse_exporter_uses_basic_auth_and_ingestion_v4() -> None:
         "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
     )
     exporter.shutdown()
+
+
+# --- relay (#150) ---------------------------------------------------------------------------
+
+RELAY = "r" * 43  # synthetic, low-entropy, the real length
+RELAYED = {
+    **LANGFUSE,
+    "TELEMETRY_ENVIRONMENT": "aws-mvp",
+    "LANGFUSE_OTLP_ENDPOINT": "https://d0.cloudfront.example/lf-otel/api/public/otel",
+    "TELEMETRY_RELAY_KEY": RELAY,
+}
+
+
+def test_relay_exporter_sends_the_relay_header() -> None:
+    settings = telemetry.TelemetrySettings.from_env(RELAYED)
+    assert RELAY not in repr(settings)
+    exporter = telemetry.langfuse_span_exporter(settings)
+    headers = dict(getattr(getattr(exporter, "_client"), "_headers"))
+    assert headers[telemetry.RELAY_HEADER] == RELAY
+    assert headers["x-langfuse-ingestion-version"] == "4"
+    assert getattr(exporter, "_endpoint") == (
+        "https://d0.cloudfront.example/lf-otel/api/public/otel/v1/traces"
+    )
+    exporter.shutdown()
+
+
+def test_no_relay_header_without_a_relay_key() -> None:
+    exporter = telemetry.langfuse_span_exporter(SETTINGS)
+    headers = dict(getattr(getattr(exporter, "_client"), "_headers"))
+    assert telemetry.RELAY_HEADER not in headers
+    exporter.shutdown()
+
+
+def test_relay_key_rules_fail_closed() -> None:
+    # aws-mvp has no route to Langfuse but the relay: refuse at startup.
+    without = {k: v for k, v in RELAYED.items() if k != "TELEMETRY_RELAY_KEY"}
+    with pytest.raises(telemetry.TelemetryConfigError, match="needs TELEMETRY_RELAY_KEY"):
+        telemetry.TelemetrySettings.from_env(without)
+    # The SSM placeholder is refused, and the value is never echoed.
+    with pytest.raises(telemetry.TelemetryConfigError, match="placeholder") as error:
+        telemetry.TelemetrySettings.from_env({**RELAYED, "TELEMETRY_RELAY_KEY": "unset"})
+    assert RELAY not in str(error.value)
+    # A relay key without Langfuse settings is a mistake, not ignored.
+    grafana_only = {"TELEMETRY_ENABLED": "YES", "TELEMETRY_ENVIRONMENT": "aws-mvp", **GRAFANA}
+    with pytest.raises(telemetry.TelemetryConfigError, match="needs the Langfuse settings"):
+        telemetry.TelemetrySettings.from_env({**grafana_only, "TELEMETRY_RELAY_KEY": RELAY})
+    # Grafana-only on aws-mvp (today's deployment) still works.
+    assert telemetry.TelemetrySettings.from_env(grafana_only).grafana

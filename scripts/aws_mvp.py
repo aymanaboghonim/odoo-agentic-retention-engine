@@ -52,6 +52,8 @@ EXTERNAL_SECRETS = (
     "telegram-chat-id",
     "odoo-api-key",
     "grafana-otlp-token",  # #127: base64 of <instance-id>:<token> (ADR-0029)
+    "langfuse-public-key",  # #150: pk-lf-... (the relay key is written by `relay-key`)
+    "langfuse-secret-key",  # #150: sk-lf-...
 )
 MUTATING_VERBS = (
     "create-",
