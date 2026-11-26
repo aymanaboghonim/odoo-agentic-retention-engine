@@ -225,6 +225,27 @@ python scripts/aws_mvp_status.py         # read-only; --json, --expect-clean
 - `shutdown` is idempotent. `--disable-edge` also disables CloudFront; the next Terraform apply turns it back on.
 - `status` asks each service API directly. The tag search API keeps terminated and inactive records for a while (`F-070`), so `status` does not use it. It also sweeps the whole account for Elastic IPs, NAT gateways, load balancers, unattached volumes, and snapshots.
 
+## Roll back the engine image
+
+Deploys run only from `main` (the `aws-mvp` environment allows only protected branches and needs the owner's approval; the AWS role trusts only that environment), and each image is tagged with its full `main` commit SHA. To go back to an earlier image:
+
+1. List the engine images still in ECR. The lifecycle policy keeps the 5 newest and ECR expires the rest in the background (6 were listed on 2026-11-26), so count on only the last 5 deploys:
+
+   ```bash
+   aws ecr describe-images --profile aws-mvp --repository-name aorte-mvp/engine \
+     --query 'reverse(sort_by(imageDetails,&imagePushedAt))[].[imageTags[0],imagePushedAt]' --output text
+   ```
+
+2. Roll out that tag from your machine. The script copies the latest task definition (so the settings Terraform applied stay) and changes only the engine image; with the stack stopped it does not wait (#148):
+
+   ```bash
+   AWS_PROFILE=aws-mvp scripts/aws_mvp_rollout.sh <full commit sha>
+   ```
+
+3. Open a revert PR so `main` matches what runs again; the next deploy from `main` then replaces the rollback.
+
+Do not point the service at an old task definition revision (`update-service --task-definition aorte-mvp-core:<N>`): that also brings back old settings that no longer match Terraform. If the bad change is a setting rather than the image, fix it through `tf_safe.sh`.
+
 ## Shell and private UIs
 
 Port 22 is closed and the host has no public IP. Use Session Manager (needs the local `session-manager-plugin`):
