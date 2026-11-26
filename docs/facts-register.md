@@ -1,6 +1,6 @@
 # Facts register
 
-Volatile facts (prices, model names, limits, versions) must be checked in official docs. Do not use a fact in a decision while its status is `unverified`.
+Volatile facts (prices, model names, limits, versions) must be checked in official sources only: the vendor's or project's own docs, pricing pages, release notes, changelogs or blog, source repository, and API responses, or our own measurement written as `measured: <method>`. Forums, community answers, third-party blogs, reviews, and AI answers are never sources (`scripts/check_facts_sources.py`, #136). If no official source states a value, write "unknown (not stated in official docs)". Do not use a fact in a decision while its status is `unverified`.
 
 Status: `unverified`, `verified`, `stale` (older than 90 days).
 
