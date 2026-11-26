@@ -13,6 +13,7 @@ import argparse
 import getpass
 import json
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -74,6 +75,8 @@ Runner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 CLEANUP_COVERAGE: dict[str, str | None] = {
     "aws_budgets_budget": "budget",
     "aws_cloudfront_distribution": "cloudfront-distribution",
+    "aws_cloudfront_function": "cloudfront-function",
+    "aws_cloudfront_key_value_store": "cloudfront-kvs",
     "aws_cloudfront_origin_access_control": "cloudfront-oac",
     "aws_cloudfront_vpc_origin": "cloudfront-vpc-origin",
     "aws_cloudwatch_log_group": "log-group",
@@ -406,6 +409,16 @@ def _edge(aws: Aws) -> list[Item]:
     for control in oac.get("Items") or []:
         if str(control.get("Name", "")).startswith(PREFIX):
             out.append(Item("cloudfront-oac", control["Id"], "present", "mvp", 0.0))
+    # #129: the relay function and its KeyValueStore (Always Free at MVP traffic, F-065).
+    functions = (aws.read("cloudfront", "list-functions") or {}).get("FunctionList") or {}
+    names = sorted({str(f.get("Name", "")) for f in functions.get("Items") or []} - {""})
+    for name in names:
+        if name.startswith(PREFIX):
+            out.append(Item("cloudfront-function", name, "present", "mvp", 0.0))
+    stores = (aws.read("cloudfront", "list-key-value-stores") or {}).get("KeyValueStoreList") or {}
+    for store in stores.get("Items") or []:
+        if str(store.get("Name", "")).startswith(PREFIX):
+            out.append(Item("cloudfront-kvs", store["Name"], "present", "mvp", 0.0))
     return out
 
 
@@ -849,6 +862,32 @@ def _sweep(
             etag,
         )
 
+    # The relay function after the distribution (no association left), then its store.
+    for name in ids("cloudfront-function"):
+        etag = (aws.read("cloudfront", "describe-function", "--name", name) or {}).get("ETag", "")
+        aws.change(
+            f"delete CloudFront function {name}",
+            "cloudfront",
+            "delete-function",
+            "--name",
+            name,
+            "--if-match",
+            etag,
+        )
+    for name in ids("cloudfront-kvs"):
+        etag = (aws.read("cloudfront", "describe-key-value-store", "--name", name) or {}).get(
+            "ETag", ""
+        )
+        aws.change(
+            f"delete KeyValueStore {name}",
+            "cloudfront",
+            "delete-key-value-store",
+            "--name",
+            name,
+            "--if-match",
+            etag,
+        )
+
     # 3. Network: VPC dependents, then the VPC (the CloudFront service SG goes with the VPC origin).
     for vpc in ids("vpc"):
         _delete_vpc(aws, vpc)
@@ -1190,6 +1229,63 @@ def cmd_secrets(aws: Aws, args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- relay secret (#129)
+
+RELAY_STORE = f"{PREFIX}-relay"
+RELAY_KEY = "relay-key"
+RELAY_PARAMETER = f"/{PREFIX}/telemetry-relay-key"
+
+
+def cmd_relay_key(aws: Aws, args: argparse.Namespace) -> int:
+    """Generate the /lf-otel/* relay secret and write it to the KeyValueStore and to SSM.
+
+    The value is created here, so it is never in a Terraform plan or state (owner, #129).
+    It goes to the AWS CLI only through private temp files and is never printed.
+    """
+    preflight(aws)
+    store = (aws.read("cloudfront", "describe-key-value-store", "--name", RELAY_STORE) or {}).get(
+        "KeyValueStore"
+    ) or {}
+    arn = str(store.get("ARN", ""))
+    if not arn:
+        raise OpsError(f"KeyValueStore {RELAY_STORE} not found; apply Terraform first")
+    etag = str(
+        (
+            aws.read("cloudfront-keyvaluestore", "describe-key-value-store", "--kvs-arn", arn) or {}
+        ).get("ETag", "")
+    )
+    value = secrets.token_urlsafe(32)  # 43 URL-safe characters, under the 1 KB value limit
+    with _secret_file(value) as path:
+        aws.change(
+            f"write SecureString {RELAY_PARAMETER} ({len(value)} chars, value not shown)",
+            "ssm",
+            "put-parameter",
+            "--name",
+            RELAY_PARAMETER,
+            "--type",
+            "SecureString",
+            "--overwrite",
+            "--value",
+            f"file://{path}",
+        )
+        aws.change(
+            f"write key {RELAY_KEY} in KeyValueStore {RELAY_STORE} (value not shown)",
+            "cloudfront-keyvaluestore",
+            "put-key",
+            "--kvs-arn",
+            arn,
+            "--key",
+            RELAY_KEY,
+            "--value",
+            f"file://{path}",
+            "--if-match",
+            etag,
+        )
+    if aws.apply:
+        log("relay key written; the engine reads it from SSM after #150")
+    return 0
+
+
 # ---------------------------------------------------------------- operator commands (ADR-0027)
 
 # Commands an operator may run in the core task's `operator` container (the flow of
@@ -1514,6 +1610,10 @@ def build_parser() -> argparse.ArgumentParser:
     secrets.add_argument("name", choices=EXTERNAL_SECRETS)
     secrets.add_argument("--from-file", help="read the value from this file (else prompt)")
     secrets.add_argument("--apply", action="store_true")
+    relay = sub.add_parser(
+        "relay-key", help="generate the /lf-otel/* relay secret into the KeyValueStore and SSM"
+    )
+    relay.add_argument("--apply", action="store_true")
     task = sub.add_parser(
         "exec", help="run an allowlisted command in the operator container (ADR-0027)"
     )
@@ -1560,6 +1660,7 @@ def main(argv: list[str] | None = None, runner: Runner = _default_runner) -> int
             "start": cmd_start,
             "cleanup": cmd_cleanup,
             "secrets": cmd_secrets,
+            "relay-key": cmd_relay_key,
             "model-upload": cmd_model_upload,
             "exec": cmd_exec,
             "ecr-prune": cmd_ecr_prune,

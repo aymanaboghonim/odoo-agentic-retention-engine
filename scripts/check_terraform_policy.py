@@ -29,6 +29,8 @@ ALLOWED_RESOURCE_TYPES = frozenset(
     {
         "aws_budgets_budget",
         "aws_cloudfront_distribution",
+        "aws_cloudfront_function",  # #129: the /lf-otel/* relay check
+        "aws_cloudfront_key_value_store",  # #129: holds the relay secret (set outside state)
         "aws_cloudfront_origin_access_control",
         "aws_cloudfront_vpc_origin",
         "aws_cloudwatch_log_group",

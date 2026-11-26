@@ -69,7 +69,7 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Graf
 | OBS-9 | The exported estimated USD for a call equals its settled `proposal_calls` estimate. | `test_cost_metric_matches_budget_ledger` |
 | OBS-10 | The gate and the LLM adapter do not import telemetry. | `scripts/check_import_boundaries.py` rule BND-5 |
 | OBS-11 | Every configured export host has an AAAA record before the AWS rollout. | smoke SM-6, `test_smoke_checks_export_host_ipv6` |
-| RL-1 | The relay serves only `/lf-otel/*`, only to the Langfuse origin, with caching off, and returns 403 without the secret header. | `test_relay_behavior_policy` (python-hcl2), live `aws cloudfront test-function` |
+| RL-1 | The relay serves only `/lf-otel/*`, only to the Langfuse origin, with caching off, and returns 403 without the secret header. | `tests/test_lf_relay.py` (`test_relay_behavior_policy` with python-hcl2, function logic under Node), live `aws cloudfront test-function` |
 | BR-1 | The billing job prints no amounts or keys; a missing provider day is `unknown`, never 0. | `test_billing_reconcile_output_and_missing_bucket` |
 | OBS-12 | APM spans never carry a full URL, query string, the Telegram bot path, or SQL parameters. | `test_apm_spans_are_scrubbed` |
 | OBS-13 | At a daily cap, export stops for the rest of the UTC day and the dropped items are counted; runs are not affected. | `test_daily_export_cap_stops_export_and_counts_drops` |
