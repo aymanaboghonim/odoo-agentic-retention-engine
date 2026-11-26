@@ -987,6 +987,15 @@ def configure(
         _STATE.instruments.clear()
         _STATE.eval_text = settings.eval_text and langfuse_exporter is not None
         _STATE.handle = handle
+        if metric_reader is not None:
+            # #163: peer presence. Each engine process reports 1 while it runs, so an alert can
+            # tell "worker missing while the API runs" from "the whole stack is stopped".
+            observable_gauge(
+                "aorte.process.up",
+                "1",
+                "1 while this engine process runs (#163)",
+                lambda: [(1, {})],
+            )
     return handle
 
 

@@ -1,6 +1,6 @@
 # Runbook: Grafana dashboard as code
 
-Issue #139; root `deploy/terraform/grafana`; spec [observability-telemetry.md](../specs/observability-telemetry.md); facts `F-094`, `F-095`. Alert rules are #163.
+Issues #139 (dashboard) and #163 (alerts); root `deploy/terraform/grafana`; spec [observability-telemetry.md](../specs/observability-telemetry.md); facts `F-094`..`F-096`.
 
 ## What is managed
 
@@ -15,6 +15,7 @@ Issue #139; root `deploy/terraform/grafana`; spec [observability-telemetry.md](.
 | Service account token (`aorte-terraform`) | `~/.config/aorte/grafana-sa-token` | `GRAFANA_AUTH` |
 | Stack URL | `~/.config/aorte/grafana-stack-url` | `GRAFANA_URL` |
 | Langfuse project ID | `~/.config/aorte/langfuse-project-id` | `langfuse_project_id` in the gitignored `terraform.tfvars` |
+| Alert email | `~/.config/aorte/alert-email` | `alert_email` in the gitignored `terraform.tfvars` |
 
 The token is a Grafana service account token, not the OTLP write token (`F-094`). It never goes to the AWS host.
 
@@ -46,6 +47,21 @@ PYTHONPATH=src TELEMETRY_ENABLED=YES \
 ```
 
 Then open the dashboard (last hour), find the check in "Export checks", and click "Open this trace in Langfuse". Checked on 2026-11-26 with check `f4b1507a-98ae-4bad-8fe6-14dfc53dad2f`.
+
+## Alerts
+
+Five rules in `alerts.tf` email the owner (contact point `aorte-owner-email`). They stay quiet while the stack is stopped (OBS-19): no data is OK, and "worker missing" needs the approval API to be reporting.
+
+Fire tests (in the #133 session, stack running, deployed from `main`):
+
+| Rule | How to trigger | Then |
+| :-- | :-- | :-- |
+| Worker reports no data while the API runs | on the host over SSM: `docker pause <worker container>` | `docker unpause`; it resolves |
+| Worker scan is stale | on the host: `docker pause <odoo-db container>` for 4 minutes (scans fail, the worker keeps reporting) | `docker unpause` |
+| Runtime state is not active | admin API: set `fallback_fixed_rule` with a reason | set `active` again |
+| Held effects above 0, telemetry dropped at the daily cap | `alert_test_mode = true` in `terraform.tfvars`, plan and apply | set it back to `false`, plan and apply |
+
+After the stack is stopped, wait at least 10 minutes and confirm that no rule fires.
 
 ## Teardown
 

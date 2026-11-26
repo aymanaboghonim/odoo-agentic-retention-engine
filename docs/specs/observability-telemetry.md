@@ -77,6 +77,7 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Graf
 | OBS-15 | An operator decision is an `aorte.approval` event in the run's trace and carries the decision code only (ADR-0032). | `test_operator_decision_event_has_code_only` |
 | OBS-17 | A run's root spans use the run UUID as trace ID, so one run is one trace across processes; other spans keep random IDs. | `test_run_spans_share_one_trace_named_by_the_run` |
 | OBS-18 | Langfuse receives only the run spans (never the scan), under its own daily unit cap; tokenized text only there and only with `TELEMETRY_EVAL_TEXT=YES`, after a contact and secret scan. | `test_langfuse_gets_run_spans_only_never_the_scan`, `test_langfuse_unit_cap_is_separate_from_the_grafana_cap`, `test_text_reaches_only_langfuse_and_only_when_enabled`, `test_text_with_a_contact_is_dropped_even_when_enabled` |
+| OBS-19 | Alert rules stay quiet while the stack is stopped: every rule treats no data as OK, every rule is scoped to `aws-mvp`, and "worker missing" fires only while the approval API reports `aorte.process.up` (peer presence, #163). | `test_alert_rules_are_quiet_while_stopped`, `test_every_process_reports_up_for_peer_presence` |
 | OBS-16 | The worker reports seconds since its last finished scan page and the runtime state (unreadable counts as `halted`); the API answers `/healthz` only to loopback clients, outside the edge prefix, with `ok` or `unavailable` and nothing else. | `test_worker_heartbeat_tracks_completed_scan_pages`, `test_health_gauges_report_liveness_and_runtime_state`, `test_unreadable_runtime_state_reports_halted`, `test_health_endpoint_is_loopback_only_and_reveals_nothing` |
 
 ## Behavior
@@ -132,6 +133,14 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 - Trace links: Tempo search drops leading zeros from trace IDs (`F-095`), so the exporter adds `aorte.trace_id` (32 hex, allowlisted; set by the exporter on run spans, a caller's value is overwritten) and the trace tables link `https://us.cloud.langfuse.com/project/<project-id>/traces/<aorte.trace_id>`. Test: `test_run_spans_carry_the_padded_trace_id_for_the_langfuse_link`; dashboard tests in `tests/test_grafana_dashboard.py`.
 - Applied 2026-11-26 (plans `8d54fbcc25ba` folder, `b21c9866f179` dashboard; no drift). A local `telemetry_check.py` trace exported to both, and one click in the dashboard opened it in Langfuse.
 - Alert rules and how they stay quiet while the stack is stopped (peer presence, owner decision 2026-11-26) are #163.
+
+## Implementation notes (#163)
+
+- Five Grafana-managed rules in `deploy/terraform/grafana/alerts.tf` (group `aorte-engine`, folder `aorte`, every 60 s): worker scan stale (age above 3 scan intervals, 180 s, for 2 min), worker missing (API up and no worker data, for 5 min), held effects above 0, runtime state not `active`, telemetry dropped at the daily cap. Email contact point `aorte-owner-email`, attached on each rule; the stack-wide notification policy is not managed here.
+- Quiet while stopped (owner decision 2026-11-26, peer presence): the stop scripts and the nightly scheduler stop the whole instance, so nothing reports; no data is OK. Every engine process reports `aorte.process.up` (`aorte_process_up_ratio` in Grafana), so a worker that stops reporting while the API runs is told apart from a stopped stack. Known gap: a whole-stack failure while the instance runs also looks like a stop; the start smoke covers it, and Alloy host metrics (#165) can join the peer condition later.
+- Free plan only (owner, 2026-11-26; `F-096`): few rules, one email contact point, no trial-only products. The trial's knowledge graph created 617 rules of its own (`F-096`); nothing here depends on them.
+- Applied 2026-11-26 (plan `84b34b96fa7c`, no drift). With the stack stopped, all five rules were `Normal (NoData)` from 16:48:50 to 16:53:50 UTC.
+- `alert_test_mode` (default false) lowers the held-effects and drops thresholds for the #133 fire tests; it is applied and reverted through `tf_safe.sh`. Fire-test steps: [grafana runbook](../runbooks/grafana.md#alerts).
 
 ## Open questions
 

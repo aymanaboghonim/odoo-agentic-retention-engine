@@ -76,8 +76,10 @@ ALLOWED_RESOURCE_TYPES = frozenset(
         "random_id",
         "random_password",
         # #139: Grafana Cloud as code (deploy/terraform/grafana); no AWS resource.
+        "grafana_contact_point",  # #163
         "grafana_dashboard",
         "grafana_folder",
+        "grafana_rule_group",  # #163
     }
 )
 
