@@ -35,7 +35,14 @@ locals {
 
   oidc_issuer = "https://cognito-idp.${var.region}.amazonaws.com/${aws_cognito_user_pool.operators.id}"
 
-  common_engine_env = merge(var.breaker_settings, var.telemetry_settings, var.engine_settings, {
+  # #150: Langfuse through the CloudFront relay /lf-otel/* (#129); the host is IPv6-only and
+  # Langfuse US has no AAAA (F-078). Keys and the relay key come from SSM.
+  telemetry_env = merge(var.telemetry_settings, {
+    LANGFUSE_OTLP_ENDPOINT            = "https://${aws_cloudfront_distribution.edge.domain_name}/lf-otel/api/public/otel"
+    TELEMETRY_DAILY_LANGFUSE_UNIT_CAP = tostring(var.langfuse_daily_unit_cap)
+  })
+
+  common_engine_env = merge(var.breaker_settings, local.telemetry_env, var.engine_settings, {
     FULL_STACK_SYNTHETIC_ISOLATED = "YES"
     # The engine requires a UUID (fails closed otherwise, #97). Deterministic per stack name.
     FULL_STACK_INSTANCE_ID = uuidv5("url", "https://github.com/aymanaboghonim/odoo-agentic-retention-engine/${var.name_prefix}")
@@ -120,6 +127,9 @@ locals {
         { name = "ODOO_READONLY_DATABASE_URL", valueFrom = "${local.param_arn}/odoo-readonly-url" },
         { name = "PRIVACY_TOMBSTONE_PEPPER", valueFrom = "${local.param_arn}/privacy-tombstone-pepper" },
         { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
+        { name = "LANGFUSE_PUBLIC_KEY", valueFrom = "${local.param_arn}/langfuse-public-key" },
+        { name = "LANGFUSE_SECRET_KEY", valueFrom = "${local.param_arn}/langfuse-secret-key" },
+        { name = "TELEMETRY_RELAY_KEY", valueFrom = "${local.param_arn}/telemetry-relay-key" },
       ]
       links            = ["odoo-db:odoo-db", "engine-db:engine-db"]
       dependsOn        = [{ containerName = "initialize", condition = "SUCCESS" }]
@@ -148,12 +158,15 @@ locals {
         { name = "APPROVAL_API_PORT", value = "8080" },
         { name = "APPROVAL_API_ROOT_PATH", value = "/api" },
         ],
-        [for k, v in var.telemetry_settings : { name = k, value = v }],
+        [for k, v in local.telemetry_env : { name = k, value = v }],
       )
       secrets = [
         { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },
         { name = "APPROVAL_ORIGIN_VERIFY_SECRET", valueFrom = "${local.param_arn}/approval-origin-verify" },
         { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
+        { name = "LANGFUSE_PUBLIC_KEY", valueFrom = "${local.param_arn}/langfuse-public-key" },
+        { name = "LANGFUSE_SECRET_KEY", valueFrom = "${local.param_arn}/langfuse-secret-key" },
+        { name = "TELEMETRY_RELAY_KEY", valueFrom = "${local.param_arn}/telemetry-relay-key" },
       ]
       links            = ["engine-db:engine-db"]
       portMappings     = [{ containerPort = 8080, hostPort = var.api_port, protocol = "tcp" }]
@@ -215,6 +228,9 @@ locals {
         { name = "ERP_TELEGRAM_CHAT_ID", valueFrom = "${local.param_arn}/telegram-chat-id" },
         { name = "TELEGRAM_ALLOWLIST_CHAT_IDS", valueFrom = "${local.param_arn}/telegram-chat-id" },
         { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
+        { name = "LANGFUSE_PUBLIC_KEY", valueFrom = "${local.param_arn}/langfuse-public-key" },
+        { name = "LANGFUSE_SECRET_KEY", valueFrom = "${local.param_arn}/langfuse-secret-key" },
+        { name = "TELEMETRY_RELAY_KEY", valueFrom = "${local.param_arn}/telemetry-relay-key" },
       ]
       links       = ["engine-db:engine-db", "odoo-db:odoo-db", "odoo:odoo", "mailpit:mailpit"]
       mountPoints = [{ sourceVolume = "model-cache", containerPath = "/model-cache", readOnly = true }]

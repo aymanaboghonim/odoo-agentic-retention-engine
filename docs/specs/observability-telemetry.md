@@ -50,7 +50,7 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Graf
 | `GRAFANA_OTLP_ENDPOINT`, `GRAFANA_OTLP_TOKEN` | stack OTLP host (must have AAAA on AWS) and token (secret) |
 | `LANGFUSE_OTLP_ENDPOINT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | base URL ending in `/api/public/otel` (the relay URL on AWS, #129); keys `pk-lf-...` and `sk-lf-...` are secrets |
 | `TELEMETRY_DAILY_LANGFUSE_UNIT_CAP` | integer `>= 1`; spans sent to Langfuse per process per UTC day (each is one unit, `F-010`) |
-| `TELEMETRY_RELAY_KEY` | secret header value for the relay (AWS only) |
+| `TELEMETRY_RELAY_KEY` | secret header value for the relay (AWS only); sent as `x-aorte-relay-key` by the Langfuse exporter. Needs the Langfuse settings; on `aws-mvp`, Langfuse settings without it fail at startup (#150) |
 | `TELEMETRY_EVAL_TEXT` | `YES` or `NO`; `YES` is refused in ERP mode |
 | `TELEMETRY_DAILY_SPAN_CAP`, `TELEMETRY_DAILY_LANGFUSE_UNIT_CAP` | integers `>= 1`; required when telemetry is on |
 

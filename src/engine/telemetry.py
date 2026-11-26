@@ -303,6 +303,11 @@ LANGFUSE_KEYS = (
     "TELEMETRY_DAILY_LANGFUSE_UNIT_CAP",
 )
 
+# #129 / #150: the IPv6-only AWS host reaches Langfuse only through the CloudFront relay
+# /lf-otel/*, which needs this header (deploy/terraform/mvp/templates/lf_relay.js).
+RELAY_KEY = "TELEMETRY_RELAY_KEY"
+RELAY_HEADER = "x-aorte-relay-key"
+
 
 def _https_endpoint(env: Mapping[str, str], key: str) -> str:
     endpoint = env.get(key, "").strip().rstrip("/")
@@ -358,6 +363,7 @@ class TelemetrySettings:
     langfuse_public_key: str | None = field(default=None, repr=False)
     langfuse_secret_key: str | None = field(default=None, repr=False)
     daily_langfuse_unit_cap: int | None = None
+    relay_key: str | None = field(default=None, repr=False)
     eval_text: bool = False
 
     @property
@@ -408,6 +414,13 @@ class TelemetrySettings:
                 langfuse_secret_key=secret,
                 daily_langfuse_unit_cap=_cap(env, "TELEMETRY_DAILY_LANGFUSE_UNIT_CAP"),
             )
+        if env.get(RELAY_KEY, "").strip():
+            if "langfuse_endpoint" not in values:
+                raise TelemetryConfigError(f"{RELAY_KEY} needs the Langfuse settings")
+            values["relay_key"] = _secret(env, RELAY_KEY)
+        elif environment == "aws-mvp" and "langfuse_endpoint" in values:
+            # The host has no route to Langfuse but the relay; fail at startup, not per export.
+            raise TelemetryConfigError(f"Langfuse on aws-mvp needs {RELAY_KEY} (the relay)")
         if not values:
             raise TelemetryConfigError(
                 "TELEMETRY_ENABLED=YES needs the Grafana settings (GRAFANA_OTLP_ENDPOINT, "
@@ -851,7 +864,10 @@ def otlp_exporters(
 
 
 def langfuse_span_exporter(settings: TelemetrySettings) -> SpanExporter:
-    """OTLP/HTTP traces to Langfuse (F-078): Basic auth of public:secret key, ingestion v4."""
+    """OTLP/HTTP traces to Langfuse (F-078): Basic auth of public:secret key, ingestion v4.
+
+    With a relay key (AWS, #150) it also sends the relay header the CloudFront path checks.
+    """
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
     if not settings.enabled or not settings.langfuse:
@@ -860,6 +876,8 @@ def langfuse_span_exporter(settings: TelemetrySettings) -> SpanExporter:
         f"{settings.langfuse_public_key}:{settings.langfuse_secret_key}".encode()
     ).decode()
     headers = {"Authorization": f"Basic {auth}", "x-langfuse-ingestion-version": "4"}
+    if settings.relay_key:
+        headers[RELAY_HEADER] = settings.relay_key  # removed by the relay before Langfuse
     return OTLPSpanExporter(
         endpoint=f"{settings.langfuse_endpoint}/v1/traces", headers=headers, timeout=10
     )

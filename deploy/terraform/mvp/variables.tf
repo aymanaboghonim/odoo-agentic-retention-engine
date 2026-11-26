@@ -149,3 +149,13 @@ variable "langfuse_host" {
     error_message = "langfuse_host must be a langfuse.com host name."
   }
 }
+
+variable "langfuse_daily_unit_cap" {
+  description = "Langfuse spans per engine process per UTC day (#150). Hobby includes 50k units a month (F-010): 3 processes x 300 x 30 days = 27k at most, which leaves room for the evaluation runs (#135)."
+  type        = number
+  default     = 300
+  validation {
+    condition     = var.langfuse_daily_unit_cap >= 1 && var.langfuse_daily_unit_cap <= 500
+    error_message = "langfuse_daily_unit_cap must be 1 to 500 (3 x 500 x 30 stays under the 50k Hobby units)."
+  }
+}
