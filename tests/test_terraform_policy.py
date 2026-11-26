@@ -229,6 +229,14 @@ def test_requires_pinned_account(tmp_path: Path) -> None:
     assert 'INF-7 provider "aws"' in rules(tmp_path, no_provider)
 
 
+def test_grafana_root_passes_without_an_aws_provider() -> None:
+    """#139: the Grafana root has no AWS resource, so INF-7 needs no AWS provider there."""
+    root = Path(__file__).resolve().parents[1] / "deploy" / "terraform" / "grafana"
+    assert check_source(load_source([root])) == []
+    plan = _plan(_change("grafana_dashboard.overview", ["create"]))
+    assert check_plan(plan, set())[0] == []
+
+
 def _plan(*changes: dict[str, object]) -> dict[str, object]:
     return {"resource_changes": list(changes)}
 

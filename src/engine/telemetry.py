@@ -163,6 +163,9 @@ SPAN_ATTRIBUTES: Mapping[str, Validator] = {
     "langfuse.observation.type": _enum("span", "generation", "event"),
     "langfuse.trace.name": _pattern(r"aorte\.[a-z_]{1,40}"),
     "gen_ai.usage.cost": _amount,
+    # #139: the full 32-hex trace ID, added by the exporter to run spans. Tempo search drops
+    # leading zeros from trace IDs, so the Grafana-to-Langfuse link uses this value.
+    "aorte.trace_id": _pattern(r"[0-9a-f]{32}"),
 }
 
 RESOURCE_ATTRIBUTES: Mapping[str, Validator] = {
@@ -640,6 +643,10 @@ def sanitize_span(span: ReadableSpan, *, text: bool = False) -> tuple[ReadableSp
     allowed = {**SPAN_ATTRIBUTES, **TEXT_ATTRIBUTES} if text else SPAN_ATTRIBUTES
     attributes, dropped = filter_attributes(span.attributes, allowed)
     name = span.name if span.name in SPAN_NAMES else OTHER_SPAN
+    if name in LANGFUSE_SPANS and span.context is not None:
+        # #139: set by the exporter, never by a caller (a caller's value was filtered above
+        # only if it was not 32 hex; overwrite it either way).
+        attributes = {**attributes, "aorte.trace_id": f"{span.context.trace_id:032x}"}
     safe = ReadableSpan(
         name=name,
         context=span.context,

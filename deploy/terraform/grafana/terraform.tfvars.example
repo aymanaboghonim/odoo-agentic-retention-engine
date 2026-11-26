@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars (gitignored). The real value is in ~/.config/aorte/langfuse-project-id.
+langfuse_project_id = "REPLACE"
