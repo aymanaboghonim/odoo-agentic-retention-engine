@@ -50,6 +50,14 @@ locals {
 
   env = { for k, v in local.common_engine_env : k => v }
 
+  # ADR-0033: long-running containers restart in place after an exit; a container that exits
+  # within restartAttemptPeriod is not restarted, so a crash loop still stops the task (F-099).
+  restart_policy = { enabled = true, restartAttemptPeriod = 300 }
+
+  # ADR-0033, OBS-14: Alloy sends host metrics only. Its config travels in the environment and
+  # is written to a tmpfs at start (the image is mirrored unchanged, #106).
+  alloy_config = file("${path.module}/../../alloy/config.alloy")
+
   pg_health = {
     odoo   = ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
     engine = ["CMD-SHELL", "pg_isready -U engine -d engine"]
@@ -60,6 +68,7 @@ locals {
       name              = "odoo-db"
       image             = local.images.postgres
       essential         = true
+      restartPolicy     = local.restart_policy
       memoryReservation = 256
       stopTimeout       = 60
       environment       = [{ name = "POSTGRES_DB", value = "postgres" }, { name = "POSTGRES_USER", value = "odoo" }]
@@ -72,6 +81,7 @@ locals {
       name              = "odoo"
       image             = local.images.odoo
       essential         = true
+      restartPolicy     = local.restart_policy
       memoryReservation = 768
       environment       = [{ name = "HOST", value = "odoo-db" }, { name = "USER", value = "odoo" }]
       secrets           = [{ name = "PASSWORD", valueFrom = "${local.param_arn}/odoo-db-password" }]
@@ -87,6 +97,7 @@ locals {
       name              = "engine-db"
       image             = local.images.pgvector
       essential         = true
+      restartPolicy     = local.restart_policy
       memoryReservation = 256
       stopTimeout       = 60
       environment       = [{ name = "POSTGRES_DB", value = "engine" }, { name = "POSTGRES_USER", value = "engine" }]
@@ -119,6 +130,7 @@ locals {
       name              = "worker"
       image             = local.images.engine
       essential         = true
+      restartPolicy     = local.restart_policy
       memoryReservation = 512
       command           = ["python", "-m", "engine.full_stack_worker"]
       environment       = [for k, v in local.env : { name = k, value = v }]
@@ -139,6 +151,7 @@ locals {
       name              = "approval-api"
       image             = local.images.engine
       essential         = true
+      restartPolicy     = local.restart_policy
       memoryReservation = 256
       command           = ["python", "-m", "engine.approval_api"]
       # #126: loopback-only liveness (DB reachable). Unhealthy for 3 checks replaces the task.
@@ -178,6 +191,7 @@ locals {
       name              = "mailpit"
       image             = local.images.mailpit
       essential         = false
+      restartPolicy     = local.restart_policy
       memoryReservation = 64
       # UI only, for SSM port forwarding. SMTP stays inside the task (operator link).
       portMappings     = [{ containerPort = 8025, hostPort = 18025, protocol = "tcp" }]
@@ -205,6 +219,7 @@ locals {
       name              = "operator"
       image             = local.images.engine
       essential         = false
+      restartPolicy     = local.restart_policy
       memoryReservation = 256
       command           = ["sleep", "infinity"]
       environment = concat(
@@ -240,6 +255,30 @@ locals {
       ]
       logConfiguration = local.log_config
     },
+    {
+      name          = "alloy"
+      image         = local.images.alloy
+      essential     = false
+      restartPolicy = local.restart_policy
+      memory        = var.alloy_memory_mib # hard limit, from the measurement in F-098
+      entryPoint    = ["/bin/sh", "-c"]
+      command = [
+        "printf '%s' \"$ALLOY_CONFIG\" > /tmp/config.alloy && exec /bin/alloy run --disable-reporting --storage.path=/tmp/data /tmp/config.alloy",
+      ]
+      environment = [
+        { name = "ALLOY_CONFIG", value = local.alloy_config },
+        { name = "GRAFANA_OTLP_ENDPOINT", value = var.telemetry_settings["GRAFANA_OTLP_ENDPOINT"] },
+        { name = "TELEMETRY_ENVIRONMENT", value = var.telemetry_settings["TELEMETRY_ENVIRONMENT"] },
+      ]
+      secrets                = [{ name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" }]
+      readonlyRootFilesystem = true
+      linuxParameters        = { tmpfs = [{ containerPath = "/tmp", size = 64 }] }
+      mountPoints = [
+        { sourceVolume = "host-proc", containerPath = "/host/proc", readOnly = true },
+        { sourceVolume = "host-sys", containerPath = "/host/sys", readOnly = true },
+      ]
+      logConfiguration = local.log_config
+    },
   ]
 }
 
@@ -251,6 +290,16 @@ resource "aws_ecs_task_definition" "core" {
   # Read-only access to models/ in the backups bucket, for model-sync (F-072).
   task_role_arn         = aws_iam_role.task_model.arn
   container_definitions = jsonencode(local.core_containers)
+
+  # ADR-0033: host /proc and /sys for Alloy, mounted read-only. No Docker socket, no host root.
+  volume {
+    name      = "host-proc"
+    host_path = "/proc"
+  }
+  volume {
+    name      = "host-sys"
+    host_path = "/sys"
+  }
 
   dynamic "volume" {
     for_each = toset(["odoo-db", "odoo-data", "engine-db", "model-cache"])

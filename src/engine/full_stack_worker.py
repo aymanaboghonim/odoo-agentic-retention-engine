@@ -14,7 +14,7 @@ from sqlalchemy import Engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
-from engine import telemetry
+from engine import container_stats, telemetry
 from engine.breaker import BreakerSettings, run_breaker
 from engine.config import EngineConfig
 from engine.db import RunRepository, create_engine
@@ -169,6 +169,7 @@ def main(argv: list[str] | None = None) -> None:
         repo = RunRepository(engine)
         register_run_gauges(repo)
         register_health_gauges(heartbeat, guard)
+        container_stats.register(os.environ)  # ADR-0033: on ECS only
 
         def maintenance() -> None:
             # Spec AA-6: pending approvals past expires_at are cancelled with an audit event.

@@ -162,3 +162,13 @@ variable "langfuse_daily_unit_cap" {
     error_message = "langfuse_daily_unit_cap must be 1 to 500 (3 x 500 x 30 stays under the 50k Hobby units)."
   }
 }
+
+variable "alloy_memory_mib" {
+  description = "Hard memory limit of the Alloy container (ADR-0033, OBS-14), from the local measurement in F-098."
+  type        = number
+  default     = 128
+  validation {
+    condition     = var.alloy_memory_mib >= 64 && var.alloy_memory_mib <= 256
+    error_message = "alloy_memory_mib must be 64..256 MiB (t3a.medium has 4 GiB for the whole task)."
+  }
+}

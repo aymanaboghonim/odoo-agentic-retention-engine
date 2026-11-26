@@ -1,0 +1,84 @@
+// Grafana Alloy: host metrics only (ADR-0033, OBS-14). No logs, no Docker socket, no host root.
+// The container mounts the host /proc and /sys read-only at /host/proc and /host/sys. The root
+// filesystem is read through the container's own overlay root, which reports the host volume.
+// Environment: GRAFANA_OTLP_ENDPOINT, GRAFANA_OTLP_TOKEN (base64 of <instance-id>:<token>, the
+// same SSM value the engine uses), TELEMETRY_ENVIRONMENT.
+// tests/test_alloy_config.py checks the allowlist below; change both together.
+
+prometheus.exporter.unix "host" {
+  procfs_path    = "/host/proc"
+  sysfs_path     = "/host/sys"
+  set_collectors = ["cpu", "meminfo", "loadavg", "filesystem"]
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  job_name        = "aorte-alloy"
+  scrape_interval = "60s"
+  forward_to      = [prometheus.relabel.allowlist.receiver]
+}
+
+prometheus.relabel "allowlist" {
+  // Metric names: everything else (including scrape_* and up) is dropped.
+  rule {
+    source_labels = ["__name__"]
+    regex         = "node_cpu_seconds_total|node_memory_MemTotal_bytes|node_memory_MemAvailable_bytes|node_load1|node_load5|node_filesystem_size_bytes|node_filesystem_avail_bytes"
+    action        = "keep"
+  }
+  // CPU: only the modes the dashboard uses.
+  rule {
+    source_labels = ["__name__", "mode"]
+    regex         = "node_cpu_seconds_total;(nice|irq|softirq)"
+    action        = "drop"
+  }
+  // Filesystem: the root volume only.
+  rule {
+    source_labels = ["__name__", "mountpoint"]
+    regex         = "node_filesystem_.+;(?:/.+|)"
+    action        = "drop"
+  }
+  // Closed label set: drop the labels the panels do not need.
+  rule {
+    regex  = "device|fstype"
+    action = "labeldrop"
+  }
+  forward_to = [otelcol.receiver.prometheus.host.receiver]
+}
+
+otelcol.receiver.prometheus "host" {
+  output {
+    metrics = [otelcol.processor.transform.resource.input]
+  }
+}
+
+// Same resource keys as the engine, so the dashboard filters work unchanged.
+otelcol.processor.transform "resource" {
+  error_mode = "ignore"
+  metric_statements {
+    context    = "resource"
+    statements = [
+      `set(attributes["deployment.environment.name"], "` + sys.env("TELEMETRY_ENVIRONMENT") + `")`,
+      `set(attributes["service.name"], "aorte-alloy")`,
+      // The receiver adds scrape details (the container host name changes on each start).
+      `keep_keys(attributes, ["deployment.environment.name", "service.name"])`,
+    ]
+  }
+  output {
+    metrics = [otelcol.processor.batch.out.input]
+  }
+}
+
+otelcol.processor.batch "out" {
+  output {
+    metrics = [otelcol.exporter.otlphttp.grafana.input]
+  }
+}
+
+otelcol.exporter.otlphttp "grafana" {
+  client {
+    endpoint = sys.env("GRAFANA_OTLP_ENDPOINT")
+    headers  = {
+      "Authorization" = "Basic " + sys.env("GRAFANA_OTLP_TOKEN"),
+    }
+  }
+}

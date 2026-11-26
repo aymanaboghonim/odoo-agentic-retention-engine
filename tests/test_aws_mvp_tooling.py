@@ -724,7 +724,7 @@ def test_terraform_model_path_matches_engine() -> None:
 def test_image_list_matches_compose_digests() -> None:
     images = json.loads((REPO / "deploy" / "aws-mvp-images.json").read_text(encoding="utf-8"))
     compose = (REPO / "deploy" / "full-stack-compose.yml").read_text(encoding="utf-8")
-    for name in ("postgres", "odoo", "pgvector", "mailpit"):
+    for name in ("postgres", "odoo", "pgvector", "mailpit", "alloy"):
         source = images[name]["source"].removeprefix("docker.io/").removeprefix("library/")
         assert f"image: {source}@{images[name]['digest']}" in compose, name
     assert all(re.fullmatch(r"sha256:[0-9a-f]{64}", v["digest"]) for v in images.values())

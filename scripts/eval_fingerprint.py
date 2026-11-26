@@ -65,6 +65,7 @@ EXCLUDED: dict[str, str] = {
     "src/engine/breaker.py": "runtime guard on live traffic, not proposal behavior",
     "src/engine/channels.py": "delivery after approval; the evaluation never dispatches",
     "src/engine/config.py": "database URL parsing",
+    "src/engine/container_stats.py": "container metrics export only; never changes a proposal",
     "src/engine/coupon_code.py": "coupon code format after approval",
     "src/engine/db.py": "durable run storage",
     "src/engine/erp_cli.py": "operator CLI",
