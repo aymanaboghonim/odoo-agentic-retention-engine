@@ -81,6 +81,19 @@ def _count(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10**12
 
 
+def _int_range(low: int, high: int) -> Validator:
+    def check(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+
+    return check
+
+
+def _sql(value: object) -> bool:
+    """#134, OBS-12: the statement shape only. Parameters are never captured; a literal that
+    looks like a contact or a secret drops the whole value."""
+    return isinstance(value, str) and 0 < len(value) <= 4000 and not contains_sensitive(value)
+
+
 def _amount(value: object) -> bool:
     return (
         isinstance(value, (int, float))
@@ -134,6 +147,17 @@ OUTCOMES = (
     "created",
 )
 
+HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+# #134: instrumentation span names are kept only in these shapes: an HTTP method with an
+# optional route template (never a raw path), or an SQL keyword with an optional database name.
+APM_SPAN_NAME = re.compile(
+    r"(?:(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)(?: /[A-Za-z0-9_{}./-]{0,120})?"
+    r"|(?i:select|insert|update|delete|with|begin|commit|rollback|set|show|create|alter|drop"
+    r"|truncate|lock|connect)(?: [a-z][a-z0-9_]{0,62})?)"
+)
+APM_SCOPE_PREFIX = "opentelemetry.instrumentation."
+
+
 SPAN_ATTRIBUTES: Mapping[str, Validator] = {
     "aorte.run_id": _uuid,
     "aorte.proposal_id": _uuid,
@@ -166,6 +190,17 @@ SPAN_ATTRIBUTES: Mapping[str, Validator] = {
     # #139: the full 32-hex trace ID, added by the exporter to run spans. Tempo search drops
     # leading zeros from trace IDs, so the Grafana-to-Langfuse link uses this value.
     "aorte.trace_id": _pattern(r"[0-9a-f]{32}"),
+    # #134: APM, stable semantic conventions only (OTEL_SEMCONV_STABILITY_OPT_IN). Never the
+    # full URL, path, query, headers, client address, or SQL parameters (OBS-12).
+    "http.request.method": _enum(*HTTP_METHODS, "_OTHER"),
+    "http.response.status_code": _int_range(100, 599),
+    "http.route": _pattern(r"/[A-Za-z0-9_{}./-]{0,120}"),
+    "url.scheme": _enum("http", "https"),
+    "server.address": _pattern(r"[A-Za-z0-9][A-Za-z0-9.:-]{0,252}"),
+    "server.port": _int_range(1, 65535),
+    "db.system.name": _enum("postgresql"),
+    "db.namespace": _pattern(r"[a-z][a-z0-9_]{0,62}"),
+    "db.query.text": _sql,
 }
 
 RESOURCE_ATTRIBUTES: Mapping[str, Validator] = {
@@ -368,6 +403,8 @@ class TelemetrySettings:
     daily_langfuse_unit_cap: int | None = None
     relay_key: str | None = field(default=None, repr=False)
     eval_text: bool = False
+    apm: bool = False
+    daily_apm_span_cap: int | None = None
 
     @property
     def grafana(self) -> bool:
@@ -441,10 +478,19 @@ class TelemetrySettings:
                     raise TelemetryConfigError(
                         f"TELEMETRY_EVAL_TEXT=YES is refused with {key}={value} (OBS-4)"
                     )
+        apm = env.get("TELEMETRY_APM", "NO").strip() or "NO"
+        if apm not in {"YES", "NO"}:
+            raise TelemetryConfigError("TELEMETRY_APM must be YES or NO")
+        if apm == "YES":
+            # #134: APM goes to Grafana only, under its own daily cap (OBS-13).
+            if "grafana_endpoint" not in values:
+                raise TelemetryConfigError("TELEMETRY_APM=YES needs the Grafana settings")
+            values["daily_apm_span_cap"] = _cap(env, "TELEMETRY_DAILY_APM_SPAN_CAP")
         return cls(
             enabled=True,
             environment=cast(Environment, environment),
             eval_text=text == "YES",
+            apm=apm == "YES",
             **values,
         )
 
@@ -639,10 +685,18 @@ def _safe_resource(resource: Resource) -> Resource:
     return Resource(kept)
 
 
+def is_apm(span: ReadableSpan) -> bool:
+    scope = span.instrumentation_scope
+    return scope is not None and scope.name.startswith(APM_SCOPE_PREFIX)
+
+
 def sanitize_span(span: ReadableSpan, *, text: bool = False) -> tuple[ReadableSpan, int]:
     allowed = {**SPAN_ATTRIBUTES, **TEXT_ATTRIBUTES} if text else SPAN_ATTRIBUTES
     attributes, dropped = filter_attributes(span.attributes, allowed)
-    name = span.name if span.name in SPAN_NAMES else OTHER_SPAN
+    if is_apm(span):
+        name = span.name if APM_SPAN_NAME.fullmatch(span.name) else OTHER_SPAN
+    else:
+        name = span.name if span.name in SPAN_NAMES else OTHER_SPAN
     if name in LANGFUSE_SPANS and span.context is not None:
         # #139: set by the exporter, never by a caller (a caller's value was filtered above
         # only if it was not 32 hex; overwrite it either way).
@@ -675,9 +729,11 @@ class SafeSpanExporter(SpanExporter):
         names: frozenset[str] | None = None,
         text: bool = False,
         signal: str = "span",
+        apm_cap: DailyCap | None = None,
     ) -> None:
         self._inner = inner
         self._cap = cap
+        self._apm_cap = apm_cap  # #134: APM spans have their own cap; None drops them
         self._names = names  # None: every span; else only these names (Langfuse)
         self._text = text  # OBS-4: tokenized text only on the Langfuse exporter, when enabled
         self._signal = signal
@@ -687,7 +743,14 @@ class SafeSpanExporter(SpanExporter):
         for item in spans:
             if self._names is not None and item.name not in self._names:
                 continue
-            if not self._cap.take():
+            if is_apm(item):
+                if self._apm_cap is None:
+                    _drop(self._signal, "filtered")
+                    continue
+                if not self._apm_cap.take():
+                    _drop(self._signal, "daily_cap")
+                    continue
+            elif not self._cap.take():
                 _drop(self._signal, "daily_cap")
                 continue
             clean, dropped = sanitize_span(item, text=self._text)
@@ -821,6 +884,7 @@ class Telemetry:
     meter_provider: MeterProvider | None = None
     logger_provider: LoggerProvider | None = None
     log_handler: EngineLogHandler | None = None
+    apm: bool = False  # #134: psycopg and urllib are instrumented while this handle lives
 
     @property
     def enabled(self) -> bool:
@@ -834,6 +898,9 @@ class Telemetry:
             self.meter_provider.force_flush(5000)
 
     def shutdown(self) -> None:
+        if self.apm:
+            _uninstrument_apm()
+            self.apm = False
         with _LOCK:
             if self.log_handler is not None:
                 logging.getLogger().removeHandler(self.log_handler)
@@ -951,7 +1018,10 @@ def configure(
         handler: EngineLogHandler | None = None
         if span_exporter is not None:
             cap = DailyCap(settings.daily_span_cap or 1, clock)
-            tracer_provider.add_span_processor(batch(SafeSpanExporter(span_exporter, cap)))
+            apm_cap = DailyCap(settings.daily_apm_span_cap or 1, clock) if settings.apm else None
+            tracer_provider.add_span_processor(
+                batch(SafeSpanExporter(span_exporter, cap, apm_cap=apm_cap))
+            )
             logger_provider = LoggerProvider(resource=Resource(resource))
             logger_provider.add_log_record_processor(
                 BatchLogRecordProcessor(
@@ -980,6 +1050,7 @@ def configure(
         meter_provider = MeterProvider(
             resource=Resource(resource),
             metric_readers=[metric_reader] if metric_reader is not None else [],
+            views=metric_views(),
         )
         handle = Telemetry(tracer_provider, meter_provider, logger_provider, handler)
         _STATE.tracer = tracer_provider.get_tracer("engine")
@@ -987,6 +1058,8 @@ def configure(
         _STATE.instruments.clear()
         _STATE.eval_text = settings.eval_text and langfuse_exporter is not None
         _STATE.handle = handle
+        if settings.apm and span_exporter is not None:
+            handle.apm = _instrument_apm(tracer_provider, meter_provider)
         if metric_reader is not None:
             # #163: peer presence. Each engine process reports 1 while it runs, so an alert can
             # tell "worker missing while the API runs" from "the whole stack is stopped".
@@ -997,6 +1070,99 @@ def configure(
                 lambda: [(1, {})],
             )
     return handle
+
+
+# ---------------------------------------------------------------- APM (#134)
+
+# Instrumentation metrics: only the HTTP server duration histogram survives, with three
+# bounded labels (OBS-8). Every other http.* and db.* instrument is dropped.
+SERVER_DURATION_LABELS = frozenset(
+    {"http.route", "http.request.method", "http.response.status_code"}
+)
+SERVER_DURATION_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+
+
+def metric_views() -> list[Any]:
+    from opentelemetry.sdk.metrics.view import (
+        DropAggregation,
+        ExplicitBucketHistogramAggregation,
+        View,
+    )
+
+    return [
+        View(instrument_name="http.*", aggregation=DropAggregation()),
+        View(instrument_name="db.*", aggregation=DropAggregation()),
+        View(
+            instrument_name="http.server.request.duration",
+            attribute_keys=set(SERVER_DURATION_LABELS),
+            aggregation=ExplicitBucketHistogramAggregation(SERVER_DURATION_BUCKETS),
+        ),
+    ]
+
+
+def _stable_semconv() -> None:
+    """Stable attribute names only (http.route, db.query.text), read once per process."""
+    import os
+
+    from opentelemetry.instrumentation._semconv import (
+        _OpenTelemetrySemanticConventionStability as Stability,
+    )
+
+    if os.environ.get("OTEL_SEMCONV_STABILITY_OPT_IN") != "http,database":
+        os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "http,database"
+        Stability._initialized = False  # noqa: SLF001 - re-read the opt-in above
+
+
+def _instrument_apm(tracer_provider: TracerProvider, meter_provider: MeterProvider) -> bool:
+    """psycopg covers SQLAlchemy and the Odoo reader alike (F-097); never raises."""
+    try:
+        _stable_semconv()
+        from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
+        from opentelemetry.instrumentation.urllib import URLLibInstrumentor
+
+        PsycopgInstrumentor().instrument(
+            tracer_provider=tracer_provider,
+            meter_provider=meter_provider,
+            capture_parameters=False,
+            enable_commenter=False,
+        )
+        URLLibInstrumentor().instrument(
+            tracer_provider=tracer_provider, meter_provider=meter_provider
+        )
+        return True
+    except Exception:  # noqa: BLE001 - telemetry never stops the engine (OBS-5)
+        LOG.warning("APM instrumentation failed; continuing without it")
+        return False
+
+
+def _uninstrument_apm() -> None:
+    try:
+        from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
+        from opentelemetry.instrumentation.urllib import URLLibInstrumentor
+
+        PsycopgInstrumentor().uninstrument()
+        URLLibInstrumentor().uninstrument()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def instrument_fastapi(app: Any) -> None:
+    """Server spans and the request-duration histogram for the approval API (#134)."""
+    handle = _STATE.handle
+    if handle is None or not handle.apm:
+        return
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(
+            app,
+            tracer_provider=handle.tracer_provider,
+            meter_provider=handle.meter_provider,
+            excluded_urls="/healthz",  # the container health check every 30 s
+            exclude_spans=["receive", "send"],
+        )
+    except Exception:  # noqa: BLE001
+        LOG.warning("FastAPI instrumentation failed; continuing without it")
 
 
 def configure_from_env(env: Mapping[str, str], *, service_name: str) -> Telemetry:
