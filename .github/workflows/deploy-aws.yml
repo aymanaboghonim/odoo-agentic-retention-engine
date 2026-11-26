@@ -6,6 +6,12 @@ name: Deploy AWS MVP
 
 on:
   workflow_dispatch:
+    inputs:
+      quality_override_reason:
+        description: "Only when G4/G5 warn in the matching evaluation report: why deploy anyway (#157)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -17,6 +23,10 @@ concurrency:
 jobs:
   deploy:
     name: Build, mirror, and roll out
+    # #157: only after the evaluation gate passes, and only from main (the gate job also runs on
+    # a branch dispatch, to show its result without reaching aws-mvp).
+    needs: eval-gate
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: aws-mvp
     timeout-minutes: 45
@@ -86,3 +96,25 @@ jobs:
           tags: ${{ steps.ecr.outputs.registry }}/aorte-mvp/engine:${{ github.sha }}
       - name: Register task definitions and roll out
         run: bash scripts/aws_mvp_rollout.sh "${{ github.sha }}"
+
+  # #157, ADR-0031 decision 4 (EVW-3, EVW-4): the commit's behavior fingerprint needs a merged
+  # live evaluation report. No secrets and no environment; the reason comes in through env.
+  eval-gate:
+    name: Evaluation fingerprint gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b
+        with:
+          version: 0.13.5
+          python-version: "3.14"
+      - name: Check the evaluation report for this fingerprint
+        env:
+          PYTHONPATH: src
+          QUALITY_OVERRIDE_REASON: ${{ inputs.quality_override_reason }}
+        run: uv run --no-project python -m scripts.eval_deploy_gate

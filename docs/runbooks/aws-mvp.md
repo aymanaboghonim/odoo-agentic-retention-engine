@@ -73,6 +73,8 @@ Owner decisions (2026-11-17): the model comes through the S3 backups bucket; cha
    gh workflow run deploy-aws.yml
    ```
 
+   Evaluation gate (#157): the `eval-gate` job runs first and needs a merged live evaluation report for the commit's behavior fingerprint ([live-evaluation runbook](live-evaluation.md)). It blocks when there is none or when G1..G3 failed. When only G4/G5 warn, pass a reason, which is written to the job summary: `gh workflow run deploy-aws.yml -f quality_override_reason="<why>"`. The deploy job runs only from `main`.
+
    Public log check (#142): the workflow masks the account ID first and turns off the Docker build record. After a run, download the log and count the account ID and the bucket name (keep them in shell variables, do not print them); both counts must be 0, and the run must have no artifacts:
 
    ```bash

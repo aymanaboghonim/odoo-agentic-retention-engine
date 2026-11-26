@@ -3,7 +3,7 @@
 - Issue: #125 (spec); implemented in #135 (workflow, EVW-1, EVW-2, EVW-5..EVW-7), #156 (first live run), #157 (deploy gate, EVW-3, EVW-4)
 - ADRs: [ADR-0031](../adr/0031-live-evaluation-workflow-and-fingerprint-deploy-gate.md), [ADR-0029](../adr/0029-observability-topology-and-telemetry-data-rule.md)
 - Parent: [release gates and kill switch](release-gates-and-kill-switch.md) (EV-1, G1..G5), [run governance](project-wide-run-governance.md)
-- Status: draft; the workflow part is implemented in #135 (2026-11-26)
+- Status: draft; implemented in #135 (workflow) and #157 (deploy gate), 2026-11-26
 
 ## Purpose
 
@@ -21,8 +21,8 @@ Non-goals: changing the gate thresholds (G1..G5 stay as agreed); scheduled unatt
 | :-- | :-- | :-- |
 | EVW-1 | The live evaluation is never part of `make ci` or a required status check, and needs the `llm-eval` environment. | `test_llm_eval_workflow_is_separate_and_approval_gated` |
 | EVW-2 | The fingerprint is deterministic and covers the prompt, the model settings, and every gate and proposal source file. | `test_eval_fingerprint_is_stable_and_covers_behavior_files` |
-| EVW-3 | A deploy is blocked when G1..G3 fail, or when no merged report matches a changed fingerprint. | `test_deploy_gate_blocks_on_safety_failure_or_missing_report` (#157) |
-| EVW-4 | A G4 or G5 failure only warns; deploying past it needs a non-empty override reason, written to the job summary. | `test_quality_override_requires_reason` (#157) |
+| EVW-3 | A deploy is blocked when G1..G3 fail, or when no merged report matches a changed fingerprint. | `test_deploy_gate_blocks_on_safety_failure_or_missing_report` |
+| EVW-4 | A G4 or G5 failure only warns; deploying past it needs a non-empty override reason, written to the job summary. | `test_quality_override_requires_reason` |
 | EVW-5 | Preflight runs before any paid call, and spend stays under the hard ceiling. | `test_eval_workflow_preflight_and_ceiling` |
 | EVW-6 | The report and job summary contain no secret, and the evaluation uses only the fixed synthetic datasets. | `test_eval_report_has_no_secrets_and_synthetic_only` |
 | EVW-7 | Operator decisions are exported as events in the run trace with the decision code only (ADR-0032). | `test_operator_decision_event_has_code_only` |
@@ -43,6 +43,13 @@ Non-goals: changing the gate thresholds (G1..G5 stay as agreed); scheduled unatt
 - **Telemetry**: `TELEMETRY_ENVIRONMENT=eval`, Langfuse US only (`us.cloud.langfuse.com`, directly, not the relay), `TELEMETRY_EVAL_TEXT=YES`, daily unit cap 2,000. After the run the report records how many `eval` generations Langfuse lists through `GET /api/public/v2/observations` (F-090, F-092). The read-back is recorded, not required: a Langfuse outage must not hide the safety result.
 - **Report**: `evals/release/results/eval-<UTC time>-<fingerprint 12>/` with `report.json` and `README.md` (fingerprint, commit, safety and quality verdicts, spend, Langfuse count) and per set the #87-format smoke and evaluation reports. It is published only after the whole run succeeds, then uploaded as an artifact. The `report-pr` job (no secrets) opens a tracking issue, a branch `<issue>-eval-report-<fp12>`, a commit with `Refs #<issue>`, and a PR with `Closes #<issue>`. GitHub starts CI on a PR made with `GITHUB_TOKEN` only after an approval (F-091), so the owner approves the CI run, reads the report, and merges.
 - **Setup** (owner, #156; steps in the [runbook](../runbooks/live-evaluation.md)): the `llm-eval` environment with the owner as required reviewer and "Prevent self-review" off, deployments from `main` only; secrets `OPENAI_API_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`; the repository setting "Allow GitHub Actions to create and approve pull requests" on.
+
+## Deploy gate (#157)
+
+- `deploy-aws.yml` has a job `eval-gate` (no secrets, no environment) that the deploy job `needs`; the deploy job also runs only from `main`. The gate runs `scripts/eval_deploy_gate.py` on the checked-out commit.
+- A report counts only if it is a `live-evaluation` report whose `fingerprint` equals the commit's, whose `fingerprint_inputs` equal the commit's own inputs, and whose inputs hash to the fingerprint (the abuse case above). The newest matching report decides. Safety and quality are recomputed from every set's gates; a summary that disagrees with its sets fails.
+- The override reason is the workflow input `quality_override_reason`. It reaches the script through an environment variable (never inside the shell script), is cut to one line of at most 300 characters, and is written to the job summary.
+- First report (2026-11-26, `#156`): held-out G4 warns, so deploys of fingerprint `3b939f5a4e9d` need an override reason until a newer report passes.
 
 ## Risks
 
