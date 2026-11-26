@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       quality_override_reason:
-        description: "Only when G4/G5 warn in the matching evaluation report: why deploy anyway (#157)"
+        description: "Only when G4/G5 warn in the evaluation report: which case failed and why it is acceptable, e.g. Held-out G4 EN 21/22, safe guard rejection; accepted in #156 (#157)"
         required: false
         default: ""
         type: string
