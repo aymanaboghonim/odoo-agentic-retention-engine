@@ -15,11 +15,12 @@ locals {
       for     = "2m"
     }
     worker_missing = {
-      title   = "Worker reports no data while the API runs"
-      summary = "The approval API reports but the worker does not; a stopped stack reports nothing and stays quiet."
-      expr    = "count(aorte_process_up_ratio{service_name=\"aorte-approval-api\",${local.env}}) unless on() count(aorte_worker_last_scan_age_seconds{${local.env}})"
-      above   = 0
-      for     = "5m"
+      title   = "Worker reports no data while the API or host runs"
+      summary = "The approval API or the Alloy host metrics report but the worker does not; a stopped stack reports nothing and stays quiet."
+      # Peers (#163, ADR-0033 decision 5): the approval API, or Alloy's host load.
+      expr  = "(count(aorte_process_up_ratio{service_name=\"aorte-approval-api\",${local.env}}) or count(node_load1{service_name=\"aorte-alloy\",${local.env}})) unless on() count(aorte_worker_last_scan_age_seconds{${local.env}})"
+      above = 0
+      for   = "5m"
     }
     held_effects = {
       title   = "Held effects above 0"

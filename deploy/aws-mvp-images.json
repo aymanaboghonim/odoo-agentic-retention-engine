@@ -3,5 +3,6 @@
   "odoo": {"source": "docker.io/library/odoo:19.0", "digest": "sha256:27f920e002c43a1af7022a68f3cc17db71a2f9f3348800cb050721ce54893e49", "aws_digest": "sha256:0cdc95f06c99fa32c69a1163268781342f2f290ac6bd2a073401f30d7f4fe35f"},
   "pgvector": {"source": "docker.io/pgvector/pgvector:0.8.7-pg15", "digest": "sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c", "aws_digest": "sha256:9a169499888c9d75ad14d0401be64839d2c325f32e399098261589faff93d65c"},
   "mailpit": {"source": "docker.io/axllent/mailpit:v1.33.0", "digest": "sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231", "aws_digest": "sha256:18156f9ee243aa339170ac33d09d6d5a80b10d9e06b265f90f223a777a8f4b73"},
-  "aws-cli": {"source": "public.ecr.aws/aws-cli/aws-cli:2.40.4", "digest": "sha256:eaf444b45380050f920ab07492754aa76223dd90234e51c1f92c2e9391b5ee6b", "aws_digest": "sha256:f97d3b708124c28ffa2f6cf2ff6c4c7bf79eeac7c5942b0140a506d911245b81"}
+  "aws-cli": {"source": "public.ecr.aws/aws-cli/aws-cli:2.40.4", "digest": "sha256:eaf444b45380050f920ab07492754aa76223dd90234e51c1f92c2e9391b5ee6b", "aws_digest": "sha256:f97d3b708124c28ffa2f6cf2ff6c4c7bf79eeac7c5942b0140a506d911245b81"},
+  "alloy": {"source": "docker.io/grafana/alloy:v1.22.0", "digest": "sha256:9acc2529bc1edb7f5b2bd801dd8334ebc80c158e3a9e5526ecd7c9a273d43189", "aws_digest": "sha256:f520f92be9ec37af83df426692d578411f039b0663e0456812c8f39015af8f8f"}
 }

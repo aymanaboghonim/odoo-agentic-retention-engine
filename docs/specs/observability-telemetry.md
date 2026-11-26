@@ -1,7 +1,7 @@
 # Spec: PII-safe observability telemetry
 
-- Issue: #125 (spec); implemented in #126, #127, #128, #129, #130, #134
-- ADRs: [ADR-0029](../adr/0029-observability-topology-and-telemetry-data-rule.md), [ADR-0020](../adr/0020-aws-cloudfront-s3-edge-and-backups.md), [ADR-0024](../adr/0024-mvp-ecs-task-layout-and-cloudfront-origin.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md)
+- Issue: #125 (spec); implemented in #126, #127, #128, #129, #130, #134, #165
+- ADRs: [ADR-0029](../adr/0029-observability-topology-and-telemetry-data-rule.md), [ADR-0033](../adr/0033-host-metrics-from-alloy-container-metrics-from-ecs-task-stats.md), [ADR-0020](../adr/0020-aws-cloudfront-s3-edge-and-backups.md), [ADR-0024](../adr/0024-mvp-ecs-task-layout-and-cloudfront-origin.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md)
 - Parent: [privacy spec](privacy-consent-retention.md) (`TM-1`, `TM-2`), [data connections](../architecture/data-connections.md) (`DC-3`)
 - Status: draft
 
@@ -31,7 +31,7 @@ Deny by default. Only keys in the allowlist in `src/engine/telemetry.py` are exp
 
 Metric labels are a closed set (stage, state, outcome, channel, model, environment). `run_id` and `proposal_id` are span attributes, never metric labels.
 
-APM spans keep the SQL statement shape without parameters, and outbound HTTP spans keep only the host and route template. Alloy sends only metrics on its allowlist (host CPU, memory, disk, network; per-container CPU, memory, restarts; PostgreSQL up, connections, database size), not logs, and runs with a hard memory limit.
+APM spans keep the SQL statement shape without parameters, and outbound HTTP spans keep only the host and route template. Alloy sends only metrics on its allowlist (host CPU, memory, load, root disk; PostgreSQL up, connections, database size in #166), not logs, and runs with a hard memory limit. Per-container CPU, memory, network, and restarts come from ECS task stats, read by the worker (ADR-0033); there is no host network metric.
 
 ## Export caps
 
@@ -79,7 +79,9 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Graf
 | OBS-15 | An operator decision is an `aorte.approval` event in the run's trace and carries the decision code only (ADR-0032). | `test_operator_decision_event_has_code_only` |
 | OBS-17 | A run's root spans use the run UUID as trace ID, so one run is one trace across processes; other spans keep random IDs. | `test_run_spans_share_one_trace_named_by_the_run` |
 | OBS-18 | Langfuse receives only the run spans (never the scan), under its own daily unit cap; tokenized text only there and only with `TELEMETRY_EVAL_TEXT=YES`, after a contact and secret scan. | `test_langfuse_gets_run_spans_only_never_the_scan`, `test_langfuse_unit_cap_is_separate_from_the_grafana_cap`, `test_text_reaches_only_langfuse_and_only_when_enabled`, `test_text_with_a_contact_is_dropped_even_when_enabled` |
-| OBS-19 | Alert rules stay quiet while the stack is stopped: every rule treats no data as OK, every rule is scoped to `aws-mvp`, and "worker missing" fires only while the approval API reports `aorte.process.up` (peer presence, #163). | `test_alert_rules_are_quiet_while_stopped`, `test_every_process_reports_up_for_peer_presence` |
+| OBS-19 | Alert rules stay quiet while the stack is stopped: every rule treats no data as OK, every rule is scoped to `aws-mvp`, and "worker missing" fires only while the approval API reports `aorte.process.up` or Alloy reports the host (peer presence, #163, ADR-0033). | `test_alert_rules_are_quiet_while_stopped`, `test_every_process_reports_up_for_peer_presence` |
+| OBS-20 | On ECS the worker exports per-container CPU time, memory in use, network bytes, and restarts from the task metadata endpoint, only for the core task's long-running containers (closed label set), with no APM span for the reads; a failed or malformed read reports nothing and never raises; outside ECS nothing is registered, and a non-local endpoint fails closed. | `test_container_gauges_closed_labels`, `test_container_stats_failures_report_nothing`, `test_container_stats_off_outside_ecs_and_fail_closed`, `test_metadata_reads_make_no_apm_spans` |
+| OBS-21 | The long-running containers have an ECS restart policy (`restartAttemptPeriod` 300 s); the one-shot `initialize` and `model-sync` have none (ADR-0033). | `test_restart_policy_on_long_running_containers` |
 | OBS-16 | The worker reports seconds since its last finished scan page and the runtime state (unreadable counts as `halted`); the API answers `/healthz` only to loopback clients, outside the edge prefix, with `ok` or `unavailable` and nothing else. | `test_worker_heartbeat_tracks_completed_scan_pages`, `test_health_gauges_report_liveness_and_runtime_state`, `test_unreadable_runtime_state_reports_halted`, `test_health_endpoint_is_loopback_only_and_reveals_nothing` |
 
 ## Behavior
@@ -96,7 +98,8 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Graf
 - Langfuse and Grafana behavior above the free limits is not stated in official docs (`F-010`, `F-011`). No payment method on either account, and the caps in code (OBS-8, OBS-13, OBS-14), so the risk does not depend on that behavior; usage is measured in #133.
 - The relay may not forward the `Authorization` header; #129 checks it first, and the fallback is split mode (ADR-0029).
 - The OTel Python logs API is still under `_logs`. Pin the version; stdout logs stay as the fallback.
-- SDK and Alloy memory on the 4 GiB host is measured (#126, #134) before the AWS rollout; Alloy's limit comes from that measurement.
+- SDK and Alloy memory on the 4 GiB host is measured (#126, #134, #165) before the AWS rollout; Alloy's limit comes from that measurement (`F-098`).
+- The restart policy changes failure behavior (ADR-0033): not stated in the docs and checked live in #133 are whether a failed health check restarts a container and how `dependsOn` acts on a restart (`F-099`).
 - Auto-instrumentation libraries may add attributes in a new version; the allowlist drops them (OBS-1), and versions are pinned.
 - `approval-api` is an essential container, so three failed health checks make ECS replace the whole core task (the databases keep their data on the host volume). A database outage therefore restarts the task; `startPeriod` is 60 s. Watch restarts in #127 and #133.
 
@@ -146,10 +149,19 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 ## Implementation notes (#163)
 
 - Five Grafana-managed rules in `deploy/terraform/grafana/alerts.tf` (group `aorte-engine`, folder `aorte`, every 60 s): worker scan stale (age above 3 scan intervals, 180 s, for 2 min), worker missing (API up and no worker data, for 5 min), held effects above 0, runtime state not `active`, telemetry dropped at the daily cap. Email contact point `aorte-owner-email`, attached on each rule; the stack-wide notification policy is not managed here.
-- Quiet while stopped (owner decision 2026-11-26, peer presence): the stop scripts and the nightly scheduler stop the whole instance, so nothing reports; no data is OK. Every engine process reports `aorte.process.up` (`aorte_process_up_ratio` in Grafana), so a worker that stops reporting while the API runs is told apart from a stopped stack. Known gap: a whole-stack failure while the instance runs also looks like a stop; the start smoke covers it, and Alloy host metrics (#165) can join the peer condition later.
+- Quiet while stopped (owner decision 2026-11-26, peer presence): the stop scripts and the nightly scheduler stop the whole instance, so nothing reports; no data is OK. Every engine process reports `aorte.process.up` (`aorte_process_up_ratio` in Grafana), so a worker that stops reporting while the API runs is told apart from a stopped stack. Since #165 Alloy's host load is a second peer, so a failure of both engine processes while the instance runs also fires.
 - Free plan only (owner, 2026-11-26; `F-096`): few rules, one email contact point, no trial-only products. The trial's knowledge graph created 617 rules of its own (`F-096`); nothing here depends on them.
 - Applied 2026-11-26 (plan `84b34b96fa7c`, no drift). With the stack stopped, all five rules were `Normal (NoData)` from 16:48:50 to 16:53:50 UTC.
 - `alert_test_mode` (default false) lowers the held-effects and drops thresholds for the #133 fire tests; it is applied and reverted through `tf_safe.sh`. Fire-test steps: [grafana runbook](../runbooks/grafana.md#alerts).
+
+## Implementation notes (#165)
+
+- ADR-0033. Alloy `v1.22.0` (`F-098`), mirrored to ECR as `alloy`; config in `deploy/alloy/config.alloy`, passed to the ECS container in `ALLOY_CONFIG` and written to a tmpfs at start; `--disable-reporting`; read-only root; host `/proc` and `/sys` read-only. Collectors `cpu`, `meminfo`, `loadavg`, `filesystem`; allowlist of 7 metric names, CPU modes `idle`, `user`, `system`, `iowait`, `steal`, filesystem `/` only; resource keys `service.name=aorte-alloy` and `deployment.environment.name`. About 16 series on the 2-vCPU host.
+- The root disk is read through Alloy's own overlay root, which reports the volume it lives on (measured: same size and free bytes as the host `/`), so the host root is not mounted.
+- `engine.container_stats` (worker only): `aorte.container.cpu.time` (s, counter), `aorte.container.memory.usage` (By, usage minus inactive page cache, like `docker stats`), `aorte.container.network.io` (By, counter, `aorte.direction` rx or tx), `aorte.container.restarts` (gauge, only when ECS reports `RestartCount`), label `aorte.container`. One read of `/task` and `/task/stats` per export (cached 15 s, 2 s timeout), outside APM. About 40 series.
+- Restart policy `{enabled = true, restartAttemptPeriod = 300}` on the 8 long-running containers. Compose has the Alloy service under the `observability` profile; Compose has no restart policy change.
+- Alloy memory (`F-098`): peak 61.0 MiB locally over 15 minutes with the full pipeline; hard limit 128 MiB (`alloy_memory_mib`). The `mvp` plan `9f8f794a1197` (Alloy container, ECR repository, restart policy, and the #134 APM settings; 3 to add, 1 replaced) was reviewed on 2026-11-26 and is re-planned and applied in #133 before the rollout.
+- Grafana: a "Host and containers" row (host CPU busy, memory available, root disk free, load; container CPU, memory, network, restarts) and the second peer in "worker missing"; plan `1cd7db92b390` applied 2026-11-26, no drift. Live checks in #133.
 
 ## Open questions
 

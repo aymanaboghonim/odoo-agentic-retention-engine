@@ -38,10 +38,11 @@ def test_alert_rules_are_quiet_while_stopped() -> None:
     # Every rule: no data is OK, so a stopped stack (no data at all) never fires.
     assert TEXT.count('no_data_state  = "OK"') == 1 and 'dynamic "rule"' in TEXT
     assert 'no_data_state  = "NoData"' not in TEXT and '"Alerting"' not in TEXT
-    # Peer presence: worker missing needs the approval API to be reporting.
+    # Peer presence: worker missing needs the approval API or Alloy (ADR-0033) to be reporting.
     missing = found["worker_missing"]["expr"]
     assert "aorte_process_up_ratio" in missing and "aorte-approval-api" in missing
-    assert "unless on()" in missing
+    assert 'node_load1{service_name="aorte-alloy"' in missing
+    assert ") unless on() count(aorte_worker_last_scan_age_seconds" in missing
     # Every rule is scoped to the AWS environment, so local and eval runs never alert.
     for key, rule in found.items():
         assert 'deployment_environment_name=\\"aws-mvp\\"' in rule["expr"] or (

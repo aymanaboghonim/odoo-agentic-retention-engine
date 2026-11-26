@@ -1,6 +1,6 @@
 # ADR-0029: Observability topology and telemetry data rule
 
-- Status: accepted; decision 5 (operator decision codes as Langfuse scores) superseded in part by [ADR-0032](0032-operator-decisions-as-trace-events-one-trace-per-run.md)
+- Status: accepted; decision 5 (operator decision codes as Langfuse scores) superseded in part by [ADR-0032](0032-operator-decisions-as-trace-events-one-trace-per-run.md); decision 3 (the Alloy scope) superseded in part by [ADR-0033](0033-host-metrics-from-alloy-container-metrics-from-ecs-task-stats.md)
 - Date: 2026-11-19
 - Issue: #125
 - Supersedes in part: [ADR-0020](0020-aws-cloudfront-s3-edge-and-backups.md) decision 1 (how telemetry reaches Grafana Cloud and Langfuse Cloud, and what it may carry). The vendors stay; the rest of ADR-0020 stays.

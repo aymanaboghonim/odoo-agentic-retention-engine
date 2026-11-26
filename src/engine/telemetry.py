@@ -147,6 +147,18 @@ OUTCOMES = (
     "created",
 )
 
+# ADR-0033: the long-running containers of the core task (deploy/terraform/mvp/ecs.tf). Their
+# names are the only values of the container label; any other container is not reported.
+CONTAINERS = (
+    "odoo-db",
+    "odoo",
+    "engine-db",
+    "worker",
+    "approval-api",
+    "mailpit",
+    "operator",
+    "alloy",
+)
 HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 # #134: instrumentation span names are kept only in these shapes: an HTTP method with an
 # optional route template (never a raw path), or an SQL keyword with an optional database name.
@@ -254,6 +266,8 @@ METRIC_LABELS: Mapping[str, Validator] = {
     "aorte.reason": _enum("daily_cap", "filtered", "export_failed"),
     "gen_ai.request.model": _pattern(r"[a-z0-9][a-z0-9._-]{0,63}"),
     "gen_ai.token.type": _enum("input", "output"),
+    "aorte.container": _enum(*CONTAINERS),
+    "aorte.direction": _enum("rx", "tx"),
 }
 
 # name -> (kind, unit, description)
@@ -659,6 +673,28 @@ def observable_gauge(
         )
     except Exception:  # noqa: BLE001
         LOG.debug("telemetry gauge registration failed")
+
+
+def observable_counter(
+    name: str,
+    unit: str,
+    description: str,
+    read: Callable[[], Iterable[tuple[int | float, Mapping[str, object]]]],
+) -> None:
+    """Register a cumulative counter read at export time (for example CPU seconds). Never raises."""
+
+    def callback(_options: CallbackOptions) -> Iterable[Observation]:
+        try:
+            return [Observation(value, _labels(labels)) for value, labels in read()]
+        except Exception:  # noqa: BLE001
+            return []
+
+    try:
+        _STATE.meter.create_observable_counter(
+            name, callbacks=[callback], unit=unit, description=description
+        )
+    except Exception:  # noqa: BLE001
+        LOG.debug("telemetry counter registration failed")
 
 
 # ---------------------------------------------------------------- safe exporters

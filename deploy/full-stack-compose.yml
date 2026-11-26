@@ -143,6 +143,25 @@ services:
       - "127.0.0.1:${FULL_STACK_MAILPIT_PORT:-18025}:8025"
     networks: [private, ingress]
 
+  # ADR-0033, OBS-14: host metrics only (read-only /proc and /sys; no Docker socket, no host
+  # root). Off by default: `--profile observability` with the Grafana settings exported.
+  alloy:
+    profiles: [observability]
+    image: grafana/alloy:v1.22.0@sha256:9acc2529bc1edb7f5b2bd801dd8334ebc80c158e3a9e5526ecd7c9a273d43189
+    command: [run, --disable-reporting, --storage.path=/tmp/data, /etc/alloy/config.alloy]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 128m
+    environment:
+      GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:-}
+      GRAFANA_OTLP_TOKEN: ${GRAFANA_OTLP_TOKEN:-}
+      TELEMETRY_ENVIRONMENT: ${TELEMETRY_ENVIRONMENT:-local}
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    networks: [egress]
+
   proposal:
     profiles: [proposal]
     build:

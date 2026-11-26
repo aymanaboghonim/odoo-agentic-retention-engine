@@ -41,6 +41,13 @@ def test_dashboard_has_the_required_panels() -> None:
         ("API requests per route", "http_server_request_duration"),  # #134
         ("API 5xx error ratio", "http_server_request_duration"),
         ("API P95 latency per route", "http_server_request_duration"),
+        ("Host CPU busy", "node_cpu_seconds_total"),  # #165, ADR-0033
+        ("Host memory available", "node_memory_MemAvailable_bytes"),
+        ("Host root disk free", "node_filesystem_avail_bytes"),
+        ("Container CPU", "aorte_container_cpu_time"),
+        ("Container memory", "aorte_container_memory_usage"),
+        ("Container network", "aorte_container_network_io"),
+        ("Container restarts", "aorte_container_restarts"),
     ):
         panels = [p for p in PANELS if fragment in p["title"]]
         assert panels, fragment
@@ -71,6 +78,8 @@ def test_queries_use_variables_and_bounded_labels() -> None:
                             "aorte_reason",
                             "http_route",
                             "le",
+                            "aorte_container",
+                            "aorte_direction",
                         }
 
 

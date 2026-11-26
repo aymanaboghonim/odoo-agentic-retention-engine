@@ -50,13 +50,13 @@ Then open the dashboard (last hour), find the check in "Export checks", and clic
 
 ## Alerts
 
-Five rules in `alerts.tf` email the owner (contact point `aorte-owner-email`). They stay quiet while the stack is stopped (OBS-19): no data is OK, and "worker missing" needs the approval API to be reporting.
+Five rules in `alerts.tf` email the owner (contact point `aorte-owner-email`). They stay quiet while the stack is stopped (OBS-19): no data is OK, and "worker missing" needs the approval API or Alloy's host metrics to be reporting (ADR-0033).
 
 Fire tests (in the #133 session, stack running, deployed from `main`):
 
 | Rule | How to trigger | Then |
 | :-- | :-- | :-- |
-| Worker reports no data while the API runs | on the host over SSM: `docker pause <worker container>` | `docker unpause`; it resolves |
+| Worker reports no data while the API or host runs | on the host over SSM: `docker pause <worker container>` (a pause is not an exit, so the restart policy does not act) | `docker unpause`; it resolves |
 | Worker scan is stale | on the host: `docker pause <odoo-db container>` for 4 minutes (scans fail, the worker keeps reporting) | `docker unpause` |
 | Runtime state is not active | admin API: set `fallback_fixed_rule` with a reason | set `active` again |
 | Held effects above 0, telemetry dropped at the daily cap | `alert_test_mode = true` in `terraform.tfvars`, plan and apply | set it back to `false`, plan and apply |
