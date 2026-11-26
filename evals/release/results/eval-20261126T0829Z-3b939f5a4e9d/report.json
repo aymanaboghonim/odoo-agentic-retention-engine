@@ -1,0 +1,90 @@
+{
+  "actual_usd": "0.013630125000",
+  "commit": "c20632bc54ae5062a3d242ba7ca27ac609f0e7b8",
+  "completed_at": "2026-11-26T08:33:09.695522+00:00",
+  "fingerprint": "3b939f5a4e9d1e1163cf9bb9a4aed7512e7e28f780a5c3c7c11103aed2961c67",
+  "fingerprint_inputs": {
+    "files": {
+      "evals/llm/s2_golden_set.json": "50e8af9ec97bffbd334e121e8549664ca08cae3e5a9bf7d7e8f333fe3e3ecd6d",
+      "evals/llm/s2_reviews.json": "61a4dccaa4c350518b5165143e2c8fbb51ed296140d0130d30dfb8f22d4d816f",
+      "evals/release/heldout_cases.json": "1e83da6df2230075f9fea16a9e435c9650bc86c70b98f645d96d8a61a38129ff",
+      "policies/synthetic.json": "2fbd95a8c0580cd3e49f2b770508e8f3721f621356f8a169675a1866411dec41",
+      "scripts/poc2_evaluation_cases.py": "b12bf59b800e17984eb8ce3d606140b8ae70ec6fb3f0f4035c4a56187af6318c",
+      "scripts/poc2_evaluation_live.py": "3b88ee03e94f92e168d1e3a98b2b1397b735baf364e2d73f7e8d8f2896471aaf",
+      "scripts/poc2_evaluation_runner.py": "e3fb46909d8f99dc4cf2088fa979eafd1898f864083cc6da4c0bf31ef00567d0",
+      "scripts/release_gate_cases.py": "c23359f27364dbffdeed886227022b08b26f5a0f469d69fc5460aef3fd41d807",
+      "scripts/release_gate_ci.py": "912a5a879e668f271e1e2066763cd7b12b9aa799844767f8479fc7e73946a9a8",
+      "scripts/release_gate_eval.py": "58394856e5d747d7b8ab26fb4198115970a60a2d9b0d276d9013c85f28ff53a6",
+      "scripts/release_gate_gates.py": "20b763e68285439fe3403e806f9ebeb256a01515ceeb3da09410dcf79ddc1237",
+      "scripts/s2_llm_eval.py": "82d7fa2b3c84521e8fb3fc837bfa7bf91a1410b5e25c0bad03f453e99dad8469",
+      "src/engine/capacity_proposal.py": "7d8afadf26b173ea64dde732ba2a95cf4cc9dd17127fcee6b1f7ea7e7223d7cb",
+      "src/engine/fixed_rule.py": "511af563fc0f242a3df66ab5d54f3557a11f1a007cef36eba4d58df4c6af41d2",
+      "src/engine/full_stack_proposal.py": "2046357b4a02afd976162b2ba71277aaaa624c03d8426d2b4ce235efe8e0c14f",
+      "src/engine/gate_ledger.py": "7ca42e5e6e554db7ba2ed6d6adb79af9a6c13f0ffe93dbe131d5a3ba4b68b588",
+      "src/engine/policy.py": "f45b1363248d24de99400c3dc8721502fc80f6b07d32d297169206b3cc3cda5c",
+      "src/engine/privacy.py": "1a6933b8bed3ae61efaeda5c79fc5f29832deee27ac214715ae2213357ebb392",
+      "src/engine/proposal.py": "48da655b58a22a814a2518f07b562d1dc585c3786874c150acf682ead80658b6",
+      "src/engine/proposal_budget.py": "cb3dd47ab2ab31c9ba0660f243b641a191dfec6fc4dcef9399bf6dad1763ac5e",
+      "src/engine/proposal_provider.py": "7efb6cea9a8b26e84b1af5950b980e32f89904bc6f0fd63b2dd08fc00758e971",
+      "src/engine/retrieval.py": "3347e5a7f59dce7d640f90097cb0de7e56a60290a6887d51fef32dc973165199"
+    },
+    "input_token_limit": 4000,
+    "model": "gpt-6-luna",
+    "output_token_limit": 8192,
+    "prompt_version": "proposal-v3-consent-and-facts",
+    "schema": 1
+  },
+  "kind": "live-evaluation",
+  "langfuse": {
+    "expected_generations": 108,
+    "generations": 108,
+    "status": "complete",
+    "total_cost_usd": "0.013630125",
+    "traces": 108
+  },
+  "model": "gpt-6-luna",
+  "policy_model_id": "Qdrant/multilingual-e5-large-onnx@ac6781cd1cf88b8306a536d7c9d18a5bd57cc14b",
+  "prompt_version": "proposal-v3-consent-and-facts",
+  "quality_pass": false,
+  "reserved_usd": "0.496368000000",
+  "run_ceiling_usd": "1.90",
+  "safety_pass": true,
+  "schema": 1,
+  "sets": {
+    "heldout": {
+      "actual_usd": "0.005758375000",
+      "budget_ceiling_usd": "0.90",
+      "cases": 44,
+      "gates": {
+        "G1": true,
+        "G2": true,
+        "G3": true,
+        "G4_G5": false
+      },
+      "quality_pass": false,
+      "report": "heldout-evaluation/README.md",
+      "reserved_usd": "0.206820000000",
+      "review_id": "ci-eval-heldout",
+      "safety_pass": true,
+      "smoke_report": "heldout-smoke/README.md"
+    },
+    "reviewed": {
+      "actual_usd": "0.007871750000",
+      "budget_ceiling_usd": "1.00",
+      "cases": 62,
+      "gates": {
+        "G1": true,
+        "G2": true,
+        "G3": true,
+        "G4_G5": true
+      },
+      "quality_pass": true,
+      "report": "reviewed-evaluation/README.md",
+      "reserved_usd": "0.289548000000",
+      "review_id": "ci-eval-reviewed",
+      "safety_pass": true,
+      "smoke_report": "reviewed-smoke/README.md"
+    }
+  },
+  "workflow_run_id": "45783205042"
+}
