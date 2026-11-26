@@ -63,6 +63,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: facts-sources
+        name: check facts sources (official or measured only)
+        entry: uv run --no-sync python scripts/check_facts_sources.py
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: terraform
         name: terraform fmt, validate, and policy (INF-1..INF-7)
         entry: bash scripts/check_terraform.sh

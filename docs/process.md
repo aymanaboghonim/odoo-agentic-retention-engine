@@ -16,7 +16,7 @@ Rule: if it is not written in a file in this repo, it does not exist. Chat and a
    A plan is not durable until it is written into the repo (STATUS, specs, issues).
    Rules live in one `AGENTS.md`, which `CLAUDE.md` imports. Domain knowledge and procedures (PR workflow, ADRs, specs, facts, RAG eval, local test database) live in focused skills in `.claude/skills/`, invoked with the `Skill` tool. File-specific lessons live in path-scoped rules in `.claude/rules/`. `scripts/check_agent_config.py` keeps these consistent in CI.
    Custom agents are deferred (see below). Do not create one agent per domain.
-7. **Verify volatile facts.** Prices, model names, limits and versions come from official docs, with URL and date, in [facts-register.md](facts-register.md).
+7. **Verify volatile facts.** Prices, model names, limits and versions come from official sources or our own measurements, with URL and date, in [facts-register.md](facts-register.md). Official means the vendor's or project's own documentation, pricing pages, release notes, changelogs or blog, source repository, and API responses. Forum posts, community answers, third-party blogs, reviews, and AI answers are never evidence, whatever their date; they may only point to where to look. A measurement records its method and command. When no official source states a value, the row says "unknown (not stated in official docs)" and the design must not depend on it. `scripts/check_facts_sources.py` enforces the source rules in `make ci` (#136).
 
 ### Deferred: custom agents
 
