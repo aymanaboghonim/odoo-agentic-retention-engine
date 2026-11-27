@@ -36,6 +36,13 @@ locals {
       above   = 0
       for     = "1m"
     }
+    reconcile_unverified = {
+      title   = "Held run closed unverified"
+      summary = "The reconcile stage closed a held run at the deadline without evidence (#132, ADR-0030): the coupon stays active and nothing was resent; check the run."
+      expr    = "sum(increase({__name__=~\"aorte_reconcile_resolutions.*_total\",aorte_resolution=\"unverified\",${local.env}}[1h]))"
+      above   = local.test_floor
+      for     = "0s"
+    }
     telemetry_cap = {
       title   = "Telemetry dropped at the daily cap"
       summary = "An export cap was reached; telemetry stops until the next UTC day (OBS-13)."

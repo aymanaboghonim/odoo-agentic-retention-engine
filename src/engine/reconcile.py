@@ -54,6 +54,7 @@ class HeldEffect:
     updated_at: datetime
     channel: Literal["telegram", "mailpit"]
     message_id: str | None
+    evidence: Evidence | None = None  # latest from the worker stage (#132)
 
     def public(self, now: datetime) -> dict[str, object]:
         """REC-11: codes, counts, and ages only. Never the Message-ID, a name, or a destination."""
@@ -64,6 +65,7 @@ class HeldEffect:
             "age_minutes": max(int((now - self.updated_at).total_seconds() // 60), 0),
             "channel": self.channel,
             "message_id_stored": self.message_id is not None,
+            "evidence": self.evidence,
         }
 
 
@@ -80,3 +82,91 @@ def held_runs_view(effects: list[HeldEffect], now: datetime) -> list[dict[str, o
         }
         for run_id, items in grouped.items()
     ]
+
+
+# ---------------------------------------------------------------- #132 resolution rules
+
+Resolution = Literal["confirmed", "not_sent"]
+Basis = Literal["evidence", "attestation"]
+# Run results of a resolution (REC-4, REC-9); also the `aorte.resolution` metric label values.
+RESOLUTIONS = (
+    "completed",
+    "message_not_sent",
+    "coupon_not_created",
+    "unverified",
+    "decision_rejected",
+    "coupon_deactivated",
+)
+STAGE_KEY = "RECONCILE_STAGE"
+INTERVAL_KEY = "RECONCILE_INTERVAL_MINUTES"
+DEADLINE_KEY = "RECONCILE_DEADLINE_HOURS"
+
+
+@dataclass(frozen=True)
+class StageSettings:
+    """The worker stage (#132). `RECONCILE_STAGE` is required (YES or NO, no default); with
+    YES the interval and deadline are required too (fail closed)."""
+
+    interval_minutes: int
+    deadline_hours: int
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> StageSettings | None:
+        flag = env.get(STAGE_KEY, "").strip()
+        if flag == "NO":
+            return None
+        if flag != "YES":
+            raise ReconcileConfigError(f"{STAGE_KEY} must be YES or NO")
+        values = {}
+        for key, high in ((INTERVAL_KEY, 24 * 60), (DEADLINE_KEY, 30 * 24)):
+            raw = env.get(key, "").strip()
+            if not raw.isdigit() or not 1 <= int(raw) <= high:
+                raise ReconcileConfigError(f"{key} must be an integer from 1 to {high}")
+            values[key] = int(raw)
+        return cls(interval_minutes=values[INTERVAL_KEY], deadline_hours=values[DEADLINE_KEY])
+
+    def deadline_before(self, now: datetime) -> datetime:
+        return now - timedelta(hours=self.deadline_hours)
+
+
+@dataclass(frozen=True)
+class RunOutcome:
+    state: Literal["executing", "completed", "failed"]
+    reason: str | None  # failure reason or completion outcome
+    resolution: str | None  # metric label (RESOLUTIONS)
+    orphan_coupon: bool = False
+
+
+def run_outcome(statuses: Mapping[str, str], *, needs_coupon: bool, deadline: bool) -> RunOutcome:
+    """The run's result once its effects are resolved (ADR-0030 decisions 2, 4, 5).
+
+    An effect still `unknown` or `started` keeps the run held, unless the deadline passed:
+    then the run fails as `reconciled_unverified` and a confirmed coupon stays active.
+    """
+    if any(status in {"unknown", "started"} for status in statuses.values()):
+        if deadline:
+            return RunOutcome("failed", "reconciled_unverified", "unverified")
+        return RunOutcome("executing", None, None)
+    coupon, message = statuses.get("coupon"), statuses.get("message")
+    if needs_coupon and coupon != "confirmed":
+        return RunOutcome("failed", "reconciled_coupon_not_created", "coupon_not_created")
+    if message == "confirmed":
+        outcome = "coupon_and_message_confirmed" if needs_coupon else "message_confirmed"
+        return RunOutcome("completed", outcome, "completed")
+    # The message was proven not sent, or never started (the execution stopped at the coupon).
+    return RunOutcome(
+        "failed", "reconciled_message_not_sent", "message_not_sent", orphan_coupon=needs_coupon
+    )
+
+
+def accept_decision(decision: Resolution, basis: Basis, evidence: Evidence) -> bool:
+    """REC-6: `confirmed` needs `present` or an attestation; `not_sent` needs `absent` or an
+    attestation. An attestation never overrides definitive evidence to the contrary."""
+    if decision == "confirmed":
+        return evidence == "present" or (basis == "attestation" and evidence != "absent")
+    return evidence == "absent" or (basis == "attestation" and evidence != "present")
+
+
+def evidence_resolution(evidence: Evidence) -> Resolution | None:
+    """REC-4: only definitive evidence resolves without a person."""
+    return {"present": "confirmed", "absent": "not_sent"}.get(evidence)  # type: ignore[return-value]

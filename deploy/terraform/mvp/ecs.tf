@@ -135,17 +135,28 @@ locals {
       restartPolicy     = local.restart_policy
       memoryReservation = 512
       command           = ["python", "-m", "engine.full_stack_worker"]
-      environment       = [for k, v in local.env : { name = k, value = v }]
+      environment = concat(
+        [for k, v in local.env : { name = k, value = v }],
+        [
+          # #132 (owner, 2026-11-27): the reconcile stage reads Odoo and Mailpit and may only
+          # deactivate a proven orphan coupon in Odoo (ADR-0012, ADR-0030).
+          { name = "ODOO_URL", value = "http://odoo:8069" },
+          { name = "ODOO_DB_NAME", value = "odoo" },
+          { name = "ODOO_ALLOWED_HOSTS", value = "odoo" },
+          { name = "RECONCILE_MAILPIT_API_URL", value = "http://mailpit:8025" },
+        ],
+      )
       secrets = [
         { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },
         { name = "ODOO_READONLY_DATABASE_URL", valueFrom = "${local.param_arn}/odoo-readonly-url" },
         { name = "PRIVACY_TOMBSTONE_PEPPER", valueFrom = "${local.param_arn}/privacy-tombstone-pepper" },
+        { name = "ODOO_API_KEY", valueFrom = "${local.param_arn}/odoo-api-key" }, # #132
         { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
         { name = "LANGFUSE_PUBLIC_KEY", valueFrom = "${local.param_arn}/langfuse-public-key" },
         { name = "LANGFUSE_SECRET_KEY", valueFrom = "${local.param_arn}/langfuse-secret-key" },
         { name = "TELEMETRY_RELAY_KEY", valueFrom = "${local.param_arn}/telemetry-relay-key" },
       ]
-      links            = ["odoo-db:odoo-db", "engine-db:engine-db"]
+      links            = ["odoo-db:odoo-db", "engine-db:engine-db", "odoo:odoo", "mailpit:mailpit"]
       dependsOn        = [{ containerName = "initialize", condition = "SUCCESS" }]
       logConfiguration = local.log_config
     },

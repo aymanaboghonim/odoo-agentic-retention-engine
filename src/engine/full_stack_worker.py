@@ -18,9 +18,17 @@ from engine import container_stats, telemetry
 from engine.breaker import BreakerSettings, run_breaker
 from engine.config import EngineConfig
 from engine.db import RunRepository, create_engine
-from engine.odoo import OdooReader
+from engine.odoo import JsonTwoClient, OdooReader, OdooSettings
 from engine.privacy import CONSENT_CHANNELS, ConsentChannel, PrivacySettings
-from engine.reconcile import ReconcileSettings
+from engine.reconcile import ReconcileSettings, StageSettings
+from engine.reconcile_evidence import (
+    TIMEOUT_SECONDS,
+    CouponDeactivator,
+    CouponLookup,
+    MailpitLookup,
+    mailpit_api_url,
+)
+from engine.reconcile_stage import ReconcileStage
 from engine.runtime_state import RuntimeGuard, RuntimeStateRepository
 from engine.synthetic_scan import ErpCartScanner, SyntheticCartScanner
 from engine.worker import GuardedScan, Heartbeat, ScanPage, run_scheduled_scans
@@ -152,6 +160,7 @@ def main(argv: list[str] | None = None) -> None:
     settings = WorkerSettings.from_env(os.environ)
     breaker_settings = BreakerSettings.from_env(os.environ)  # None = off; invalid fails closed
     reconcile = ReconcileSettings.from_env(os.environ)  # #131: required, fail closed
+    stage_settings = StageSettings.from_env(os.environ)  # #132: RECONCILE_STAGE required
     tel = telemetry.configure_from_env(os.environ, service_name="aorte-worker")  # OBS-6
     reader = OdooReader(settings.odoo_url)
     if settings.scan_mode == "erp":
@@ -170,6 +179,11 @@ def main(argv: list[str] | None = None) -> None:
         scanner = GuardedScan(build_scanner(settings, engine, reader), guard, heartbeat)
         repo = RunRepository(engine)
         register_run_gauges(repo, reconcile)
+        stage = (
+            build_reconcile_stage(repo, reconcile, stage_settings, os.environ)
+            if stage_settings is not None
+            else None
+        )
         register_health_gauges(heartbeat, guard)
         container_stats.register(os.environ)  # ADR-0033: on ECS only
 
@@ -180,6 +194,9 @@ def main(argv: list[str] | None = None) -> None:
                 logging.info("stage=expire-approvals cancelled=%d", cancelled)
             # Spec KS-5: may trip active to fallback_fixed_rule; never re-enables.
             run_breaker(engine, runtime, breaker_settings, now=datetime.now(UTC))
+            # #132, ADR-0030: resolve held runs every RECONCILE_INTERVAL_MINUTES; never resends.
+            if stage is not None:
+                stage.maybe_run(datetime.now(UTC))
 
         if args.once:
             maintenance()
@@ -195,6 +212,24 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         engine.dispose()
         tel.shutdown()
+
+
+def build_reconcile_stage(
+    repo: RunRepository,
+    reconcile: ReconcileSettings,
+    stage_settings: StageSettings,
+    env: Mapping[str, str],
+) -> ReconcileStage:
+    """All stage settings are validated at startup (fail closed), before the first scan."""
+    client = JsonTwoClient(OdooSettings.from_env(env), timeout=TIMEOUT_SECONDS)
+    return ReconcileStage(
+        repo,
+        reconcile,
+        stage_settings,
+        CouponLookup(client.call),
+        MailpitLookup(mailpit_api_url(env)),
+        CouponDeactivator(client).deactivate,
+    )
 
 
 def register_health_gauges(heartbeat: Heartbeat, guard: RuntimeGuard) -> None:

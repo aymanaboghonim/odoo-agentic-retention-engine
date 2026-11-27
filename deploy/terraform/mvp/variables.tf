@@ -149,6 +149,11 @@ variable "reconcile_settings" {
   default = {
     # A `started` effect older than this is crash-left and counts as held (spec: Definitions).
     RECONCILE_STALE_STARTED_MINUTES = "30"
+    # #132 (owner, 2026-11-27): the worker stage runs every 10 minutes and closes a run still
+    # unverified after 24 hours as failed (reconciled_unverified); never a resend.
+    RECONCILE_STAGE            = "YES"
+    RECONCILE_INTERVAL_MINUTES = "10"
+    RECONCILE_DEADLINE_HOURS   = "24"
   }
 }
 

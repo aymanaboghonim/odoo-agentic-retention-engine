@@ -3,7 +3,7 @@
 - Issue: #125 (spec); implemented in #131 (evidence and API) and #132 (automatic and admin resolution)
 - ADRs: [ADR-0030](../adr/0030-execution-reconciliation-without-resend.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md), [ADR-0027](../adr/0027-operator-container-in-core-task.md)
 - Parent: [gated execution](gated-execution.md) (`EX-4`), [operator RBAC](operator-rbac-and-expiring-approvals.md)
-- Status: draft; evidence and API implemented in #131
+- Status: implemented in #131 and #132; live checks in #133
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Non-goals: resending or re-queueing any effect; reading Telegram back (no Bot AP
 | message, `mailpit` | Mailpit search `message-id:` (`F-082`) | stored Message-ID |
 | message, `telegram` | none | admin attestation |
 
-Settings (all required, no default, fail closed): `RECONCILE_INTERVAL_MINUTES`, `RECONCILE_STALE_STARTED_MINUTES`, `RECONCILE_DEADLINE_HOURS` (integers `>= 1`). #131 adds `RECONCILE_STALE_STARTED_MINUTES` (1 to 10080; worker, approval API, operator; 30 on AWS) and `RECONCILE_MAILPIT_API_URL` (`reconcile_cli` only; `http://` and a private host); #132 adds the other two.
+Settings (all required, no default, fail closed): `RECONCILE_INTERVAL_MINUTES`, `RECONCILE_STALE_STARTED_MINUTES`, `RECONCILE_DEADLINE_HOURS` (integers `>= 1`). #131 adds `RECONCILE_STALE_STARTED_MINUTES` (1 to 10080; worker, approval API, operator; 30 on AWS) and `RECONCILE_MAILPIT_API_URL` (`reconcile_cli` only; `http://` and a private host); #132 adds the other two and `RECONCILE_STAGE` (`YES` or `NO`, required; AWS `YES` with 10 minutes and 24 hours, Compose `NO`).
 
 ## Invariants
 
@@ -67,6 +67,18 @@ Settings (all required, no default, fail closed): `RECONCILE_INTERVAL_MINUTES`, 
 - `engine.reconcile_cli check` (operator container, `EXEC_MODULES`): coupon by `loyalty.card` `search_read` on the run's code (archived included, exact and unique, else `unknown`); Mailpit by `GET /api/v1/search?query=message-id:"<id>"`, compared exactly, because Mailpit matches substrings (`F-101`); Telegram `attestation_required`. Output: JSON lines with codes only.
 - `engine.erp_cli list`: run ID, state, trigger type, created time (found missing in #140).
 - `scripts/aws_mvp_rollout.sh` refuses a task definition without `RECONCILE_STALE_STARTED_MINUTES` (apply Terraform first, #133). Runbook: [reconciliation.md](../runbooks/reconciliation.md).
+
+## Implementation notes (#132)
+
+- Owner decisions 2026-11-27: one issue; the worker runs the stage and gets the Odoo API key (SSM), the Odoo settings, and links to `odoo` and `mailpit`; 10 minutes and 24 hours on AWS; the live checks move to #133 (deploys run only from `main`).
+- Migration 0015: `execution_effects.evidence`, `evidence_at`, `coupon_deactivated_at`; table `reconcile_decisions` (one open decision per effect, outcome `applied`, `rejected_mismatch`, or `not_held`).
+- `engine.reconcile_stage.ReconcileStage` (worker maintenance, every interval, never raises): evidence for each held effect, then an open admin decision if it matches the evidence (`accept_decision`), else definitive evidence only (`evidence_resolution`); a run whose unresolved effect is older than the deadline fails as `reconciled_unverified`. `RunRepository.resolve_held` does it in one transaction with the run row locked (REC-8); `run_outcome` gives the result: `completed`, `reconciled_message_not_sent` (also when the coupon exists but the message never started), `reconciled_coupon_not_created`, or `reconciled_unverified`.
+- REC-6 is a little stricter than written: an attestation does not override definitive evidence to the contrary (for example `not_sent` while Mailpit has the message).
+- REC-10: `orphan_coupons` lists runs failed as message-not-sent with a confirmed coupon not yet deactivated; `CouponDeactivator` archives the program and card through JSON-2 (`archive_coupon`); a failed call is retried at the next stage.
+- REC-7: `POST /held-runs/{run}/resolve` (admin, `ResolveInput`, reason checked like the runtime reason) only records; a refused call is audited. CLI fallback: `approval_cli held` and `approval_cli resolve`, through the API with a token, instead of `reconcile_cli resolve` from the issue, so the actor is a verified admin.
+- REC-12: run events with the actor and the evidence; counter `aorte.reconcile.resolutions` (label `aorte.resolution`); Grafana alert "Held run closed unverified".
+- The import rule REC-1 also covers `reconcile_evidence` and `reconcile_stage` (no `channels`, `execution`, or LLM provider: REC-5).
+- Grafana plan `e7aff50bb321` (the sixth rule) applied 2026-11-27, no drift. The `mvp` plan `7bdbe1ef0292` (worker access and settings, with the #165 and #166 changes) was reviewed on 2026-11-27 and is re-planned and applied in #133.
 
 ## Open questions
 

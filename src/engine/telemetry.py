@@ -268,6 +268,15 @@ METRIC_LABELS: Mapping[str, Validator] = {
     "gen_ai.token.type": _enum("input", "output"),
     "aorte.container": _enum(*CONTAINERS),
     "aorte.direction": _enum("rx", "tx"),
+    # #132, ADR-0030: engine.reconcile.RESOLUTIONS (repeated here: telemetry is a leaf).
+    "aorte.resolution": _enum(
+        "completed",
+        "message_not_sent",
+        "coupon_not_created",
+        "unverified",
+        "decision_rejected",
+        "coupon_deactivated",
+    ),
 }
 
 # name -> (kind, unit, description)
@@ -278,6 +287,11 @@ METRICS: Mapping[str, tuple[str, str, str]] = {
     "aorte.execution.effects": ("counter", "{effect}", "Execution effect outcomes"),
     "aorte.stage.duration": ("histogram", "s", "Stage duration"),
     "aorte.telemetry.dropped": ("counter", "{item}", "Telemetry items not exported"),
+    "aorte.reconcile.resolutions": (
+        "counter",
+        "{resolution}",
+        "Held runs resolved by the reconcile stage, by result (#132, ADR-0030)",
+    ),
     "aorte.telemetry.check": (
         "counter",
         "{check}",

@@ -34,6 +34,7 @@ def test_alert_rules_are_quiet_while_stopped() -> None:
         "held_effects",
         "runtime_not_active",
         "telemetry_cap",
+        "reconcile_unverified",  # #132
     }
     # Every rule: no data is OK, so a stopped stack (no data at all) never fires.
     assert TEXT.count('no_data_state  = "OK"') == 1 and 'dynamic "rule"' in TEXT
@@ -54,7 +55,7 @@ def test_alert_rules_are_quiet_while_stopped() -> None:
 def test_alert_thresholds_and_test_mode_default_off() -> None:
     found = rules()
     assert found["worker_scan_stale"]["above"] == "${3 * var.scan_interval_seconds}"
-    for key in ("held_effects", "telemetry_cap"):
+    for key in ("held_effects", "telemetry_cap", "reconcile_unverified"):
         assert found[key]["above"] == "${local.test_floor}"
     variables = {k: v for block in parsed("variables.tf")["variable"] for k, v in block.items()}
     assert variables["alert_test_mode"]["default"] is False

@@ -26,6 +26,8 @@ BASE = {
     "telemetry": "import logging\n",
     "reconcile": "import uuid\n",
     "reconcile_cli": "from engine import db, odoo, reconcile\n",
+    "reconcile_evidence": "from engine import odoo, reconcile\n",
+    "reconcile_stage": "from engine import db, reconcile_evidence\n",
 }
 
 
