@@ -75,7 +75,7 @@ RULES = (
     ),
     Rule(
         "REC-1",
-        frozenset({"reconcile", "reconcile_cli"}),
+        frozenset({"reconcile", "reconcile_cli", "reconcile_evidence", "reconcile_stage"}),
         frozenset({"channels", "execution", "proposal_provider"}),
         True,
         "the reconcile check must not reach dispatch, execution, or the LLM (ADR-0030)",

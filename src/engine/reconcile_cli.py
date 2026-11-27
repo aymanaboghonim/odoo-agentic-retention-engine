@@ -19,113 +19,22 @@ dispatch, no engine DB write (REC-1). Resolution is #132.
 from __future__ import annotations
 
 import argparse
-import ipaddress
 import json
-import socket
 import sys
-import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any
-from urllib.parse import urlencode, urlsplit
-from urllib.request import urlopen
 
 from engine.config import EngineConfig
-from engine.coupon_code import coupon_code_for_run
 from engine.db import RunRepository, create_engine
 from engine.odoo import JsonTwoClient, OdooSettings
-from engine.reconcile import Evidence, HeldEffect, ReconcileSettings
-
-MAILPIT_URL_KEY = "RECONCILE_MAILPIT_API_URL"
-TIMEOUT_SECONDS = 10
-
-
-class CouponLookup:
-    """Only `loyalty.card.search_read`; nothing else is ever called (REC-1)."""
-
-    def __init__(self, call: Callable[[str, str, dict[str, object]], object]) -> None:
-        self._call = call
-
-    def evidence(self, run_id: uuid.UUID) -> Evidence:
-        code = coupon_code_for_run(str(run_id))
-        try:
-            cards = self._call(
-                "loyalty.card",
-                "search_read",
-                {
-                    # Archived cards count: #132 may deactivate a coupon that exists.
-                    "domain": [["code", "=", code], ["active", "in", [True, False]]],
-                    "fields": ["id", "code"],
-                    "limit": 2,
-                },
-            )
-        except Exception:  # noqa: BLE001 - REC-3: an error is unknown, never absent
-            return "unknown"
-        if not isinstance(cards, list) or not all(isinstance(card, dict) for card in cards):
-            return "unknown"
-        if not cards:
-            return "absent"
-        if len(cards) == 1 and cards[0].get("code") == code:
-            return "present"
-        return "unknown"  # not unique or not the exact code
-
-
-def mailpit_api_url(env: Mapping[str, str]) -> str:
-    """The private Mailpit HTTP API (Compose service), validated like the SMTP host."""
-    value = env.get(MAILPIT_URL_KEY, "").strip().rstrip("/")
-    parts = urlsplit(value)
-    if parts.scheme != "http" or not parts.hostname or parts.path or parts.query:
-        raise ValueError(f"{MAILPIT_URL_KEY} must be http://<private host>:<port>")
-    try:
-        addresses = {
-            ipaddress.ip_address(info[4][0])
-            for info in socket.getaddrinfo(parts.hostname, parts.port or 80)
-        }
-    except (OSError, ValueError) as error:
-        raise ValueError(f"{MAILPIT_URL_KEY} host does not resolve") from error
-    if not addresses or not all(a.is_private or a.is_loopback for a in addresses):
-        raise ValueError(f"{MAILPIT_URL_KEY} must resolve to private addresses only")
-    return value
-
-
-class MailpitLookup:
-    """Mailpit search by Message-ID; the match must be exact (REC-3)."""
-
-    def __init__(self, base_url: str, *, fetch: Callable[[str], Any] | None = None) -> None:
-        self._base = base_url
-        self._fetch = fetch or self._get
-
-    @staticmethod
-    def _get(url: str) -> Any:
-        with urlopen(url, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310 - validated host
-            return json.loads(response.read(1_000_000))
-
-    def evidence(self, message_id: str | None) -> Evidence:
-        if not message_id:
-            return "unknown"  # sent before #131: no stored Message-ID
-        bare = message_id.strip().strip("<>")
-        query = urlencode({"query": f'message-id:"{bare}"', "limit": 50})
-        try:
-            result = self._fetch(f"{self._base}/api/v1/search?{query}")
-        except Exception:  # noqa: BLE001 - REC-3
-            return "unknown"
-        messages = result.get("messages") if isinstance(result, dict) else None
-        count = result.get("messages_count") if isinstance(result, dict) else None
-        if not isinstance(messages, list) or type(count) is not int:
-            return "unknown"
-        if any(isinstance(m, dict) and m.get("MessageID") == bare for m in messages):
-            return "present"
-        if count == 0 or count <= len(messages):
-            return "absent"  # every substring match was seen and none is exact
-        return "unknown"  # more matches than one page: cannot prove absence
-
-
-def evidence_for(held: HeldEffect, coupons: CouponLookup, mailpit: MailpitLookup) -> Evidence:
-    if held.effect == "coupon":
-        return coupons.evidence(held.run_id)
-    if held.channel == "telegram":
-        return "attestation_required"
-    return mailpit.evidence(held.message_id)
+from engine.reconcile import ReconcileSettings
+from engine.reconcile_evidence import (
+    TIMEOUT_SECONDS,
+    CouponLookup,
+    MailpitLookup,
+    evidence_for,
+    mailpit_api_url,
+)
 
 
 def check(

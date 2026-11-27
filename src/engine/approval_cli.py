@@ -19,7 +19,10 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] = os.environ)
     parser = argparse.ArgumentParser(
         description="Review proposal approvals (token from APPROVAL_ACCESS_TOKEN)"
     )
-    parser.add_argument("command", choices=("list", "approve", "reject", "runtime", "set-runtime"))
+    parser.add_argument(
+        "command",
+        choices=("list", "approve", "reject", "runtime", "set-runtime", "held", "resolve"),
+    )
     parser.add_argument("--run-id", type=uuid.UUID)
     parser.add_argument("--snapshot-hash")
     parser.add_argument(
@@ -27,15 +30,29 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] = os.environ)
         choices=("active", "fallback_fixed_rule", "halted"),
         help="set-runtime: the new engine state (admin only)",
     )
-    parser.add_argument("--reason", help="set-runtime: a short non-PII reason")
+    parser.add_argument("--reason", help="set-runtime or resolve: a short non-PII reason")
     parser.add_argument("--expected-version", type=int, help="set-runtime: optional version guard")
+    # #132, ADR-0030: the CLI fallback for the admin resolve API (the operator UI is Tier 3).
+    parser.add_argument("--effect", choices=("coupon", "message"), help="resolve: the held effect")
+    parser.add_argument(
+        "--decision", choices=("confirmed", "not_sent"), help="resolve: what happened"
+    )
+    parser.add_argument(
+        "--basis", choices=("evidence", "attestation"), help="resolve: evidence or attestation"
+    )
     args = parser.parse_args(argv)
-    if args.command in {"list", "runtime"}:
+    resolve_args = (args.effect, args.decision, args.basis)
+    if args.command != "resolve" and any(resolve_args):
+        parser.error("--effect, --decision, and --basis are for resolve only")
+    if args.command in {"list", "runtime", "held"}:
         if args.run_id or args.snapshot_hash or args.state or args.reason:
             parser.error(f"{args.command} takes no run, hash, state, or reason arguments")
     elif args.command == "set-runtime":
         if not args.state or not args.reason or args.run_id or args.snapshot_hash:
             parser.error("set-runtime requires --state and --reason only")
+    elif args.command == "resolve":
+        if not args.run_id or not all(resolve_args) or not args.reason or args.snapshot_hash:
+            parser.error("resolve requires --run-id, --effect, --decision, --basis, and --reason")
     elif not args.run_id or not args.snapshot_hash:
         parser.error("decisions require --run-id and --snapshot-hash")
     try:
@@ -50,6 +67,18 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] = os.environ)
         data = None
         if args.command == "runtime":
             url = f"{base}/runtime"
+        elif args.command == "held":
+            url = f"{base}/held-runs"
+        elif args.command == "resolve":
+            url = f"{base}/held-runs/{args.run_id}/resolve"
+            data = json.dumps(
+                {
+                    "effect": args.effect,
+                    "decision": args.decision,
+                    "basis": args.basis,
+                    "reason": args.reason,
+                }
+            ).encode()
         elif args.command == "set-runtime":
             url = f"{base}/runtime/state"
             body: dict[str, object] = {"state": args.state, "reason": args.reason}

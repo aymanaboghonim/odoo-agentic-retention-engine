@@ -29,6 +29,7 @@ TASK_DEF = {
             "environment": [
                 {"name": "TELEMETRY_ENABLED", "value": "NO"},
                 {"name": "RECONCILE_STALE_STARTED_MINUTES", "value": "30"},  # #131
+                {"name": "RECONCILE_STAGE", "value": "YES"},  # #132
             ],
         },
         {

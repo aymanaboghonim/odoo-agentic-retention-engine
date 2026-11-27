@@ -35,7 +35,8 @@ from engine.db import (
     upgrade_schema,
 )
 from engine.reconcile import ReconcileConfigError, ReconcileSettings
-from engine.reconcile_cli import CouponLookup, MailpitLookup, check, mailpit_api_url
+from engine.reconcile_cli import check
+from engine.reconcile_evidence import CouponLookup, MailpitLookup, mailpit_api_url
 from engine.runs import RunState
 from scripts.dev_oidc import DevIssuer
 
@@ -287,6 +288,7 @@ def test_held_runs_api_returns_no_pii(db: sa.Engine) -> None:
                     "age_minutes": run["held_effects"][0]["age_minutes"],
                     "channel": "mailpit",
                     "message_id_stored": True,
+                    "evidence": None,  # set by the worker stage (#132)
                 }
             ],
         }

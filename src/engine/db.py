@@ -137,7 +137,49 @@ execution_effects = sa.Table(
     sa.Column("reference", sa.Text()),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("message_id", sa.Text()),  # 0014, REC-2: stored before the email send
+    sa.Column("evidence", sa.Text()),  # 0015: latest evidence from the worker stage
+    sa.Column("evidence_at", sa.DateTime(timezone=True)),
+    sa.Column("coupon_deactivated_at", sa.DateTime(timezone=True)),  # 0015, REC-10
 )
+
+reconcile_decisions = sa.Table(
+    "reconcile_decisions",
+    metadata,
+    sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
+    sa.Column("run_id", sa.Uuid(), sa.ForeignKey("runs.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("effect", sa.Text(), nullable=False),
+    sa.Column("decision", sa.Text(), nullable=False),
+    sa.Column("basis", sa.Text(), nullable=False),
+    sa.Column("reason", sa.Text(), nullable=False),
+    sa.Column("actor", sa.Text(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("closed_at", sa.DateTime(timezone=True)),
+    sa.Column("outcome", sa.Text()),
+)
+
+
+class ReconcileConflict(Exception):
+    """A decision for an effect that is not held, or a different open decision (REC-8)."""
+
+
+@dataclass(frozen=True)
+class Decision:
+    id: int
+    run_id: uuid.UUID
+    effect: str
+    decision: str
+    basis: str
+    actor: str
+
+
+@dataclass(frozen=True)
+class ResolveResult:
+    applied: bool  # False: the run was no longer executing (another resolver won)
+    state: str
+    reason: str | None
+    resolution: str | None
+    orphan_coupon: bool
+
 
 # REC-2: the email Message-ID is derived from (run, claim, attempt), so the reconcile check
 # can find the exact message in Mailpit. Opaque (no customer data); `.invalid` is reserved.
@@ -147,6 +189,9 @@ MESSAGE_ID_NAMESPACE = uuid.UUID("6f1c2b8e-4d5a-4e0b-9c7f-2a1e3d4b5c6a")
 def effect_message_id(run_id: uuid.UUID, claim_id: uuid.UUID, attempt: int) -> str:
     key = uuid.uuid5(MESSAGE_ID_NAMESPACE, f"{run_id}:{claim_id}:{attempt}")
     return f"<aorte-{key}@aorte.invalid>"
+
+
+RECONCILER = "reconciler"  # the audit actor of the worker stage (ADR-0030 decision 6)
 
 
 class RunNotFound(Exception):
@@ -565,6 +610,7 @@ class RunRepository:
                 execution_effects.c.attempts,
                 execution_effects.c.updated_at,
                 execution_effects.c.message_id,
+                execution_effects.c.evidence,
                 agent_proposals.c.proposal,
             )
             .select_from(
@@ -592,9 +638,328 @@ class RunRepository:
                     updated_at=row.updated_at,
                     channel=channel,
                     message_id=row.message_id if row.effect == "message" else None,
+                    evidence=row.evidence,
                 )
             )
         return held
+
+    # ------------------------------------------------------------ #132 reconciliation
+
+    def record_evidence(
+        self, run_id: uuid.UUID, effect: str, evidence: str, *, now: datetime
+    ) -> None:
+        """Store the latest evidence; `updated_at` (the held age) is not touched."""
+        if evidence not in {"present", "absent", "unknown", "attestation_required"}:
+            raise ValueError("invalid evidence")
+        with self._engine.begin() as conn:
+            conn.execute(
+                execution_effects.update()
+                .where(execution_effects.c.run_id == run_id, execution_effects.c.effect == effect)
+                .values(evidence=evidence, evidence_at=now)
+            )
+
+    @staticmethod
+    def _held_rows(
+        conn: sa.Connection, run_id: uuid.UUID, stale_before: datetime
+    ) -> dict[str, Any]:
+        rows = conn.execute(
+            sa.select(execution_effects)
+            .where(execution_effects.c.run_id == run_id)
+            .with_for_update()
+        ).all()
+        return {row.effect: row for row in rows}
+
+    @staticmethod
+    def _is_held(row: Any, stale_before: datetime) -> bool:
+        return row.status == "unknown" or (
+            row.status == "started" and row.updated_at < stale_before
+        )
+
+    def _lock_executing(self, conn: sa.Connection, run_id: uuid.UUID) -> Any:
+        return conn.execute(
+            sa.select(runs.c.id, runs.c.state).where(runs.c.id == run_id).with_for_update()
+        ).first()
+
+    def record_decision(
+        self,
+        run_id: uuid.UUID,
+        *,
+        effect: str,
+        decision: str,
+        basis: str,
+        reason: str,
+        actor: str,
+        stale_before: datetime,
+        now: datetime | None = None,
+    ) -> Decision:
+        """REC-7: record an admin decision only; the worker applies it. Idempotent (REC-8)."""
+        if (
+            effect not in {"coupon", "message"}
+            or decision not in {"confirmed", "not_sent"}
+            or basis not in {"evidence", "attestation"}
+            or not actor
+        ):
+            raise ValueError("invalid decision")
+        now = now or datetime.now(UTC)
+        with self._engine.begin() as conn:
+            run = self._lock_executing(conn, run_id)
+            if run is None:
+                raise RunNotFound(str(run_id))
+            held = self._held_rows(conn, run_id, stale_before).get(effect)
+            if (
+                run.state != RunState.EXECUTING.value
+                or held is None
+                or not self._is_held(held, stale_before)
+            ):
+                raise ReconcileConflict("the effect is not held")
+            existing = conn.execute(
+                sa.select(reconcile_decisions).where(
+                    reconcile_decisions.c.run_id == run_id,
+                    reconcile_decisions.c.effect == effect,
+                    reconcile_decisions.c.closed_at.is_(None),
+                )
+            ).first()
+            if existing is not None:
+                if (existing.decision, existing.basis) != (decision, basis):
+                    raise ReconcileConflict("a different decision is already open")
+                return self._decision(existing)
+            row = conn.execute(
+                reconcile_decisions.insert()
+                .values(
+                    run_id=run_id,
+                    effect=effect,
+                    decision=decision,
+                    basis=basis,
+                    reason=reason,
+                    actor=actor,
+                    created_at=now,
+                )
+                .returning(*reconcile_decisions.c)
+            ).one()
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=RunState.EXECUTING.value,
+                    to_state=RunState.EXECUTING.value,
+                    actor=actor,
+                    detail={
+                        "event": "reconcile_decision_recorded",
+                        "effect": effect,
+                        "decision": decision,
+                        "basis": basis,
+                        "reason": reason,
+                    },
+                    at=now,
+                )
+            )
+            return self._decision(row)
+
+    @staticmethod
+    def _decision(row: Any) -> Decision:
+        return Decision(row.id, row.run_id, row.effect, row.decision, row.basis, row.actor)
+
+    def record_refusal(self, run_id: uuid.UUID, *, actor: str, roles: list[str]) -> None:
+        """REC-7: a refused resolve call is audited when the run exists."""
+        now = datetime.now(UTC)
+        with self._engine.begin() as conn:
+            run = conn.execute(sa.select(runs.c.state).where(runs.c.id == run_id)).first()
+            if run is None:
+                return
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=run.state,
+                    to_state=run.state,
+                    actor=actor,
+                    detail={"event": "reconcile_resolve_refused", "roles": sorted(roles)},
+                    at=now,
+                )
+            )
+
+    def open_decisions(self) -> list[Decision]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                sa.select(reconcile_decisions)
+                .where(reconcile_decisions.c.closed_at.is_(None))
+                .order_by(reconcile_decisions.c.id)
+            ).all()
+        return [self._decision(row) for row in rows]
+
+    def close_decision(self, decision: Decision, *, outcome: str, now: datetime) -> None:
+        if outcome not in {"applied", "rejected_mismatch", "not_held"}:
+            raise ValueError("invalid decision outcome")
+        with self._engine.begin() as conn:
+            closed = conn.execute(
+                reconcile_decisions.update()
+                .where(
+                    reconcile_decisions.c.id == decision.id,
+                    reconcile_decisions.c.closed_at.is_(None),
+                )
+                .values(closed_at=now, outcome=outcome)
+                .returning(reconcile_decisions.c.id)
+            ).first()
+            state = conn.execute(
+                sa.select(runs.c.state).where(runs.c.id == decision.run_id)
+            ).scalar_one_or_none()
+            if closed is not None and state is not None and outcome != "applied":
+                conn.execute(
+                    run_events.insert().values(
+                        run_id=decision.run_id,
+                        from_state=state,
+                        to_state=state,
+                        actor=RECONCILER,
+                        detail={
+                            "event": f"reconcile_decision_{outcome}",
+                            "effect": decision.effect,
+                            "decision": decision.decision,
+                            "decided_by": decision.actor,
+                        },
+                        at=now,
+                    )
+                )
+
+    def resolve_held(
+        self,
+        run_id: uuid.UUID,
+        resolutions: dict[str, str],
+        *,
+        actor: str,
+        basis: dict[str, str],
+        evidence: dict[str, str],
+        stale_before: datetime,
+        deadline: bool,
+        now: datetime | None = None,
+    ) -> ResolveResult:
+        """Resolve held effects and close the run when it can (REC-4, REC-8, REC-9).
+
+        One transaction with the run row locked: only an `executing` run changes, and only
+        effects that are still held. Never sends or re-queues anything (REC-5).
+        """
+        from engine.reconcile import run_outcome
+
+        if any(value not in {"confirmed", "not_sent"} for value in resolutions.values()):
+            raise ValueError("invalid resolution")
+        now = now or datetime.now(UTC)
+        with self._engine.begin() as conn:
+            run = self._lock_executing(conn, run_id)
+            if run is None or run.state != RunState.EXECUTING.value:
+                return ResolveResult(False, run.state if run else "missing", None, None, False)
+            rows = self._held_rows(conn, run_id, stale_before)
+            statuses = {effect: row.status for effect, row in rows.items()}
+            resolved: dict[str, str] = {}
+            for effect, value in resolutions.items():
+                row = rows.get(effect)
+                if row is None or not self._is_held(row, stale_before):
+                    continue
+                conn.execute(
+                    execution_effects.update()
+                    .where(
+                        execution_effects.c.run_id == run_id, execution_effects.c.effect == effect
+                    )
+                    .values(
+                        status=value,
+                        reference="reconciled" if value == "confirmed" else None,
+                        updated_at=now,
+                    )
+                )
+                statuses[effect] = value
+                resolved[effect] = value
+                conn.execute(
+                    run_events.insert().values(
+                        run_id=run_id,
+                        from_state=RunState.EXECUTING.value,
+                        to_state=RunState.EXECUTING.value,
+                        actor=actor,
+                        detail={
+                            "event": "effect_reconciled",
+                            "effect": effect,
+                            "status": value,
+                            "basis": basis.get(effect, "evidence"),
+                            "evidence": evidence.get(effect),
+                        },
+                        at=now,
+                    )
+                )
+            proposal = conn.execute(
+                sa.select(agent_proposals.c.proposal).where(agent_proposals.c.run_id == run_id)
+            ).scalar_one_or_none()
+            discount = (proposal or {}).get("proposed_discount_percent")
+            try:
+                needs_coupon = discount is not None and float(discount) > 0
+            except TypeError, ValueError:
+                needs_coupon = "coupon" in statuses
+            # An effect still unknown or started keeps the run held; only the deadline closes it.
+            result = run_outcome(statuses, needs_coupon=needs_coupon, deadline=deadline)
+            if result.state == "executing":
+                return ResolveResult(True, "executing", None, None, False)
+            values: dict[str, Any] = {"state": result.state, "updated_at": now}
+            if result.state == "completed":
+                values["outcome"] = result.reason
+            else:
+                values["failure_reason"] = result.reason
+            conn.execute(runs.update().where(runs.c.id == run_id).values(**values))
+            conn.execute(
+                run_events.insert().values(
+                    run_id=run_id,
+                    from_state=RunState.EXECUTING.value,
+                    to_state=result.state,
+                    actor=actor,
+                    detail={
+                        "reason": result.reason,
+                        "resolved": resolved,
+                        "basis": {k: basis.get(k, "evidence") for k in resolved},
+                        "evidence": evidence,
+                        "deadline": deadline,
+                    },
+                    at=now,
+                )
+            )
+            return ResolveResult(
+                True, result.state, result.reason, result.resolution, result.orphan_coupon
+            )
+
+    def orphan_coupons(self, *, limit: int = 50) -> list[uuid.UUID]:
+        """REC-10: runs failed as message-not-sent whose confirmed coupon is still active."""
+        with self._engine.connect() as conn:
+            return list(
+                conn.execute(
+                    sa.select(runs.c.id)
+                    .join(execution_effects, execution_effects.c.run_id == runs.c.id)
+                    .where(
+                        runs.c.state == RunState.FAILED.value,
+                        runs.c.failure_reason == "reconciled_message_not_sent",
+                        execution_effects.c.effect == "coupon",
+                        execution_effects.c.status == "confirmed",
+                        execution_effects.c.coupon_deactivated_at.is_(None),
+                    )
+                    .order_by(runs.c.updated_at)
+                    .limit(limit)
+                ).scalars()
+            )
+
+    def mark_coupon_deactivated(self, run_id: uuid.UUID, *, now: datetime) -> None:
+        with self._engine.begin() as conn:
+            changed = conn.execute(
+                execution_effects.update()
+                .where(
+                    execution_effects.c.run_id == run_id,
+                    execution_effects.c.effect == "coupon",
+                    execution_effects.c.coupon_deactivated_at.is_(None),
+                )
+                .values(coupon_deactivated_at=now)
+                .returning(execution_effects.c.run_id)
+            ).first()
+            if changed is not None:
+                conn.execute(
+                    run_events.insert().values(
+                        run_id=run_id,
+                        from_state=RunState.FAILED.value,
+                        to_state=RunState.FAILED.value,
+                        actor=RECONCILER,
+                        detail={"event": "orphan_coupon_deactivated"},
+                        at=now,
+                    )
+                )
 
     def recent_runs(self, *, limit: int, state: RunState | None = None) -> list[dict[str, str]]:
         """#131 `erp_cli list`: run ID, state, trigger type, created time; no customer data."""
@@ -1143,6 +1508,7 @@ class RunRepository:
 # cascade, so each child is deleted explicitly before `runs`. `approval_requests`,
 # `execution_claims`, and `execution_effects` cascade, but are listed for clarity.
 _RUN_CHILD_DELETES = (
+    "DELETE FROM reconcile_decisions WHERE run_id = ANY(:ids)",
     "DELETE FROM proposal_calls WHERE run_id = ANY(:ids)",
     "DELETE FROM proposal_budget WHERE run_id = ANY(:ids)",
     "DELETE FROM capacity_proposal_claim WHERE run_id = ANY(:ids)",

@@ -17,13 +17,21 @@ from pydantic import BaseModel, ConfigDict, Field
 from engine import telemetry
 from engine.auth import AuthError, AuthSettings, Principal, TokenVerifier
 from engine.config import EngineConfig
-from engine.db import ApprovalConflict, RunRepository, approval_requests, create_engine
+from engine.db import (
+    ApprovalConflict,
+    ReconcileConflict,
+    RunNotFound,
+    RunRepository,
+    approval_requests,
+    create_engine,
+)
 from engine.reconcile import ReconcileSettings, held_runs_view
 from engine.runtime_state import (
     RuntimeState,
     RuntimeStateConflict,
     RuntimeStateError,
     RuntimeStateRepository,
+    validate_reason,
 )
 
 ORIGIN_HEADER = "x-origin-verify"
@@ -57,6 +65,17 @@ class RuntimeInput(BaseModel):
     state: Literal["active", "fallback_fixed_rule", "halted"]
     reason: str = Field(min_length=3, max_length=200)
     expected_version: int | None = Field(default=None, ge=1)
+
+
+class ResolveInput(BaseModel):
+    """#132, REC-6/7: an admin decision for one held effect, with evidence or an attestation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    effect: Literal["coupon", "message"]
+    decision: Literal["confirmed", "not_sent"]
+    basis: Literal["evidence", "attestation"]
+    reason: str = Field(min_length=3, max_length=200)
 
 
 def _is_loopback(request: Request) -> bool:
@@ -201,6 +220,44 @@ def create_app(
             # (ADR-0012, owner 2026-11-27). Evidence: `engine.reconcile_cli check`.
             now = datetime.now(UTC)
             return held_runs_view(repo.held_effects(stale_before=reconcile.stale_before(now)), now)
+
+        @router.post("/held-runs/{run_id}/resolve")
+        def resolve_held_run(
+            run_id: uuid.UUID,
+            payload: ResolveInput,
+            principal: Principal = Depends(authenticate),
+        ) -> dict[str, str]:
+            # REC-7: admin only, and a refusal is audited. The API records the decision only:
+            # no run state change, no Odoo, no channel; the worker stage applies it (ADR-0012).
+            if not principal.has("admin"):
+                repo.record_refusal(run_id, actor=principal.subject, roles=sorted(principal.roles))
+                raise HTTPException(status_code=403, detail="insufficient role")
+            try:
+                reason = validate_reason(payload.reason)
+            except RuntimeStateError as error:
+                raise HTTPException(status_code=422, detail="invalid reason") from error
+            try:
+                decision = repo.record_decision(
+                    run_id,
+                    effect=payload.effect,
+                    decision=payload.decision,
+                    basis=payload.basis,
+                    reason=reason,
+                    actor=principal.subject,
+                    stale_before=reconcile.stale_before(datetime.now(UTC)),
+                )
+            except RunNotFound as error:
+                raise HTTPException(status_code=404, detail="run not found") from error
+            except ReconcileConflict as error:
+                raise HTTPException(
+                    status_code=409, detail="effect is not held or has another decision"
+                ) from error
+            return {
+                "run_id": str(run_id),
+                "effect": decision.effect,
+                "decision": decision.decision,
+                "status": "recorded",
+            }
 
     @app.get(HEALTH_PATH, include_in_schema=False)
     def health() -> JSONResponse:

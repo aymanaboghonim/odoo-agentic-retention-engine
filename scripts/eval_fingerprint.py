@@ -78,6 +78,8 @@ EXCLUDED: dict[str, str] = {
     "src/engine/runs.py": "run states",
     "src/engine/reconcile.py": "held-effect view after execution; never changes a proposal",
     "src/engine/reconcile_cli.py": "read-only evidence check after execution",
+    "src/engine/reconcile_evidence.py": "evidence lookups after execution",
+    "src/engine/reconcile_stage.py": "resolves held runs after execution; never a proposal",
     "src/engine/runtime_state.py": "runtime guard on live traffic, not proposal behavior",
     "src/engine/synthetic_scan.py": "scan rules that create runs",
     "src/engine/telemetry.py": "export only; never changes a proposal",
