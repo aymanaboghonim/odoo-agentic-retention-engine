@@ -117,6 +117,8 @@ locals {
         { name = "FULL_STACK_ODOO_DB_PASSWORD", valueFrom = "${local.param_arn}/odoo-db-password" },
         { name = "FULL_STACK_ODOO_RO_PASSWORD", valueFrom = "${local.param_arn}/odoo-ro-password" },
         { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },
+        { name = "FULL_STACK_ENGINE_MONITOR_PASSWORD", valueFrom = "${local.param_arn}/engine-monitor-password" },
+        { name = "FULL_STACK_ODOO_MONITOR_PASSWORD", valueFrom = "${local.param_arn}/odoo-monitor-password" },
       ]
       links = ["odoo-db:odoo-db", "odoo:odoo", "engine-db:engine-db"]
       dependsOn = [
@@ -270,7 +272,14 @@ locals {
         { name = "GRAFANA_OTLP_ENDPOINT", value = var.telemetry_settings["GRAFANA_OTLP_ENDPOINT"] },
         { name = "TELEMETRY_ENVIRONMENT", value = var.telemetry_settings["TELEMETRY_ENVIRONMENT"] },
       ]
-      secrets                = [{ name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" }]
+      secrets = [
+        { name = "GRAFANA_OTLP_TOKEN", valueFrom = "${local.param_arn}/grafana-otlp-token" },
+        { name = "ENGINE_MONITOR_PASSWORD", valueFrom = "${local.param_arn}/engine-monitor-password" },
+        { name = "ODOO_MONITOR_PASSWORD", valueFrom = "${local.param_arn}/odoo-monitor-password" },
+      ]
+      # #166: the PostgreSQL exporters reach both servers; no dependsOn, so host metrics never
+      # wait for the databases (pg_up is 0 until the init container has created the role).
+      links                  = ["engine-db:engine-db", "odoo-db:odoo-db"]
       readonlyRootFilesystem = true
       linuxParameters        = { tmpfs = [{ containerPath = "/tmp", size = 64 }] }
       mountPoints = [

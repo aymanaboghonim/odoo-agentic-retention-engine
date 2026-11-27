@@ -48,6 +48,9 @@ def test_dashboard_has_the_required_panels() -> None:
         ("Container memory", "aorte_container_memory_usage"),
         ("Container network", "aorte_container_network_io"),
         ("Container restarts", "aorte_container_restarts"),
+        ("PostgreSQL up", "pg_up"),  # #166
+        ("PostgreSQL connections", "pg_stat_database_numbackends"),
+        ("PostgreSQL database size", "pg_database_size_bytes"),
     ):
         panels = [p for p in PANELS if fragment in p["title"]]
         assert panels, fragment
@@ -80,6 +83,7 @@ def test_queries_use_variables_and_bounded_labels() -> None:
                             "le",
                             "aorte_container",
                             "aorte_direction",
+                            "aorte_server",
                         }
 
 

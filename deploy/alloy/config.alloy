@@ -1,8 +1,11 @@
-// Grafana Alloy: host metrics only (ADR-0033, OBS-14). No logs, no Docker socket, no host root.
+// Grafana Alloy: host and PostgreSQL metrics only (ADR-0033, OBS-14, OBS-22). No logs, no Docker
+// socket, no host root.
 // The container mounts the host /proc and /sys read-only at /host/proc and /host/sys. The root
 // filesystem is read through the container's own overlay root, which reports the host volume.
 // Environment: GRAFANA_OTLP_ENDPOINT, GRAFANA_OTLP_TOKEN (base64 of <instance-id>:<token>, the
-// same SSM value the engine uses), TELEMETRY_ENVIRONMENT.
+// same SSM value the engine uses), TELEMETRY_ENVIRONMENT, and the passwords of the monitoring
+// role aorte_monitor (#166: LOGIN and CONNECT only, no pg_monitor): ENGINE_MONITOR_PASSWORD,
+// ODOO_MONITOR_PASSWORD.
 // tests/test_alloy_config.py checks the allowlist below; change both together.
 
 prometheus.exporter.unix "host" {
@@ -40,6 +43,59 @@ prometheus.relabel "allowlist" {
   // Closed label set: drop the labels the panels do not need.
   rule {
     regex  = "device|fstype"
+    action = "labeldrop"
+  }
+  forward_to = [otelcol.receiver.prometheus.host.receiver]
+}
+
+// PostgreSQL (#166): one component per server, because enabled_collectors applies only to the
+// first data source of a component (F-100). No stat_statements, so no query text.
+prometheus.exporter.postgres "engine" {
+  data_source_names        = ["postgresql://aorte_monitor:" + sys.env("ENGINE_MONITOR_PASSWORD") + "@engine-db:5432/engine?sslmode=disable"]
+  enabled_collectors       = ["database", "stat_database"]
+  disable_settings_metrics = true
+}
+
+prometheus.exporter.postgres "odoo" {
+  data_source_names        = ["postgresql://aorte_monitor:" + sys.env("ODOO_MONITOR_PASSWORD") + "@odoo-db:5432/odoo?sslmode=disable"]
+  enabled_collectors       = ["database", "stat_database"]
+  disable_settings_metrics = true
+}
+
+prometheus.scrape "postgres" {
+  targets         = array.concat(prometheus.exporter.postgres.engine.targets, prometheus.exporter.postgres.odoo.targets)
+  job_name        = "aorte-alloy"
+  scrape_interval = "60s"
+  forward_to      = [prometheus.relabel.postgres.receiver]
+}
+
+prometheus.relabel "postgres" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = "pg_up|pg_database_size_bytes|pg_stat_database_numbackends"
+    action        = "keep"
+  }
+  // Only the application database of each server (not postgres or the templates).
+  rule {
+    source_labels = ["__name__", "datname"]
+    regex         = "pg_(database_size_bytes|stat_database_numbackends);(?:engine|odoo)"
+    target_label  = "__tmp_keep"
+    replacement   = "yes"
+  }
+  rule {
+    source_labels = ["__name__", "__tmp_keep"]
+    regex         = "pg_(database_size_bytes|stat_database_numbackends);"
+    action        = "drop"
+  }
+  // The server name from the credential-free instance label (postgresql://<host>:<port>/<db>).
+  rule {
+    source_labels = ["instance"]
+    regex         = "postgresql://(engine-db|odoo-db):5432/.*"
+    target_label  = "aorte_server"
+    replacement   = "$1"
+  }
+  rule {
+    regex  = "datid|datname|server|__tmp_keep"
     action = "labeldrop"
   }
   forward_to = [otelcol.receiver.prometheus.host.receiver]

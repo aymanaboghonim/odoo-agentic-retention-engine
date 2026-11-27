@@ -1,6 +1,6 @@
 # Spec: PII-safe observability telemetry
 
-- Issue: #125 (spec); implemented in #126, #127, #128, #129, #130, #134, #165
+- Issue: #125 (spec); implemented in #126, #127, #128, #129, #130, #134, #165, #166
 - ADRs: [ADR-0029](../adr/0029-observability-topology-and-telemetry-data-rule.md), [ADR-0033](../adr/0033-host-metrics-from-alloy-container-metrics-from-ecs-task-stats.md), [ADR-0020](../adr/0020-aws-cloudfront-s3-edge-and-backups.md), [ADR-0024](../adr/0024-mvp-ecs-task-layout-and-cloudfront-origin.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md)
 - Parent: [privacy spec](privacy-consent-retention.md) (`TM-1`, `TM-2`), [data connections](../architecture/data-connections.md) (`DC-3`)
 - Status: draft
@@ -31,7 +31,7 @@ Deny by default. Only keys in the allowlist in `src/engine/telemetry.py` are exp
 
 Metric labels are a closed set (stage, state, outcome, channel, model, environment). `run_id` and `proposal_id` are span attributes, never metric labels.
 
-APM spans keep the SQL statement shape without parameters, and outbound HTTP spans keep only the host and route template. Alloy sends only metrics on its allowlist (host CPU, memory, load, root disk; PostgreSQL up, connections, database size in #166), not logs, and runs with a hard memory limit. Per-container CPU, memory, network, and restarts come from ECS task stats, read by the worker (ADR-0033); there is no host network metric.
+APM spans keep the SQL statement shape without parameters, and outbound HTTP spans keep only the host and route template. Alloy sends only metrics on its allowlist (host CPU, memory, load, root disk; PostgreSQL up, connections, and database size, OBS-22), not logs, and runs with a hard memory limit. Per-container CPU, memory, network, and restarts come from ECS task stats, read by the worker (ADR-0033); there is no host network metric.
 
 ## Export caps
 
@@ -82,6 +82,7 @@ All fail closed. `TELEMETRY_ENABLED` must be `YES` or `NO`. With `YES`, the Graf
 | OBS-19 | Alert rules stay quiet while the stack is stopped: every rule treats no data as OK, every rule is scoped to `aws-mvp`, and "worker missing" fires only while the approval API reports `aorte.process.up` or Alloy reports the host (peer presence, #163, ADR-0033). | `test_alert_rules_are_quiet_while_stopped`, `test_every_process_reports_up_for_peer_presence` |
 | OBS-20 | On ECS the worker exports per-container CPU time, memory in use, network bytes, and restarts from the task metadata endpoint, only for the core task's long-running containers (closed label set), with no APM span for the reads; a failed or malformed read reports nothing and never raises; outside ECS nothing is registered, and a non-local endpoint fails closed. | `test_container_gauges_closed_labels`, `test_container_stats_failures_report_nothing`, `test_container_stats_off_outside_ecs_and_fail_closed`, `test_metadata_reads_make_no_apm_spans` |
 | OBS-21 | The long-running containers have an ECS restart policy (`restartAttemptPeriod` 300 s); the one-shot `initialize` and `model-sync` have none (ADR-0033). | `test_restart_policy_on_long_running_containers` |
+| OBS-22 | PostgreSQL metrics are only `pg_up`, connections, and size of the `engine` and `odoo` databases, per server (`aorte_server`), with no query text: the init container creates `aorte_monitor` with LOGIN and CONNECT only (no `pg_monitor`, no other role, cannot read tables or other sessions' SQL), its passwords come from SSM, and the exporter has no `stat_statements` (owner, 2026-11-27). | `test_alloy_postgres_allowlist_and_no_query_text`, `test_monitor_role_reads_metrics_only`, `test_monitor_passwords_both_or_neither_and_distinct` |
 | OBS-16 | The worker reports seconds since its last finished scan page and the runtime state (unreadable counts as `halted`); the API answers `/healthz` only to loopback clients, outside the edge prefix, with `ok` or `unavailable` and nothing else. | `test_worker_heartbeat_tracks_completed_scan_pages`, `test_health_gauges_report_liveness_and_runtime_state`, `test_unreadable_runtime_state_reports_halted`, `test_health_endpoint_is_loopback_only_and_reveals_nothing` |
 
 ## Behavior
@@ -162,6 +163,13 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 - Restart policy `{enabled = true, restartAttemptPeriod = 300}` on the 8 long-running containers. Compose has the Alloy service under the `observability` profile; Compose has no restart policy change.
 - Alloy memory (`F-098`): peak 61.0 MiB locally over 15 minutes with the full pipeline; hard limit 128 MiB (`alloy_memory_mib`). The `mvp` plan `9f8f794a1197` (Alloy container, ECR repository, restart policy, and the #134 APM settings; 3 to add, 1 replaced) was reviewed on 2026-11-26 and is re-planned and applied in #133 before the rollout.
 - Grafana: a "Host and containers" row (host CPU busy, memory available, root disk free, load; container CPU, memory, network, restarts) and the second peer in "worker missing"; plan `1cd7db92b390` applied 2026-11-26, no drift. Live checks in #133.
+
+## Implementation notes (#166)
+
+- Owner decision 2026-11-27: the monitoring role gets no `pg_monitor`. A local test (`F-100`) showed a LOGIN and CONNECT role gets the same three metrics, cannot read tables, and sees other sessions' SQL text as `<insufficient privilege>`; the extra `pg_monitor` metrics (locks, replication, activity per state) are not needed for the MVP. A later need for them is one grant in `full_stack_init` plus a decision record.
+- `full_stack_init.configure_monitor_role` creates or updates `aorte_monitor` on `odoo-db` (database `odoo`) and `engine-db` (database `engine`) on every start (the password follows SSM; connection limit 3; it fails if the role is a member of any role). Passwords: SSM `engine-monitor-password` and `odoo-monitor-password` (ephemeral, write-only, INF-5). Locally both are optional (both or neither); without them no role is made and Alloy reports `pg_up` 0.
+- Alloy: one `prometheus.exporter.postgres` per server (collectors `database` and `stat_database`, no settings metrics), an allowlist of `pg_up`, `pg_database_size_bytes`, `pg_stat_database_numbackends` for the application databases only, label `aorte_server` (`engine-db` or `odoo-db`) from the credential-free instance label. 6 series. Alloy has links to both servers and no `dependsOn`, so host metrics never wait for the databases. Alloy memory with both exporters: peak 75.0 MiB over 15 minutes locally (`F-100`), so the 128 MiB limit stays (1.7 times the peak); it is measured on the host in #133.
+- Grafana: a "PostgreSQL" row (up, connections, size per server); plan `46ebd1b5bc63` applied 2026-11-27, no drift. The `mvp` plan `a3578971018a` (2 new SSM parameters, existing secrets unchanged, plus the #165 changes) was reviewed on 2026-11-27 and is re-planned and applied in #133.
 
 ## Open questions
 

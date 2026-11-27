@@ -26,6 +26,17 @@ ephemeral "random_password" "engine_db" {
   special = false
 }
 
+# #166: the PostgreSQL monitoring role aorte_monitor (LOGIN and CONNECT only), one per server.
+ephemeral "random_password" "engine_monitor" {
+  length  = 40
+  special = false
+}
+
+ephemeral "random_password" "odoo_monitor" {
+  length  = 40
+  special = false
+}
+
 ephemeral "random_password" "pepper" {
   length  = 64
   special = false
@@ -48,12 +59,15 @@ locals {
     "engine-database-url"      = "postgresql://engine:${ephemeral.random_password.engine_db.result}@engine-db:5432/engine"
     "odoo-readonly-url"        = "postgresql://odoo_ro:${ephemeral.random_password.odoo_ro.result}@odoo-db:5432/odoo"
     "privacy-tombstone-pepper" = ephemeral.random_password.pepper.result
+    "engine-monitor-password"  = ephemeral.random_password.engine_monitor.result
+    "odoo-monitor-password"    = ephemeral.random_password.odoo_monitor.result
     "approval-origin-verify"   = random_password.origin_verify.result
   }
   generated_names = toset([
     "odoo-db-password", "odoo-ro-password", "engine-db-password", "engine-database-url",
     "odoo-readonly-url",
     "privacy-tombstone-pepper", "approval-origin-verify",
+    "engine-monitor-password", "odoo-monitor-password",
   ])
 }
 
