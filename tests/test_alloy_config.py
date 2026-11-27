@@ -49,9 +49,9 @@ LONG_RUNNING = set(telemetry.CONTAINERS)
 ONE_SHOT = {"initialize", "model-sync"}
 
 
-def _rules() -> list[tuple[str, list[str], str]]:
-    """(action, source_labels, regex) of each keep or drop rule in the allowlist block."""
-    block = CONFIG[CONFIG.index('prometheus.relabel "allowlist"') :]
+def _rules(component: str = "allowlist") -> list[tuple[str, list[str], str]]:
+    """(action, source_labels, regex) of each keep or drop rule in one relabel component."""
+    block = CONFIG[CONFIG.index(f'prometheus.relabel "{component}"') :]
     block = block[: block.index("forward_to")]
     out = []
     for body in re.findall(r"rule \{(.*?)\n  \}", block, re.S):
@@ -65,10 +65,18 @@ def _rules() -> list[tuple[str, list[str], str]]:
     return out
 
 
-def _passes(name: str, labels: dict[str, str]) -> bool:
-    """Prometheus relabel semantics for keep and drop: anchored regex over joined labels."""
+def _passes(name: str, labels: dict[str, str], component: str = "allowlist") -> bool:
+    """Prometheus relabel semantics for keep and drop: anchored regex over joined labels.
+
+    Replace rules that set a temporary label are applied first, as in the config.
+    """
     values = {"__name__": name, **labels}
-    for action, sources, regex in _rules():
+    if component == "postgres" and re.fullmatch(
+        r"pg_(database_size_bytes|stat_database_numbackends);(?:engine|odoo)",
+        f"{name};{labels.get('datname', '')}",
+    ):
+        values["__tmp_keep"] = "yes"
+    for action, sources, regex in _rules(component):
         hit = re.fullmatch(regex, ";".join(values.get(s, "") for s in sources)) is not None
         if hit != (action == "keep"):
             return False
@@ -104,6 +112,10 @@ def test_alloy_config_allowlist_and_memory_limit() -> None:
         "prometheus.exporter.unix",
         "prometheus.scrape",
         "prometheus.relabel",
+        "prometheus.exporter.postgres",
+        "prometheus.exporter.postgres",
+        "prometheus.scrape",
+        "prometheus.relabel",
         "otelcol.exporter.otlphttp",
     ]
     assert 'endpoint = sys.env("GRAFANA_OTLP_ENDPOINT")' in CONFIG
@@ -123,8 +135,14 @@ def test_alloy_config_allowlist_and_memory_limit() -> None:
     }
     assert "--disable-reporting" in alloy["command"][0]
     assert alloy["secrets"] == [
-        {"name": "GRAFANA_OTLP_TOKEN", "valueFrom": "${local.param_arn}/grafana-otlp-token"}
+        {"name": "GRAFANA_OTLP_TOKEN", "valueFrom": "${local.param_arn}/grafana-otlp-token"},
+        {
+            "name": "ENGINE_MONITOR_PASSWORD",
+            "valueFrom": "${local.param_arn}/engine-monitor-password",
+        },
+        {"name": "ODOO_MONITOR_PASSWORD", "valueFrom": "${local.param_arn}/odoo-monitor-password"},
     ]
+    assert alloy["links"] == ["engine-db:engine-db", "odoo-db:odoo-db"] and "dependsOn" not in alloy
     host_volumes = {v["name"]: v["host_path"] for v in ecs["task"]["volume"] if "host_path" in v}
     assert host_volumes == {"host-proc": "/proc", "host-sys": "/sys"}
     tf = "".join(p.read_text(encoding="utf-8") for p in MVP.glob("*.tf"))
@@ -158,3 +176,50 @@ def test_restart_policy_on_long_running_containers() -> None:
         assert containers[name].get("restartPolicy") == "${local.restart_policy}", name
     for name in ONE_SHOT:
         assert "restartPolicy" not in containers[name], name
+
+
+PG_ALLOWED = {"pg_up", "pg_database_size_bytes", "pg_stat_database_numbackends"}
+# Names the bundled exporter emitted locally with these collectors (F-100); only PG_ALLOWED pass.
+PG_EMITTED = PG_ALLOWED | {
+    "pg_stat_activity_count",
+    "pg_stat_activity_max_tx_duration",
+    "pg_stat_database_tup_fetched",
+    "pg_database_connection_limit",
+    "pg_static",
+    "pg_exporter_scrapes_total",
+    "pg_scrape_collector_success",
+}
+
+
+def test_alloy_postgres_allowlist_and_no_query_text() -> None:
+    """OBS-22: up, connections, and size of the two application databases; no query text."""
+    code = "\n".join(line for line in CONFIG.splitlines() if not line.strip().startswith("//"))
+    for server, database in (("engine", "engine-db:5432/engine"), ("odoo", "odoo-db:5432/odoo")):
+        block = CONFIG[CONFIG.index(f'prometheus.exporter.postgres "{server}"') :]
+        block = block[: block.index("\n}")]
+        assert "aorte_monitor:" in block and f"@{database}?sslmode=disable" in block
+        assert 'enabled_collectors       = ["database", "stat_database"]' in block
+        assert "disable_settings_metrics = true" in block
+    for banned in (
+        "stat_statements",
+        "include_query",
+        "custom_queries",
+        "pg_monitor",
+        "autodiscovery",
+    ):
+        assert banned not in code, banned
+    labels = {"datname": "engine"}
+    assert {n for n in PG_EMITTED if _passes(n, labels, "postgres")} == PG_ALLOWED
+    assert _passes("pg_up", {}, "postgres")  # pg_up has no database label
+    for other in ("postgres", "template0", "template1"):
+        assert not _passes("pg_database_size_bytes", {"datname": other}, "postgres"), other
+    assert 'regex  = "datid|datname|server|__tmp_keep"' in CONFIG  # labels never exported
+
+    # The init container creates the role with both passwords from SSM (INF-5).
+    _, ecs = _ecs()
+    init = {s["name"]: s["valueFrom"] for s in ecs["containers"]["initialize"]["secrets"]}
+    assert init["FULL_STACK_ENGINE_MONITOR_PASSWORD"].endswith("/engine-monitor-password")
+    assert init["FULL_STACK_ODOO_MONITOR_PASSWORD"].endswith("/odoo-monitor-password")
+    ssm = (MVP / "ssm.tf").read_text(encoding="utf-8")
+    for name in ("engine-monitor-password", "odoo-monitor-password"):
+        assert re.search(rf'"{name}"\s*= ephemeral\.random_password\.', ssm), name

@@ -25,6 +25,13 @@ Set unique values for `FULL_STACK_ODOO_DB_PASSWORD`,
 Compose service, database, and role. Keep the existing `.env` values for the
 other local projects unchanged.
 
+Optional (#165, #166): to run Grafana Alloy locally, set
+`FULL_STACK_ENGINE_MONITOR_PASSWORD` and `FULL_STACK_ODOO_MONITOR_PASSWORD`
+(both or neither, each unique) so the initialize service creates the
+`aorte_monitor` role (LOGIN and CONNECT only), export the Grafana settings, and
+add `--profile observability`. Without the passwords no role is made and Alloy
+reports `pg_up` 0.
+
 Start the stack with one command:
 
 ```sh

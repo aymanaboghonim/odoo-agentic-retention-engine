@@ -37,6 +37,31 @@ def validate(env: Mapping[str, str]) -> tuple[str, str, str]:
     return admin_password, reader_password, engine_url
 
 
+MONITOR_ROLE = "aorte_monitor"
+MONITOR_KEYS = ("FULL_STACK_ENGINE_MONITOR_PASSWORD", "FULL_STACK_ODOO_MONITOR_PASSWORD")
+
+
+def monitor_passwords(env: Mapping[str, str]) -> tuple[str, str] | None:
+    """#166: passwords of the PostgreSQL monitoring role, or None when not configured.
+
+    Both or neither: AWS always sets both (SSM, INF-5); local Compose may leave both unset.
+    Each must be distinct from every other database password.
+    """
+    engine_pw, odoo_pw = (env.get(key, "") for key in MONITOR_KEYS)
+    if not engine_pw and not odoo_pw:
+        return None
+    others = {
+        env.get("FULL_STACK_ODOO_DB_PASSWORD", ""),
+        env.get("FULL_STACK_ODOO_RO_PASSWORD", ""),
+        make_url(EngineConfig.from_env(env).database_url).password or "",
+    }
+    if not engine_pw or not odoo_pw or engine_pw == odoo_pw or {engine_pw, odoo_pw} & others:
+        raise ValueError(
+            "monitoring role requires two distinct nonempty passwords, unlike the others"
+        )
+    return engine_pw, odoo_pw
+
+
 # Odoo is ready for the read-only role only when nothing is still being installed: modules
 # installed after website_sale (website_sale_loyalty in AWS, ADR-0019) keep creating tables,
 # and a concurrent GRANT then fails with "tuple concurrently updated" (#97).
@@ -102,8 +127,58 @@ def configure_readonly_role(
             sleep(2.0 * attempt)
 
 
+def configure_monitor_role(
+    connect: Callable[[], Any],
+    database: str,
+    password: str,
+    *,
+    attempts: int = 5,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """#166: create or update aorte_monitor with LOGIN and CONNECT on one database only.
+
+    No pg_monitor and no other role membership (owner, 2026-11-27): the role reads up,
+    connections, and database size, cannot read tables, and sees other sessions' SQL text
+    as "<insufficient privilege>". The password follows SSM on every start.
+    """
+    options = sql.SQL(
+        "LOGIN PASSWORD {} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS "
+        "CONNECTION LIMIT 3"
+    ).format(sql.Literal(password))
+    for attempt in range(1, attempts + 1):
+        try:
+            with connect() as conn:
+                exists = conn.execute(
+                    "SELECT 1 FROM pg_roles WHERE rolname = %s", (MONITOR_ROLE,)
+                ).fetchone()
+                verb = "ALTER ROLE {} WITH " if exists else "CREATE ROLE {} "
+                conn.execute(sql.SQL(verb).format(sql.Identifier(MONITOR_ROLE)) + options)
+                conn.execute(
+                    sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                        sql.Identifier(database), sql.Identifier(MONITOR_ROLE)
+                    )
+                )
+                member_of = conn.execute(
+                    "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.member "
+                    "WHERE r.rolname = %s",
+                    (MONITOR_ROLE,),
+                ).fetchone()
+                if member_of is None or member_of[0] != 0:
+                    raise RuntimeError(f"{MONITOR_ROLE} must not be a member of any role")
+            return
+        except RETRYABLE_ROLE_ERRORS as error:
+            if attempt == attempts:
+                raise
+            print(
+                f"stage=configure-monitor-role retry={attempt} reason={type(error).__name__}",
+                flush=True,
+            )
+            sleep(2.0 * attempt)
+
+
 def main() -> None:
     admin_password, reader_password, engine_url = validate(os.environ)
+    monitor = monitor_passwords(os.environ)
     started = time.monotonic()
     deadline = started + 600
     next_heartbeat = 0.0
@@ -139,6 +214,27 @@ def main() -> None:
         host="odoo-db", dbname="odoo", user="odoo_ro", password=reader_password
     )
     OdooReader(reader_url).verify_synthetic_readonly_role()
+    if monitor is not None:
+        print("stage=configure-monitor-roles status=started", flush=True)
+        engine_monitor, odoo_monitor = monitor
+        configure_monitor_role(
+            lambda: psycopg.connect(
+                host="odoo-db", dbname="odoo", user="odoo", password=admin_password
+            ),
+            "odoo",
+            odoo_monitor,
+        )
+        engine_parts = make_url(engine_url)
+        configure_monitor_role(
+            lambda: psycopg.connect(
+                host="engine-db",
+                dbname="engine",
+                user="engine",
+                password=engine_parts.password,
+            ),
+            "engine",
+            engine_monitor,
+        )
     print("stage=migrate-engine status=started", flush=True)
     engine = create_engine(engine_url)
     try:

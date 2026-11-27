@@ -61,6 +61,9 @@ services:
       FULL_STACK_ODOO_DB_PASSWORD: ${FULL_STACK_ODOO_DB_PASSWORD:?Set FULL_STACK_ODOO_DB_PASSWORD}
       FULL_STACK_ODOO_RO_PASSWORD: ${FULL_STACK_ODOO_RO_PASSWORD:?Set FULL_STACK_ODOO_RO_PASSWORD}
       ENGINE_DATABASE_URL: ${FULL_STACK_ENGINE_DATABASE_URL:?Set FULL_STACK_ENGINE_DATABASE_URL}
+      # #166: optional locally (both or neither); the monitoring role is made only when set.
+      FULL_STACK_ENGINE_MONITOR_PASSWORD: ${FULL_STACK_ENGINE_MONITOR_PASSWORD:-}
+      FULL_STACK_ODOO_MONITOR_PASSWORD: ${FULL_STACK_ODOO_MONITOR_PASSWORD:-}
     command: ["python", "-m", "engine.full_stack_init"]
     networks: [private]
 
@@ -144,7 +147,8 @@ services:
     networks: [private, ingress]
 
   # ADR-0033, OBS-14: host metrics only (read-only /proc and /sys; no Docker socket, no host
-  # root). Off by default: `--profile observability` with the Grafana settings exported.
+  # root). Off by default: `--profile observability` with the Grafana settings and the two
+  # monitoring passwords exported (without them pg_up is 0; #166).
   alloy:
     profiles: [observability]
     image: grafana/alloy:v1.22.0@sha256:9acc2529bc1edb7f5b2bd801dd8334ebc80c158e3a9e5526ecd7c9a273d43189
@@ -156,11 +160,13 @@ services:
       GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:-}
       GRAFANA_OTLP_TOKEN: ${GRAFANA_OTLP_TOKEN:-}
       TELEMETRY_ENVIRONMENT: ${TELEMETRY_ENVIRONMENT:-local}
+      ENGINE_MONITOR_PASSWORD: ${FULL_STACK_ENGINE_MONITOR_PASSWORD:-}
+      ODOO_MONITOR_PASSWORD: ${FULL_STACK_ODOO_MONITOR_PASSWORD:-}
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
-    networks: [egress]
+    networks: [private, egress]
 
   proposal:
     profiles: [proposal]
