@@ -451,6 +451,7 @@ def test_local_api_and_cli_smoke(db: sa.Engine, pending: uuid.UUID) -> None:
         **ISSUER.env(),
         "APPROVAL_ACCESS_TOKEN": TOKEN,
         "APPROVAL_API_PORT": str(port),
+        "RECONCILE_STALE_STARTED_MINUTES": "30",  # #131: required by the API
         "TELEMETRY_ENABLED": "NO",
     }
     server = subprocess.Popen(

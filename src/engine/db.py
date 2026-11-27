@@ -13,6 +13,7 @@ from sqlalchemy import Connection, Engine
 
 from engine.approval_data import InvalidProposalSnapshot, offer_from_record, snapshot_hash
 from engine.policy import Gate, Outcome, as_dict
+from engine.reconcile import HeldEffect
 from engine.runs import TERMINAL_STATES, RunState, validate_transition
 
 metadata = sa.MetaData()
@@ -135,7 +136,17 @@ execution_effects = sa.Table(
     sa.Column("max_attempts", sa.Integer(), nullable=False),
     sa.Column("reference", sa.Text()),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("message_id", sa.Text()),  # 0014, REC-2: stored before the email send
 )
+
+# REC-2: the email Message-ID is derived from (run, claim, attempt), so the reconcile check
+# can find the exact message in Mailpit. Opaque (no customer data); `.invalid` is reserved.
+MESSAGE_ID_NAMESPACE = uuid.UUID("6f1c2b8e-4d5a-4e0b-9c7f-2a1e3d4b5c6a")
+
+
+def effect_message_id(run_id: uuid.UUID, claim_id: uuid.UUID, attempt: int) -> str:
+    key = uuid.uuid5(MESSAGE_ID_NAMESPACE, f"{run_id}:{claim_id}:{attempt}")
+    return f"<aorte-{key}@aorte.invalid>"
 
 
 class RunNotFound(Exception):
@@ -515,8 +526,22 @@ class RunRepository:
             ).all()
         return {str(state): int(total) for state, total in rows}
 
-    def held_effect_count(self) -> int:
-        """Effects with an unknown outcome on runs still executing (EX-4, ADR-0030)."""
+    @staticmethod
+    def _held_condition(stale_before: datetime | None) -> sa.ColumnElement[bool]:
+        """Held (ADR-0030): `unknown`, or `started` before the stale limit, on an executing run."""
+        status = execution_effects.c.status == "unknown"
+        if stale_before is not None:
+            status = sa.or_(
+                status,
+                sa.and_(
+                    execution_effects.c.status == "started",
+                    execution_effects.c.updated_at < stale_before,
+                ),
+            )
+        return sa.and_(status, runs.c.state == RunState.EXECUTING.value)
+
+    def held_effect_count(self, *, stale_before: datetime | None = None) -> int:
+        """Held effects (EX-4, ADR-0030); with `stale_before`, crash-left `started` ones too."""
         with self._engine.connect() as conn:
             return int(
                 conn.execute(
@@ -524,12 +549,71 @@ class RunRepository:
                     .select_from(
                         execution_effects.join(runs, runs.c.id == execution_effects.c.run_id)
                     )
-                    .where(
-                        execution_effects.c.status == "unknown",
-                        runs.c.state == RunState.EXECUTING.value,
-                    )
+                    .where(self._held_condition(stale_before))
                 ).scalar_one()
             )
+
+    def held_effects(self, *, stale_before: datetime, limit: int = 200) -> list[HeldEffect]:
+        """Held effects with the run's channel, oldest first (#131; read-only, REC-1)."""
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+            raise ValueError("limit must be 1..1000")
+        query = (
+            sa.select(
+                execution_effects.c.run_id,
+                execution_effects.c.effect,
+                execution_effects.c.status,
+                execution_effects.c.attempts,
+                execution_effects.c.updated_at,
+                execution_effects.c.message_id,
+                agent_proposals.c.proposal,
+            )
+            .select_from(
+                execution_effects.join(runs, runs.c.id == execution_effects.c.run_id).join(
+                    agent_proposals, agent_proposals.c.run_id == runs.c.id
+                )
+            )
+            .where(self._held_condition(stale_before))
+            .order_by(execution_effects.c.updated_at, execution_effects.c.run_id)
+            .limit(limit)
+        )
+        with self._engine.connect() as conn:
+            rows = conn.execute(query).all()
+        held = []
+        for row in rows:
+            channel = (row.proposal or {}).get("execution_channel")
+            if channel not in {"telegram", "mailpit"} or row.effect not in {"coupon", "message"}:
+                continue  # an invalid binding is never shown as a known channel
+            held.append(
+                HeldEffect(
+                    run_id=row.run_id,
+                    effect=row.effect,
+                    status=row.status,
+                    attempts=row.attempts,
+                    updated_at=row.updated_at,
+                    channel=channel,
+                    message_id=row.message_id if row.effect == "message" else None,
+                )
+            )
+        return held
+
+    def recent_runs(self, *, limit: int, state: RunState | None = None) -> list[dict[str, str]]:
+        """#131 `erp_cli list`: run ID, state, trigger type, created time; no customer data."""
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 200:
+            raise ValueError("limit must be 1..200")
+        query = sa.select(runs.c.id, runs.c.state, runs.c.trigger_type, runs.c.created_at)
+        if state is not None:
+            query = query.where(runs.c.state == state.value)
+        with self._engine.connect() as conn:
+            rows = conn.execute(query.order_by(runs.c.created_at.desc()).limit(limit)).all()
+        return [
+            {
+                "run_id": str(row.id),
+                "state": row.state,
+                "trigger_type": row.trigger_type,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
 
     def expire_approvals(self, *, now: datetime | None = None, limit: int = 500) -> int:
         """Cancel pending approvals past `expires_at` (spec AA-6); returns the number cancelled."""
@@ -860,12 +944,20 @@ class RunRepository:
         binding_hash: str,
         effect: str,
         max_attempts: int,
+        email: bool = False,
     ) -> int:
-        """Record an attempt before a request; an unfinished attempt is never retried."""
-        if effect not in {"coupon", "message"} or (
-            not isinstance(max_attempts, int)
-            or isinstance(max_attempts, bool)
-            or not 1 <= max_attempts <= 2**31 - 1
+        """Record an attempt before a request; an unfinished attempt is never retried.
+
+        With `email`, the attempt's deterministic Message-ID is stored first (REC-2).
+        """
+        if (
+            (email and effect != "message")
+            or effect not in {"coupon", "message"}
+            or (
+                not isinstance(max_attempts, int)
+                or isinstance(max_attempts, bool)
+                or not 1 <= max_attempts <= 2**31 - 1
+            )
         ):
             raise ExecutionConflict("invalid effect or attempt limit")
         now = datetime.now(UTC)
@@ -886,6 +978,7 @@ class RunRepository:
                         attempts=attempt,
                         max_attempts=max_attempts,
                         updated_at=now,
+                        message_id=effect_message_id(run_id, claim_id, attempt) if email else None,
                     )
                 )
             else:
@@ -901,7 +994,13 @@ class RunRepository:
                     .where(
                         execution_effects.c.run_id == run_id, execution_effects.c.effect == effect
                     )
-                    .values(status="started", attempts=attempt, reference=None, updated_at=now)
+                    .values(
+                        status="started",
+                        attempts=attempt,
+                        reference=None,
+                        updated_at=now,
+                        message_id=effect_message_id(run_id, claim_id, attempt) if email else None,
+                    )
                 )
             self._execution_event(
                 conn, run_id, {"effect": effect, "status": "started", "attempt": attempt}, now

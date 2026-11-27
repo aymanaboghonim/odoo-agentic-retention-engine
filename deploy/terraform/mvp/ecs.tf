@@ -42,7 +42,7 @@ locals {
     TELEMETRY_DAILY_LANGFUSE_UNIT_CAP = tostring(var.langfuse_daily_unit_cap)
   })
 
-  common_engine_env = merge(var.breaker_settings, local.telemetry_env, var.engine_settings, {
+  common_engine_env = merge(var.breaker_settings, var.reconcile_settings, local.telemetry_env, var.engine_settings, {
     FULL_STACK_SYNTHETIC_ISOLATED = "YES"
     # The engine requires a UUID (fails closed otherwise, #97). Deterministic per stack name.
     FULL_STACK_INSTANCE_ID = uuidv5("url", "https://github.com/aymanaboghonim/odoo-agentic-retention-engine/${var.name_prefix}")
@@ -174,6 +174,7 @@ locals {
         { name = "APPROVAL_API_ROOT_PATH", value = "/api" },
         ],
         [for k, v in local.telemetry_env : { name = k, value = v }],
+        [for k, v in var.reconcile_settings : { name = k, value = v }], # #131 GET /held-runs
       )
       secrets = [
         { name = "ENGINE_DATABASE_URL", valueFrom = "${local.param_arn}/engine-database-url" },
@@ -231,6 +232,7 @@ locals {
           { name = "ODOO_DB_NAME", value = "odoo" },
           { name = "ODOO_ALLOWED_HOSTS", value = "odoo" },
           { name = "ERP_MAILPIT_SMTP_HOST", value = "mailpit" },
+          { name = "RECONCILE_MAILPIT_API_URL", value = "http://mailpit:8025" }, # #131 check
           { name = "HF_HOME", value = "/model-cache" },
           { name = "HF_HUB_OFFLINE", value = "1" },
         ],

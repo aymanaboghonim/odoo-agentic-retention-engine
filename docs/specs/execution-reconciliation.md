@@ -3,7 +3,7 @@
 - Issue: #125 (spec); implemented in #131 (evidence and API) and #132 (automatic and admin resolution)
 - ADRs: [ADR-0030](../adr/0030-execution-reconciliation-without-resend.md), [ADR-0012](../adr/0012-worker-owned-agent-execution.md), [ADR-0027](../adr/0027-operator-container-in-core-task.md)
 - Parent: [gated execution](gated-execution.md) (`EX-4`), [operator RBAC](operator-rbac-and-expiring-approvals.md)
-- Status: draft
+- Status: draft; evidence and API implemented in #131
 
 ## Purpose
 
@@ -26,14 +26,14 @@ Non-goals: resending or re-queueing any effect; reading Telegram back (no Bot AP
 | message, `mailpit` | Mailpit search `message-id:` (`F-082`) | stored Message-ID |
 | message, `telegram` | none | admin attestation |
 
-Settings (all required, no default, fail closed): `RECONCILE_INTERVAL_MINUTES`, `RECONCILE_STALE_STARTED_MINUTES`, `RECONCILE_DEADLINE_HOURS` (integers `>= 1`).
+Settings (all required, no default, fail closed): `RECONCILE_INTERVAL_MINUTES`, `RECONCILE_STALE_STARTED_MINUTES`, `RECONCILE_DEADLINE_HOURS` (integers `>= 1`). #131 adds `RECONCILE_STALE_STARTED_MINUTES` (1 to 10080; worker, approval API, operator; 30 on AWS) and `RECONCILE_MAILPIT_API_URL` (`reconcile_cli` only; `http://` and a private host); #132 adds the other two.
 
 ## Invariants
 
 | ID | Must always be true | Check |
 | :-- | :-- | :-- |
-| REC-1 | The evidence lookup is read-only: no Odoo write, no dispatch, no engine DB change. | `test_reconcile_check_is_read_only`, boundary rule in `scripts/check_import_boundaries.py` |
-| REC-2 | The email Message-ID is deterministic from (run, claim, attempt) and stored before the send. | `test_message_id_is_recorded_before_dispatch` |
+| REC-1 | The evidence lookup is read-only: no Odoo write, no dispatch, no engine DB change. | `test_reconcile_check_is_read_only`, boundary rule REC-1 in `scripts/check_import_boundaries.py` (`test_reconcile_check_cannot_reach_dispatch_or_execution`) |
+| REC-2 | The email Message-ID is deterministic from (run, claim, attempt) and stored before the send. | `test_message_id_is_recorded_before_dispatch`, `test_telegram_and_coupon_effects_store_no_message_id` |
 | REC-3 | A lookup error gives `unknown`, never `absent`. | `test_lookup_errors_are_unknown_not_absent` |
 | REC-4 | The worker resolves automatically only on definitive evidence (`present` or `absent`); otherwise it waits until the deadline and then closes the run as `failed` (`reconciled_unverified`). | `test_auto_resolve_only_on_definitive_evidence_or_deadline` |
 | REC-5 | No code path resends or re-queues a resolved effect. | `test_resolved_run_never_redispatches` |
@@ -58,6 +58,15 @@ Settings (all required, no default, fail closed): `RECONCILE_INTERVAL_MINUTES`, 
 - A wrong attestation closes a run incorrectly. Only `admin` can attest, the audit shows it, and no resend follows, so the worst case is a missing offer, not a duplicate.
 - Runs held before #131 have a random Message-ID that was not stored, so their Mailpit evidence is `unknown` until the deadline closes them.
 - Erasure deletes held runs; the automatic stage makes this rarer, and the runbook says to reconcile first ([privacy spec](privacy-consent-retention.md)).
+
+## Implementation notes (#131)
+
+- Owner decisions 2026-11-27: one issue; `GET /held-runs` reads the engine database only (no live lookup in the API, which has no Odoo key or Mailpit path; ADR-0012). Live evidence comes from `engine.reconcile_cli check`; in #132 the worker stage stores the latest evidence for the API.
+- Migration 0014 adds `execution_effects.message_id`. `start_effect(email=True)` stores `effect_message_id(run, claim, attempt)` = `<aorte-<uuid5>@aorte.invalid>` (opaque, `.invalid` is reserved) in the same transaction that marks the attempt `started`; the dispatcher then sends with that ID. Telegram and coupon effects store none.
+- `engine.reconcile` (no side effects): settings, the evidence codes, `HeldEffect`, and the API view. `RunRepository.held_effects` and `held_effect_count(stale_before=...)` use the held definition above; the worker gauge `aorte.execution.held` now counts stale `started` effects too.
+- `engine.reconcile_cli check` (operator container, `EXEC_MODULES`): coupon by `loyalty.card` `search_read` on the run's code (archived included, exact and unique, else `unknown`); Mailpit by `GET /api/v1/search?query=message-id:"<id>"`, compared exactly, because Mailpit matches substrings (`F-101`); Telegram `attestation_required`. Output: JSON lines with codes only.
+- `engine.erp_cli list`: run ID, state, trigger type, created time (found missing in #140).
+- `scripts/aws_mvp_rollout.sh` refuses a task definition without `RECONCILE_STALE_STARTED_MINUTES` (apply Terraform first, #133). Runbook: [reconciliation.md](../runbooks/reconciliation.md).
 
 ## Open questions
 

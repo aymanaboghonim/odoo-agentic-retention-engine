@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from engine.channels import ChannelError
 from engine.config import normalize_database_url
 from engine.coupon_code import coupon_code_for_run
-from engine.db import RunRepository, create_engine, runs, upgrade_schema
+from engine.db import RunRepository, create_engine, effect_message_id, runs, upgrade_schema
 from engine.execution import (
     MAILPIT_REVIEW_RECIPIENT,
     ExecutionError,
@@ -103,7 +103,9 @@ class Coupons:
 class Dispatcher:
     def __init__(self) -> None:
         self.calls: list[tuple[TestDestination, str]] = []
+        self.message_ids: list[str | None] = []
         self.failures: list[Exception] = []
+        self.before_send: Callable[[str | None], None] | None = None
 
     def send(
         self,
@@ -111,8 +113,12 @@ class Dispatcher:
         text: str,
         *,
         language: str = "en",
+        message_id: str | None = None,
     ) -> str:
+        if self.before_send is not None:
+            self.before_send(message_id)
         self.calls.append((destination, text))
+        self.message_ids.append(message_id)
         if self.failures:
             raise self.failures.pop(0)
         return f"message-{len(self.calls)}"
@@ -576,3 +582,65 @@ def _expired_approval_cases(db: sa.Engine, created: list[uuid.UUID]) -> None:
         run_id, destination=destination
     )
     assert result.status == "completed" and len(dispatcher.calls) == 1
+
+
+def test_message_id_is_recorded_before_dispatch(db: sa.Engine) -> None:
+    """REC-2 (#131): the email Message-ID is deterministic and stored before the send."""
+    run_id, gate, cart = _create_run(db, channel="mailpit")
+    dispatcher = Dispatcher()
+    stored_at_send: list[object] = []
+
+    def read_stored(message_id: str | None) -> None:
+        with db.connect() as conn:
+            stored_at_send.append(
+                conn.execute(
+                    sa.text(
+                        "SELECT message_id FROM execution_effects "
+                        "WHERE run_id=:run AND effect='message' AND status='started'"
+                    ),
+                    {"run": run_id},
+                ).scalar_one()
+            )
+
+    dispatcher.before_send = read_stored
+    destination = TestDestination("mailpit", MAILPIT_REVIEW_RECIPIENT, confirmed=True)
+    try:
+        _service(db, gate, Carts(cart), Coupons(), dispatcher).execute(
+            run_id, destination=destination
+        )
+        (sent_id,) = dispatcher.message_ids
+        with db.connect() as conn:
+            claim_id, stored = conn.execute(
+                sa.text(
+                    "SELECT c.claim_id, e.message_id FROM execution_claims c "
+                    "JOIN execution_effects e ON e.run_id = c.run_id "
+                    "WHERE c.run_id=:run AND e.effect='message'"
+                ),
+                {"run": run_id},
+            ).one()
+        assert stored_at_send == [sent_id] and stored == sent_id
+        assert sent_id == effect_message_id(run_id, claim_id, 1)
+        assert sent_id == effect_message_id(run_id, claim_id, 1)  # deterministic
+        assert sent_id != effect_message_id(run_id, claim_id, 2)
+        assert sent_id.startswith("<aorte-") and sent_id.endswith("@aorte.invalid>")
+        assert str(run_id) not in sent_id  # opaque
+    finally:
+        _clean(db, run_id)
+
+
+def test_telegram_and_coupon_effects_store_no_message_id(db: sa.Engine) -> None:
+    run_id, gate, cart = _create_run(db, discount="5", channel="telegram")
+    dispatcher = Dispatcher()
+    try:
+        _service(db, gate, Carts(cart), Coupons(), dispatcher).execute(
+            run_id, destination=TestDestination("telegram", "synthetic-chat", confirmed=True)
+        )
+        assert dispatcher.message_ids == [None]
+        with db.connect() as conn:
+            stored = conn.execute(
+                sa.text("SELECT effect, message_id FROM execution_effects WHERE run_id=:run"),
+                {"run": run_id},
+            ).all()
+        assert sorted(stored) == [("coupon", None), ("message", None)]
+    finally:
+        _clean(db, run_id)

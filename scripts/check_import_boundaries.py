@@ -16,6 +16,9 @@ Rules:
   BND-5 Telemetry (#126, OBS-10) imports no engine module, and the safety gate and the LLM
         adapter never import telemetry, so neither money rules nor the model layer depend
         on what is exported.
+  REC-1 The reconcile evidence check (`reconcile`, `reconcile_cli`, #131) never reaches
+        channel dispatch, execution, or the LLM provider; it reads Odoo only through a
+        `search_read` lookup (spec docs/specs/execution-reconciliation.md).
 """
 
 from __future__ import annotations
@@ -69,6 +72,13 @@ RULES = (
         frozenset({"telemetry"}),
         True,
         "the gate and the LLM adapter must not depend on telemetry (OBS-10)",
+    ),
+    Rule(
+        "REC-1",
+        frozenset({"reconcile", "reconcile_cli"}),
+        frozenset({"channels", "execution", "proposal_provider"}),
+        True,
+        "the reconcile check must not reach dispatch, execution, or the LLM (ADR-0030)",
     ),
     Rule(
         "BND-5",
@@ -161,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAILED (import boundaries): {problem}", file=sys.stderr)
     if problems:
         return 1
-    print(f"import boundaries ok: {len(graph)} modules, rules BND-1..BND-5")
+    print(f"import boundaries ok: {len(graph)} modules, rules BND-1..BND-5, REC-1")
     return 0
 
 

@@ -199,7 +199,14 @@ class Dispatcher:
     def __init__(self) -> None:
         self.sent: list[str] = []
 
-    def send(self, destination: object, text: str, *, language: str = "en") -> str:
+    def send(
+        self,
+        destination: object,
+        text: str,
+        *,
+        language: str = "en",
+        message_id: str | None = None,
+    ) -> str:
         self.sent.append(text)
         return f"message-{len(self.sent)}"
 

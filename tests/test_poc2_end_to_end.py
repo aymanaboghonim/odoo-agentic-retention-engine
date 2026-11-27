@@ -128,7 +128,12 @@ class Effects:
         return code
 
     def send(
-        self, destination: TestDestination, text: str, *, language: Literal["en", "ar"]
+        self,
+        destination: TestDestination,
+        text: str,
+        *,
+        language: Literal["en", "ar"],
+        message_id: str | None = None,
     ) -> str:
         self.messages.append((destination, text, language))
         if self.ambiguous:

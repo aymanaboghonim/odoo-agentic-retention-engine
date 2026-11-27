@@ -1,4 +1,4 @@
-"""BND-1..BND-5: engine module boundaries (#111, #126). Hermetic, no database."""
+"""BND-1..BND-5 and REC-1: engine module boundaries (#111, #126, #131). Hermetic, no database."""
 
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ BASE = {
     "worker": "from engine.channels import send\n",
     "erp_cli": "from engine import channels\n",
     "telemetry": "import logging\n",
+    "reconcile": "import uuid\n",
+    "reconcile_cli": "from engine import db, odoo, reconcile\n",
 }
 
 
@@ -92,3 +94,12 @@ def test_gate_and_llm_adapter_never_import_telemetry(tmp_path: Path) -> None:
 def test_telemetry_imports_no_engine_module(tmp_path: Path) -> None:
     found = problems(tree(tmp_path, telemetry="from engine import db\n"))
     assert any(p.startswith("BND-5: telemetry -> db") for p in found), found
+
+
+def test_reconcile_check_cannot_reach_dispatch_or_execution(tmp_path: Path) -> None:
+    """REC-1 (#131): the evidence check reads Odoo but never reaches dispatch or execution."""
+    for module, target in (("reconcile_cli", "execution"), ("reconcile", "channels")):
+        (tmp_path / module).mkdir()
+        body = f"from engine import {target}\n"
+        found = problems(tree(tmp_path / module, **{module: body}))
+        assert any(p.startswith(f"REC-1: {module} -> {target}") for p in found), found

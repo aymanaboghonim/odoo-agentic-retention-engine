@@ -333,6 +333,16 @@ def show(live: _Live, args: argparse.Namespace) -> None:
         print(f"destination_hash={recipient.destination_hash}")
 
 
+def list_runs(live: _Live, args: argparse.Namespace) -> None:
+    """#131: find a run without a database query. IDs, states, and times only (no customer)."""
+    state = RunState(args.state) if args.state else None
+    for row in RunRepository(live.engine).recent_runs(limit=args.limit, state=state):
+        print(
+            f"run_id={row['run_id']} state={row['state']} "
+            f"trigger_type={row['trigger_type']} created_at={row['created_at']}"
+        )
+
+
 def execute(live: _Live, args: argparse.Namespace) -> None:
     if args.confirm_run_id != args.run_id:
         raise ValueError("--confirm-run-id must repeat the exact run ID")
@@ -359,6 +369,9 @@ def _parser() -> argparse.ArgumentParser:
     prop.add_argument("--language", choices=("en", "ar"), default="en")
     prop.add_argument("--mode", choices=("fixed", "model"), default="fixed")
     prop.add_argument("--request", default="Please remind me about my cart.")
+    listing = commands.add_parser("list", help="recent runs: ID, state, trigger type, time")
+    listing.add_argument("--limit", type=int, default=20)
+    listing.add_argument("--state", choices=[state.value for state in RunState])
     display = commands.add_parser("show", help="show the tokenized proposal and privacy preview")
     display.add_argument("--run-id", type=uuid.UUID, required=True)
     run = commands.add_parser("execute", help="dispatch one ERP run after exact confirmation")
@@ -383,9 +396,13 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
         tel.shutdown()
         return 1
     try:
-        {"preflight": preflight, "propose": propose, "show": show, "execute": execute}[
-            args.command
-        ](live, args)
+        {
+            "preflight": preflight,
+            "propose": propose,
+            "list": list_runs,
+            "show": show,
+            "execute": execute,
+        }[args.command](live, args)
         return 0
     except (ValueError, OSError, ExecutionError, EngineHalted) as error:
         print(f"stage={args.command} status=failed reason={error}", file=sys.stderr, flush=True)

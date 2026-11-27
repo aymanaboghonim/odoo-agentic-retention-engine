@@ -20,6 +20,7 @@ from engine.config import EngineConfig
 from engine.db import RunRepository, create_engine
 from engine.odoo import OdooReader
 from engine.privacy import CONSENT_CHANNELS, ConsentChannel, PrivacySettings
+from engine.reconcile import ReconcileSettings
 from engine.runtime_state import RuntimeGuard, RuntimeStateRepository
 from engine.synthetic_scan import ErpCartScanner, SyntheticCartScanner
 from engine.worker import GuardedScan, Heartbeat, ScanPage, run_scheduled_scans
@@ -150,6 +151,7 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     settings = WorkerSettings.from_env(os.environ)
     breaker_settings = BreakerSettings.from_env(os.environ)  # None = off; invalid fails closed
+    reconcile = ReconcileSettings.from_env(os.environ)  # #131: required, fail closed
     tel = telemetry.configure_from_env(os.environ, service_name="aorte-worker")  # OBS-6
     reader = OdooReader(settings.odoo_url)
     if settings.scan_mode == "erp":
@@ -167,7 +169,7 @@ def main(argv: list[str] | None = None) -> None:
         guard = RuntimeGuard(runtime)
         scanner = GuardedScan(build_scanner(settings, engine, reader), guard, heartbeat)
         repo = RunRepository(engine)
-        register_run_gauges(repo)
+        register_run_gauges(repo, reconcile)
         register_health_gauges(heartbeat, guard)
         container_stats.register(os.environ)  # ADR-0033: on ECS only
 
@@ -211,7 +213,7 @@ def register_health_gauges(heartbeat: Heartbeat, guard: RuntimeGuard) -> None:
     )
 
 
-def register_run_gauges(repo: RunRepository) -> None:
+def register_run_gauges(repo: RunRepository, reconcile: ReconcileSettings) -> None:
     """Runs by state and held effects, read when metrics are exported (OBS-8 labels)."""
     telemetry.observable_gauge(
         "aorte.runs",
@@ -222,8 +224,10 @@ def register_run_gauges(repo: RunRepository) -> None:
     telemetry.observable_gauge(
         "aorte.execution.held",
         "{effect}",
-        "Effects with an unknown outcome on executing runs",
-        lambda: [(repo.held_effect_count(), {})],
+        "Held effects on executing runs: unknown, or started past the stale limit (ADR-0030)",
+        lambda: [
+            (repo.held_effect_count(stale_before=reconcile.stale_before(datetime.now(UTC))), {})
+        ],
     )
 
 

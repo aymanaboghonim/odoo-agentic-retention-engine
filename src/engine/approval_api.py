@@ -6,6 +6,7 @@ import re
 import secrets
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Literal
 
 import sqlalchemy as sa
@@ -17,6 +18,7 @@ from engine import telemetry
 from engine.auth import AuthError, AuthSettings, Principal, TokenVerifier
 from engine.config import EngineConfig
 from engine.db import ApprovalConflict, RunRepository, approval_requests, create_engine
+from engine.reconcile import ReconcileSettings, held_runs_view
 from engine.runtime_state import (
     RuntimeState,
     RuntimeStateConflict,
@@ -71,6 +73,7 @@ def create_app(
     origin_verify_secret: str | None = None,
     runtime: RuntimeStateRepository | None = None,
     root_path: str = "",
+    reconcile: ReconcileSettings | None = None,
 ) -> FastAPI:
     """Approval API: behind CloudFront with an origin secret, otherwise loopback only."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -188,6 +191,17 @@ def create_app(
                 ) from error
             return snapshot.as_dict()
 
+    if reconcile is not None:
+
+        @router.get("/held-runs")
+        def list_held_runs(
+            principal: Principal = Depends(require_role("viewer")),
+        ) -> list[dict[str, object]]:
+            # REC-11 (#131): engine database only, tokenized codes and ages; no live lookup
+            # (ADR-0012, owner 2026-11-27). Evidence: `engine.reconcile_cli check`.
+            now = datetime.now(UTC)
+            return held_runs_view(repo.held_effects(stale_before=reconcile.stale_before(now)), now)
+
     @app.get(HEALTH_PATH, include_in_schema=False)
     def health() -> JSONResponse:
         try:
@@ -222,6 +236,7 @@ def main() -> None:
         raise ValueError("APPROVAL_API_PORT must be a valid port")
     host = _host(settings)
     root_path = validate_root_path(os.environ.get("APPROVAL_API_ROOT_PATH"))
+    reconcile = ReconcileSettings.from_env(os.environ)  # required, fail closed
     tel = telemetry.configure_from_env(os.environ, service_name="aorte-approval-api")  # OBS-6
     engine = create_engine(config.database_url)
     try:
@@ -233,6 +248,7 @@ def main() -> None:
             origin_verify_secret=settings.origin_verify_secret,
             runtime=RuntimeStateRepository(engine),
             root_path=root_path,
+            reconcile=reconcile,
         )
         telemetry.instrument_fastapi(app)  # #134: no-op unless TELEMETRY_APM=YES
         uvicorn.run(
