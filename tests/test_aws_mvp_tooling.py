@@ -802,6 +802,7 @@ def test_exec_rejects_other_commands_and_secret_env() -> None:
         "scripts.erp_minimal_fixtures",
         "scripts.ingest_policies",
         "scripts.telemetry_check",
+        "engine.reconcile_cli",
     }  # the allowlist changes only by review (#97)
     stopped = FakeAccount()
     stopped.instances["i-0live"] = "stopped"

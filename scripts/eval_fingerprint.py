@@ -76,6 +76,8 @@ EXCLUDED: dict[str, str] = {
     "src/engine/ports.py": "interfaces only",
     "src/engine/privacy_cli.py": "operator CLI",
     "src/engine/runs.py": "run states",
+    "src/engine/reconcile.py": "held-effect view after execution; never changes a proposal",
+    "src/engine/reconcile_cli.py": "read-only evidence check after execution",
     "src/engine/runtime_state.py": "runtime guard on live traffic, not proposal behavior",
     "src/engine/synthetic_scan.py": "scan rules that create runs",
     "src/engine/telemetry.py": "export only; never changes a proposal",

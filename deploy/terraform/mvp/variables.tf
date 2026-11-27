@@ -143,6 +143,15 @@ variable "breaker_settings" {
   }
 }
 
+variable "reconcile_settings" {
+  description = "Held-effect reconciliation (#131, ADR-0030). Required by the worker, the approval API, and the operator CLI; no engine default."
+  type        = map(string)
+  default = {
+    # A `started` effect older than this is crash-left and counts as held (spec: Definitions).
+    RECONCILE_STALE_STARTED_MINUTES = "30"
+  }
+}
+
 variable "langfuse_host" {
   description = "Langfuse Cloud region host behind the /lf-otel/* relay (#129, ADR-0029: US)."
   type        = string

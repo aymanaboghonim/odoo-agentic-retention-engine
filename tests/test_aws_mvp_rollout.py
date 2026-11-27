@@ -26,7 +26,10 @@ TASK_DEF = {
         {
             "name": "worker",
             "image": "000000000000.dkr.ecr.us-east-1.amazonaws.com/aorte-mvp/engine:old",
-            "environment": [{"name": "TELEMETRY_ENABLED", "value": "NO"}],
+            "environment": [
+                {"name": "TELEMETRY_ENABLED", "value": "NO"},
+                {"name": "RECONCILE_STALE_STARTED_MINUTES", "value": "30"},  # #131
+            ],
         },
         {
             "name": "mailpit",
@@ -133,6 +136,19 @@ def test_refuses_task_definition_without_required_engine_setting(
     result = run(env, ["COMPLETED"])
     assert result.returncode == 1
     assert "task definition lacks TELEMETRY_ENABLED in: worker" in result.stderr
+    assert not any("register-task-definition" in c for c in calls(env))
+
+
+def test_refuses_task_definition_without_reconcile_setting(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    # #131: the worker, API, and operator require RECONCILE_STALE_STARTED_MINUTES.
+    stale = json.loads(json.dumps(TASK_DEF))
+    stale["containerDefinitions"][0]["environment"] = [{"name": "TELEMETRY_ENABLED", "value": "NO"}]
+    Path(env["FAKE_TASK_DEF"]).write_text(json.dumps(stale), encoding="utf-8")
+    result = run(env, ["COMPLETED"])
+    assert result.returncode == 1
+    assert "lacks RECONCILE_STALE_STARTED_MINUTES in: worker" in result.stderr
     assert not any("register-task-definition" in c for c in calls(env))
 
 

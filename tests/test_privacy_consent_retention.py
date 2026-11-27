@@ -150,7 +150,12 @@ class Recipients:
         self.failure = failure
 
     def send_to(
-        self, destination: RecipientDestination, text: str, *, language: Literal["en", "ar"]
+        self,
+        destination: RecipientDestination,
+        text: str,
+        *,
+        language: Literal["en", "ar"],
+        message_id: str | None = None,
     ) -> str:
         self.sent.append((destination, text))
         if self.failure is not None:

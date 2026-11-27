@@ -1303,6 +1303,7 @@ EXEC_MODULES = (
     "engine.erp_cli",
     "engine.full_stack_worker",
     "engine.privacy_cli",
+    "engine.reconcile_cli",  # #131: read-only evidence check
     "scripts.erp_minimal_fixtures",
     "scripts.ingest_policies",
     "scripts.telemetry_check",  # #127 smoke SM-6

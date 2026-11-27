@@ -16,7 +16,13 @@ from engine import telemetry
 from engine.approval_data import offer_from_record, snapshot_hash
 from engine.channels import EmailPort, TelegramMessageSender
 from engine.coupon_code import coupon_code_for_run
-from engine.db import ApprovalConflict, ApprovalExpired, ExecutionConflict, RunRepository
+from engine.db import (
+    ApprovalConflict,
+    ApprovalExpired,
+    ExecutionConflict,
+    RunRepository,
+    effect_message_id,
+)
 from engine.fixed_rule import FIXED_SCHEMA
 from engine.odoo import AbandonedCart, cart_snapshot, cart_to_proposal_inputs
 from engine.policy import Gate, GateApproval, GateRejected, OfferProposal
@@ -86,7 +92,12 @@ class RecipientDestination:
 
 class RecipientPort(Protocol):
     def send_to(
-        self, destination: RecipientDestination, text: str, *, language: Literal["en", "ar"]
+        self,
+        destination: RecipientDestination,
+        text: str,
+        *,
+        language: Literal["en", "ar"],
+        message_id: str | None = None,
     ) -> str: ...
 
 
@@ -108,7 +119,12 @@ class CouponPort(Protocol):
 
 class MessagePort(Protocol):
     def send(
-        self, destination: TestDestination, text: str, *, language: Literal["en", "ar"]
+        self,
+        destination: TestDestination,
+        text: str,
+        *,
+        language: Literal["en", "ar"],
+        message_id: str | None = None,
     ) -> str: ...
 
 
@@ -181,22 +197,27 @@ class TestChannelDispatcher:
         return cls.MAILPIT_REVIEW_SUBJECTS[language]
 
     def send(
-        self, destination: TestDestination, text: str, *, language: Literal["en", "ar"] = "en"
+        self,
+        destination: TestDestination,
+        text: str,
+        *,
+        language: Literal["en", "ar"] = "en",
+        message_id: str | None = None,
     ) -> str:
         if destination.channel == "telegram":
             if self._telegram is None:
                 raise ExecutionError("Telegram sender is not configured")
-            message_id = self._telegram.send_message(destination.target, text)
-            if not isinstance(message_id, int) or isinstance(message_id, bool):
+            telegram_id = self._telegram.send_message(destination.target, text)
+            if not isinstance(telegram_id, int) or isinstance(telegram_id, bool):
                 raise ExecutionError("Telegram did not confirm a message ID")
-            return str(message_id)
+            return str(telegram_id)
         if self._mailpit is None:
             raise ExecutionError("Mailpit sender is not configured")
         message = EmailMessage()
         message["From"] = MAILPIT_REVIEW_SENDER
         message["To"] = destination.target
         message["Subject"] = self.mailpit_review_subject(language)
-        message["Message-ID"] = make_msgid()
+        message["Message-ID"] = message_id or make_msgid()
         message.set_content(text)
         self._mailpit.send(message)
         return message["Message-ID"]
@@ -218,7 +239,12 @@ class AllowlistedDispatcher:
         self._email = email
 
     def send_to(
-        self, destination: RecipientDestination, text: str, *, language: Literal["en", "ar"]
+        self,
+        destination: RecipientDestination,
+        text: str,
+        *,
+        language: Literal["en", "ar"],
+        message_id: str | None = None,
     ) -> str:
         try:
             self._allowlist.require(consent_channel(destination.channel), destination.target)
@@ -229,17 +255,17 @@ class AllowlistedDispatcher:
         if destination.channel == "telegram":
             if self._telegram is None:
                 raise KnownNotSent("Telegram sender is not configured")
-            message_id = self._telegram.send_message(destination.target, text)
-            if not isinstance(message_id, int) or isinstance(message_id, bool):
+            telegram_id = self._telegram.send_message(destination.target, text)
+            if not isinstance(telegram_id, int) or isinstance(telegram_id, bool):
                 raise ExecutionError("Telegram did not confirm a message ID")
-            return str(message_id)
+            return str(telegram_id)
         if self._email is None:
             raise KnownNotSent("email sender is not configured")
         message = EmailMessage()
         message["From"] = self.SENDER
         message["To"] = destination.target
         message["Subject"] = TestChannelDispatcher.mailpit_review_subject(language)
-        message["Message-ID"] = make_msgid()
+        message["Message-ID"] = message_id or make_msgid()
         message.set_content(text)
         self._email.send(message)
         return message["Message-ID"]
@@ -491,7 +517,7 @@ class ExecutionService:
                 claim_id,
                 binding_hash,
                 effect="coupon",
-                action=lambda: self._coupons.create(approval, proposal),
+                action=lambda _message_id: self._coupons.create(approval, proposal),
             )
             if code != coupon_code_for_run(str(run_id)):
                 self._runs.fail(run_id, reason="coupon_code_mismatch", actor="worker")
@@ -513,16 +539,27 @@ class ExecutionService:
         if test_destination is not None:
             target = test_destination
 
-            def send() -> str:
-                return self._dispatcher.send(target, text, language=proposal.language)
+            def send(message_id: str | None) -> str:
+                return self._dispatcher.send(
+                    target, text, language=proposal.language, message_id=message_id
+                )
 
         else:
             erp, bound = cast(ErpExecution, self._erp), fresh
 
-            def send() -> str:
-                return erp.dispatcher.send_to(bound, text, language=proposal.language)
+            def send(message_id: str | None) -> str:
+                return erp.dispatcher.send_to(
+                    bound, text, language=proposal.language, message_id=message_id
+                )
 
-        self._run_effect(run_id, claim_id, binding_hash, effect="message", action=send)
+        self._run_effect(
+            run_id,
+            claim_id,
+            binding_hash,
+            effect="message",
+            action=send,
+            email=channel == "mailpit",
+        )
         self._runs.complete_execution(
             run_id, claim_id, binding_hash=binding_hash, needs_coupon=needs_coupon
         )
@@ -704,7 +741,8 @@ class ExecutionService:
         binding_hash: str,
         *,
         effect: Literal["coupon", "message"],
-        action: Callable[[], str],
+        action: Callable[[str | None], str],
+        email: bool = False,
     ) -> str:
         for attempt in range(1, self._settings.max_known_not_sent_attempts + 1):
             with telemetry.span(
@@ -712,7 +750,13 @@ class ExecutionService:
                 **{"aorte.run_id": str(run_id), "aorte.effect": effect, "aorte.attempt": attempt},
             ) as span:
                 outcome, reference = self._attempt_effect(
-                    run_id, claim_id, binding_hash, effect=effect, action=action, attempt=attempt
+                    run_id,
+                    claim_id,
+                    binding_hash,
+                    effect=effect,
+                    action=action,
+                    attempt=attempt,
+                    email=email,
                 )
                 span.set("aorte.outcome", outcome)
             telemetry.count(
@@ -741,24 +785,28 @@ class ExecutionService:
         binding_hash: str,
         *,
         effect: Literal["coupon", "message"],
-        action: Callable[[], str],
+        action: Callable[[str | None], str],
         attempt: int,
+        email: bool = False,
     ) -> tuple[Literal["confirmed", "not_sent", "unknown"], str | None]:
         """One journaled attempt; never retries by itself (EX-4).
 
         `unknown` with reference None: the action raised. `unknown` with "": no confirmation.
         """
-        self._runs.start_effect(
+        started = self._runs.start_effect(
             run_id,
             claim_id,
             binding_hash=binding_hash,
             effect=effect,
             max_attempts=self._settings.max_known_not_sent_attempts,
+            email=email,
         )
+        # REC-2: start_effect stored this attempt's Message-ID before the send.
+        message_id = effect_message_id(run_id, claim_id, started) if email else None
         status: Literal["confirmed", "not_sent", "unknown"]
         reference: str | None
         try:
-            reference = action()
+            reference = action(message_id)
         except KnownNotSent:
             status, reference = "not_sent", None
         except Exception:

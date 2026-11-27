@@ -17,7 +17,7 @@ START=$(date +%s)
 TIMEOUT=${AORTE_ROLLOUT_TIMEOUT:-1200}
 POLL=${AORTE_ROLLOUT_POLL:-15}
 # Engine settings without a default that every engine container must carry (#126).
-REQUIRED_ENGINE_ENV="TELEMETRY_ENABLED"
+REQUIRED_ENGINE_ENV="TELEMETRY_ENABLED RECONCILE_STALE_STARTED_MINUTES"
 stage() { printf '[rollout +%ss] %s\n' "$(($(date +%s) - START))" "$*"; }
 fail() { printf 'FAILED (rollout): %s\n' "$*" >&2; exit 1; }
 

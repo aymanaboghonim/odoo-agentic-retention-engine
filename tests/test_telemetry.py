@@ -56,6 +56,7 @@ from engine.privacy import AllowlistGuard, PrivacyRepository, PrivacySettings, s
 from engine.proposal import ProposalService, ProposalSettings
 from engine.proposal_budget import Rate
 from engine.proposal_provider import ProviderResult
+from engine.reconcile import ReconcileSettings
 from engine.retrieval import SearchResult
 from engine.runs import RunState
 from engine.runtime_state import RuntimeGuard, RuntimeState
@@ -238,7 +239,12 @@ class Recipients:
         self.sent: list[str] = []
 
     def send_to(
-        self, destination: RecipientDestination, text: str, *, language: Literal["en", "ar"]
+        self,
+        destination: RecipientDestination,
+        text: str,
+        *,
+        language: Literal["en", "ar"],
+        message_id: str | None = None,
     ) -> str:
         self.sent.append(text)
         return f"message-{len(self.sent)}"
@@ -248,7 +254,14 @@ class Dispatcher:
     def __init__(self) -> None:
         self.sent: list[str] = []
 
-    def send(self, destination: TestDestination, text: str, *, language: str = "en") -> str:
+    def send(
+        self,
+        destination: TestDestination,
+        text: str,
+        *,
+        language: str = "en",
+        message_id: str | None = None,
+    ) -> str:
         self.sent.append(text)
         return f"message-{len(self.sent)}"
 
@@ -644,7 +657,7 @@ def test_metric_label_cardinality_is_bounded(capture: Capture) -> None:
 
 def test_run_gauges_report_states_and_held_effects(capture: Capture, db: sa.Engine) -> None:
     """OBS-8: runs by state and held effects come from closed labels only."""
-    register_run_gauges(RunRepository(db))
+    register_run_gauges(RunRepository(db), ReconcileSettings(stale_started_minutes=30))
     found = capture.metrics()
     states = {labels.get("aorte.state") for labels, _ in found.get("aorte.runs", [])}
     assert states <= set(telemetry.RUN_STATES)

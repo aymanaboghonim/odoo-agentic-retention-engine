@@ -22,6 +22,7 @@ class FakeRuntime:
 
 
 ENV = {
+    "RECONCILE_STALE_STARTED_MINUTES": "30",  # #131: required by the worker
     "FULL_STACK_SYNTHETIC_ISOLATED": "YES",
     "FULL_STACK_INSTANCE_ID": str(uuid.uuid4()),
     "ENGINE_DATABASE_URL": "postgresql://engine:synthetic@engine-db:5432/engine",
