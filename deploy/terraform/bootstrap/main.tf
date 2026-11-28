@@ -1,6 +1,6 @@
 # Bootstrap root (#95, spec docs/specs/aws-mvp-deployment.md): applied once with local
 # state through scripts/tf_safe.sh. Creates the encrypted, versioned state bucket for the
-# mvp root and the GitHub Actions OIDC deploy role (ADR-0019, F-068).
+# mvp root, the GitHub Actions OIDC deploy role (ADR-0019, F-068), and the billing role (#130).
 
 terraform {
   required_version = "~> 1.17"
@@ -225,4 +225,49 @@ resource "aws_iam_role_policy" "deploy" {
   name   = "deploy"
   role   = aws_iam_role.deploy.id
   policy = data.aws_iam_policy_document.deploy.json
+}
+
+# ---------------------------------------------------------------- GitHub OIDC billing role
+
+# #130, ADR-0034: the daily billing job only writes its aggregate report under reports/ in
+# the project's backups bucket. Its own environment (`billing`, main only), so its OIDC subject
+# differs from the deploy role's, and neither role can be assumed from the other's job.
+data "aws_iam_policy_document" "billing_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo}@${var.github_repository_id}:environment:${var.billing_environment}"]
+    }
+  }
+}
+
+resource "aws_iam_role" "billing" {
+  name                 = "${var.name_prefix}-gha-billing"
+  assume_role_policy   = data.aws_iam_policy_document.billing_trust.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "billing" {
+  statement {
+    sid       = "PutBillingReports"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.arn_prefix}:s3:::${local.mvp}-backups-*/reports/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "billing" {
+  name   = "billing"
+  role   = aws_iam_role.billing.id
+  policy = data.aws_iam_policy_document.billing.json
 }

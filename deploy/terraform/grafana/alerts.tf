@@ -43,6 +43,22 @@ locals {
       above   = local.test_floor
       for     = "0s"
     }
+    # #130, BR-1: the daily billing job pushes the latest finished day as current gauges
+    # (Grafana takes samples at most 2 h old, F-102); 50 h covers one late or missed run.
+    billing_drift = {
+      title   = "Provider billing drift above USD 0.10"
+      summary = "OpenAI's daily cost differs from the engine's estimate plus the merged evaluation reports by more than USD 0.10; see reports/billing/ in the backups bucket."
+      expr    = "max(abs(last_over_time(aorte_billing_drift_usd{${local.env}}[50h])))"
+      above   = 0.1
+      for     = "0s"
+    }
+    billing_unknown = {
+      title   = "Provider billing day unknown"
+      summary = "The billing job could not get the provider cost or the engine estimate for its day; an unknown day is never read as 0 (BR-1)."
+      expr    = "1 - max(last_over_time(aorte_billing_known{${local.env}}[50h]))"
+      above   = 0
+      for     = "0s"
+    }
     telemetry_cap = {
       title   = "Telemetry dropped at the daily cap"
       summary = "An export cap was reached; telemetry stops until the next UTC day (OBS-13)."

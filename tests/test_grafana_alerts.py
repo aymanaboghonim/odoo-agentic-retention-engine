@@ -35,6 +35,8 @@ def test_alert_rules_are_quiet_while_stopped() -> None:
         "runtime_not_active",
         "telemetry_cap",
         "reconcile_unverified",  # #132
+        "billing_drift",  # #130
+        "billing_unknown",
     }
     # Every rule: no data is OK, so a stopped stack (no data at all) never fires.
     assert TEXT.count('no_data_state  = "OK"') == 1 and 'dynamic "rule"' in TEXT

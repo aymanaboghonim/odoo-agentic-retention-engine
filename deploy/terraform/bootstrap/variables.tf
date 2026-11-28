@@ -42,3 +42,9 @@ variable "github_environment" {
   type        = string
   default     = "aws-mvp"
 }
+
+variable "billing_environment" {
+  description = "GitHub environment of the daily billing reconciliation (#130, ADR-0034): main only, no reviewer."
+  type        = string
+  default     = "billing"
+}
