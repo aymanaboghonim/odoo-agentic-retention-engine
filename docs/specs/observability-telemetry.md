@@ -180,6 +180,12 @@ Code: [telemetry.py](../../src/engine/telemetry.py) (allowlists, validators, saf
 - Applied 2026-11-28, no drift: bootstrap plan `4c02118dfa66` (the role and its policy), Grafana plan `1e967514b37d` (the billing row and panel; the rule group now has 8 rules: Terraform orders them by key, so the plan showed the six old rules moving slots). Environment `billing` (main only, no reviewer) and its six secrets set 2026-11-28; the Viewer token was checked with one query. The `expire-reports` rule is in the `mvp` plan applied in #133.
 - The OpenAI admin key cannot be limited to read-only usage and cost (`F-036`); the script calls only the costs endpoint. How late a day's cost appears is not documented: measured in #175 with the first scheduled run.
 
+## Implementation notes (#175)
+
+- First run by dispatch 2026-11-28 (run 46148959020, 13:18 UTC, about 15 s of work): log `billing day=2026-11-27 status=pass push=ok` and `billing report=stored`; the job's steps print no amount, and the log has 0 matches of the AWS account ID. `reports/billing/2026-11-27.json` (1,621 bytes) is the only object under `reports/`. All 7 days `pass`; 2026-11-26 has one project with spend (the #156 evaluation run, counted from its merged report), the other days a bucket with no results (no spend).
+- Grafana: the four gauges arrive as 4 series with labels `deployment_environment_name`, `service_name`, `job` only (the resource attribute is promoted); `aorte_billing_known` is 1. Both billing rules are `inactive`, health `ok`.
+- Lateness (`F-104`): not measurable yet, because no day in the window had spend on the day before a run. The 2026-11-26 spend was visible at 2026-11-28 13:18 UTC.
+
 ## Open questions
 
-- How late the OpenAI Costs API shows a finished day (#175).
+- How late the OpenAI Costs API shows a day's spend (`F-104`): measure on the first run after a day with spend.
