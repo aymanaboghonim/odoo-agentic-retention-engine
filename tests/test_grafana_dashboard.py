@@ -51,6 +51,7 @@ def test_dashboard_has_the_required_panels() -> None:
         ("PostgreSQL up", "pg_up"),  # #166
         ("PostgreSQL connections", "pg_stat_database_numbackends"),
         ("PostgreSQL database size", "pg_database_size_bytes"),
+        ("Provider billing", "aorte_billing_drift_usd"),  # #130
     ):
         panels = [p for p in PANELS if fragment in p["title"]]
         assert panels, fragment

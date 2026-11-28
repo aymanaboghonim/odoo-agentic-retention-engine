@@ -1,0 +1,76 @@
+name: Provider billing reconciliation
+
+# #130, ADR-0029 decision 8, ADR-0034: once a day, compare the OpenAI organization cost with the
+# engine's own estimate (Grafana) plus the merged evaluation reports, push the result to
+# Grafana, and store the aggregate JSON report under reports/billing/ in the backups bucket.
+# Environment `billing`: main only, no reviewer (a daily run must not wait for approval). The
+# repository is public, so the log prints only `billing day=... status=...` (BR-1).
+
+on:
+  schedule:
+    # Off the hour (scheduled runs can be delayed at the start of every hour, F-103).
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: billing-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Daily provider billing reconciliation
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: billing
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # First step, before anything prints: mask the account ID taken from the role ARN.
+      - name: Mask the AWS account ID
+        env:
+          ROLE_ARN: ${{ secrets.AWS_BILLING_ROLE_ARN }}
+        run: |
+          acct=$(printf '%s' "$ROLE_ARN" | cut -d: -f5)
+          case "$acct" in
+            [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+            *) echo "AWS_BILLING_ROLE_ARN secret is missing or not an IAM role ARN" >&2; exit 1 ;;
+          esac
+          echo "::add-mask::$acct"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b
+        with:
+          version: 0.13.5
+          python-version: "3.14"
+          enable-cache: false
+      - name: Reconcile (prints status only)
+        env:
+          OPENAI_ADMIN_KEY: ${{ secrets.OPENAI_ADMIN_KEY }}
+          GRAFANA_STACK_URL: ${{ secrets.GRAFANA_STACK_URL }}
+          GRAFANA_READ_TOKEN: ${{ secrets.GRAFANA_READ_TOKEN }}
+          GRAFANA_OTLP_ENDPOINT: https://otlp-gateway-prod-us-east-2.grafana.net/otlp
+          GRAFANA_OTLP_TOKEN: ${{ secrets.GRAFANA_OTLP_TOKEN }}
+        run: uv run --no-project --python 3.14 python scripts/provider_cost_reconcile.py --out-dir "$RUNNER_TEMP/billing"
+      # Credentials only after the provider lookups, and only for the upload.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        if: ${{ !cancelled() }}
+        with:
+          role-to-assume: ${{ secrets.AWS_BILLING_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      - name: Store the report under reports/billing/
+        if: ${{ !cancelled() }}
+        env:
+          BACKUPS_BUCKET: ${{ secrets.AWS_BACKUPS_BUCKET }}
+        run: |
+          if ! compgen -G "$RUNNER_TEMP/billing/*.json" >/dev/null; then
+            echo "billing report=missing" >&2
+            exit 1
+          fi
+          aws s3 cp --recursive --only-show-errors "$RUNNER_TEMP/billing/" "s3://$BACKUPS_BUCKET/reports/billing/"
+          echo "billing report=stored"

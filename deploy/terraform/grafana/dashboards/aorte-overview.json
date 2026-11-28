@@ -1089,6 +1089,105 @@
         "w": 8,
         "h": 8
       }
+    },
+    {
+      "type": "row",
+      "title": "Provider billing (#130)",
+      "id": 34,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 77,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider billing: OpenAI vs engine estimate (latest finished UTC day)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prom}"
+      },
+      "description": "Pushed once a day by the billing workflow for the previous UTC day (BR-1). Engine = Grafana estimate; drift = provider - (engine + merged evaluation reports). An unknown day has no amounts.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "refId": "A",
+          "expr": "last_over_time(aorte_provider_cost_usd{deployment_environment_name=\"$env\"}[50h])",
+          "legendFormat": "provider",
+          "instant": false,
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "refId": "B",
+          "expr": "last_over_time(aorte_billing_engine_cost_usd{deployment_environment_name=\"$env\"}[50h])",
+          "legendFormat": "engine estimate",
+          "instant": false,
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "refId": "C",
+          "expr": "last_over_time(aorte_billing_drift_usd{deployment_environment_name=\"$env\"}[50h])",
+          "legendFormat": "drift",
+          "instant": false,
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "refId": "D",
+          "expr": "last_over_time(aorte_billing_known{deployment_environment_name=\"$env\"}[50h])",
+          "legendFormat": "known (1) / unknown (0)",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "known (1) / unknown (0)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "id": 35,
+      "gridPos": {
+        "x": 0,
+        "y": 78,
+        "w": 24,
+        "h": 8
+      }
     }
   ]
 }

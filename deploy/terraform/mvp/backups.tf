@@ -46,4 +46,15 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
       days_after_initiation = 1
     }
   }
+  rule {
+    # #130: daily billing reports (aggregate, no PII) are kept 90 days.
+    id     = "expire-reports"
+    status = "Enabled"
+    filter {
+      prefix = "reports/"
+    }
+    expiration {
+      days = 90
+    }
+  }
 }
